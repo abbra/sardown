@@ -36,6 +36,14 @@ pub struct PositionedGlyph {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct AnchorPosition {
+    pub page: usize,
+    pub x: f32,
+    pub y: f32,
+}
+pub type AnchorTable = std::collections::HashMap<String, AnchorPosition>;
+
+#[derive(Debug, Clone, Copy)]
 pub struct Rect {
     pub x: f32,
     pub y: f32,

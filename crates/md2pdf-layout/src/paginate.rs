@@ -1,4 +1,7 @@
-use crate::{shape_paragraph, shape_rich_paragraph, ImageTable, PageGeometry, PathCommand, PositionedElement, PositionedPage, StrokeStyle};
+use crate::{
+    shape_rich_paragraph, AnchorPosition, AnchorTable, ImageTable, PageGeometry, PathCommand,
+    PositionedElement, PositionedPage, Rect, StrokeStyle,
+};
 use cosmic_text::FontSystem;
 use md2pdf_ast::BlockNode;
 use md2pdf_enrich::DiagramTable;
@@ -16,6 +19,7 @@ struct Cursor {
     pages: Vec<PositionedPage>,
     current: Vec<PositionedElement>,
     page_number: usize,
+    anchors: AnchorTable,
 }
 
 impl Cursor {
@@ -28,6 +32,7 @@ impl Cursor {
             pages: Vec::new(),
             current: Vec::new(),
             page_number: 0,
+            anchors: AnchorTable::new(),
         }
     }
 
@@ -42,11 +47,11 @@ impl Cursor {
         self.y = margin_pt;
     }
 
-    fn finish(mut self) -> Vec<PositionedPage> {
+    fn finish(mut self) -> (Vec<PositionedPage>, AnchorTable) {
         if !self.current.is_empty() || self.pages.is_empty() {
             self.pages.push(PositionedPage { page_number: self.page_number, elements: self.current });
         }
-        self.pages
+        (self.pages, self.anchors)
     }
 }
 
@@ -56,47 +61,17 @@ fn estimate_line_height(size: f32) -> f32 {
     size * 1.4 + LINE_SPACING_PT
 }
 
-fn place_text_run(cursor: &mut Cursor, margin_pt: f32, mut element: PositionedElement) {
-    let element_height = if let PositionedElement::TextRun { size, .. } = &element {
-        estimate_line_height(*size)
-    } else {
-        0.0
-    };
-    if cursor.remaining_height() < element_height && !cursor.current.is_empty() {
-        cursor.break_page(margin_pt);
-    }
-    if let PositionedElement::TextRun { x, y, .. } = &mut element {
-        *x += margin_pt;
-        *y += cursor.y;
-    }
-    cursor.y += element_height;
-    cursor.current.push(element);
-}
-
-fn place_inline_content(
-    cursor: &mut Cursor,
-    margin_pt: f32,
-    indent_pt: f32,
-    content: &[md2pdf_ast::InlineNode],
-    font_system: &mut FontSystem,
-) {
-    for mut element in shape_paragraph(font_system, content, cursor.content_width_pt - indent_pt) {
-        if let PositionedElement::TextRun { x, .. } = &mut element {
-            *x += indent_pt;
-        }
-        place_text_run(cursor, margin_pt, element);
-    }
-}
-
-/// Like `place_inline_content`, but keeps multiple styled runs (e.g. syntax-highlighted tokens)
-/// flowing on the same visual line instead of giving each its own line.
+/// Shapes and places `content` (a paragraph, heading, table cell, or synthetic code-token list),
+/// keeping multiple styled runs (bold/italic/links, syntax-highlighted tokens) flowing on the
+/// same visual line instead of giving each its own line, and emitting a `LinkAnnotation` for
+/// every run whose source `InlineNode` carries a `link_target`.
 ///
-/// `shape_rich_paragraph` emits one `ShapedRun` per *span* — every color/style change starts a
-/// new one, even mid-line. Runs sharing the same pre-placement `y` (cosmic-text's `run.line_y`)
-/// came from the same visual line and must be placed at one shared final `y` with a single
-/// cursor advance, not one advance per run (that was the actual bug: naively calling
-/// `place_text_run` per run advanced the cursor once per span instead of once per line).
-fn place_rich_inline_content(
+/// `shape_rich_paragraph` emits one `ShapedRun` per *span* — every color/style/link change starts
+/// a new one, even mid-line. Runs sharing the same pre-placement `y` (cosmic-text's `run.line_y`)
+/// came from the same visual line and must be placed at one shared final `y` with a single cursor
+/// advance, not one advance per run (placing each run independently would advance the cursor
+/// once per span instead of once per line).
+fn place_inline_content(
     cursor: &mut Cursor,
     margin_pt: f32,
     indent_pt: f32,
@@ -142,12 +117,21 @@ fn place_rich_inline_content(
         }
 
         for shaped_run in group {
+            let link_target = content[shaped_run.source_index].link_target.clone();
             let mut element = shaped_run.element;
-            if let PositionedElement::TextRun { x, y, .. } = &mut element {
-                *x += margin_pt + indent_pt;
-                *y = placed_y;
-            }
+            let rect = match &mut element {
+                PositionedElement::TextRun { x, y, glyphs, size, .. } => {
+                    *x += margin_pt + indent_pt;
+                    *y = placed_y;
+                    let width: f32 = glyphs.iter().map(|g| g.x_advance).sum();
+                    Rect { x: *x, y: placed_y - *size, width, height: *size * 1.2 }
+                }
+                _ => unreachable!("shape_rich_paragraph only ever produces TextRun elements"),
+            };
             cursor.current.push(element);
+            if let Some(destination) = link_target {
+                cursor.current.push(PositionedElement::LinkAnnotation { rect, destination });
+            }
         }
         cursor.y = placed_y + line_height;
     }
@@ -163,13 +147,18 @@ fn render_block(
     diagrams: &DiagramTable,
 ) {
     match block {
-        BlockNode::Heading { content, .. } => {
+        BlockNode::Heading { content, id, .. } => {
             let heading_size = content.first().map(|c| c.style.size).unwrap_or(12.0);
             let heading_h = estimate_line_height(heading_size);
             if cursor.remaining_height() < heading_h && !cursor.current.is_empty() {
                 cursor.break_page(margin_pt);
             }
+            let anchor_y = cursor.y;
             place_inline_content(cursor, margin_pt, indent_pt, content, font_system);
+            cursor.anchors.insert(
+                id.clone(),
+                AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: anchor_y },
+            );
         }
         BlockNode::Paragraph { content } => {
             place_inline_content(cursor, margin_pt, indent_pt, content, font_system);
@@ -219,7 +208,7 @@ fn render_block(
             // "fn " and "main" as separate syntect tokens) flow together on one visual line,
             // each keeping its own color; line breaks come from the embedded `\n` characters
             // syntect leaves at the end of each source line's tokens.
-            place_rich_inline_content(cursor, margin_pt, indent_pt + 8.0, &combined, font_system);
+            place_inline_content(cursor, margin_pt, indent_pt + 8.0, &combined, font_system);
             let end_y = cursor.y;
             cursor.current.push(PositionedElement::Path {
                 points: vec![
@@ -298,6 +287,7 @@ fn render_block(
 pub struct LayoutOutput {
     pub pages: Vec<PositionedPage>,
     pub images: ImageTable,
+    pub anchors: AnchorTable,
 }
 
 pub fn layout(
@@ -314,5 +304,6 @@ pub fn layout(
         render_block(block, &mut cursor, margin_pt, 0.0, font_system, &images, diagrams);
         cursor.y += LINE_SPACING_PT;
     }
-    LayoutOutput { pages: cursor.finish(), images }
+    let (pages, anchors) = cursor.finish();
+    LayoutOutput { pages, images, anchors }
 }

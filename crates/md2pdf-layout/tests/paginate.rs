@@ -131,3 +131,35 @@ fn mermaid_diagram_produces_a_vector_graphic_element() {
         other => panic!("expected VectorGraphic, got {other:?}"),
     }
 }
+
+use md2pdf_ast::LinkTarget;
+
+#[test]
+fn heading_id_is_recorded_in_the_anchor_table_with_its_page_and_position() {
+    let ast = parse("# My Heading\n\nBody text.\n");
+    let mut fs = test_font_system();
+    let output = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new());
+
+    let anchor = output.anchors.get("my-heading").expect("heading anchor not recorded");
+    assert_eq!(anchor.page, 0);
+    assert!(anchor.y >= 0.0);
+}
+
+#[test]
+fn linked_inline_run_produces_a_link_annotation_element() {
+    let ast = parse("[External](https://example.com)\n\n[Internal](#target)\n");
+    let mut fs = test_font_system();
+    let output = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new());
+
+    let annotations: Vec<_> = output.pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            PositionedElement::LinkAnnotation { destination, .. } => Some(destination.clone()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(annotations.contains(&LinkTarget::ExternalUrl("https://example.com".to_string())));
+    assert!(annotations.contains(&LinkTarget::InternalAnchor("target".to_string())));
+}
