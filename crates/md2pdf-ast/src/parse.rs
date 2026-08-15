@@ -64,7 +64,7 @@ fn apply_inline_event(builder: &mut InlineBuilder, event: Event) {
 }
 
 fn lower_inline_events<'a, I: Iterator<Item = Event<'a>>>(
-    events: &mut I,
+    events: &mut std::iter::Peekable<I>,
     end_tag: TagEnd,
     base_size: f32,
 ) -> Vec<InlineNode> {
@@ -87,7 +87,7 @@ fn image_source_from_url(url: &str) -> ImageSource {
 }
 
 fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
-    parser: &mut I,
+    parser: &mut std::iter::Peekable<I>,
     end_tag: TagEnd,
     slugs: &mut SlugGenerator,
     next_diagram_id: &mut usize,
@@ -96,6 +96,36 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
     while let Some(event) = parser.next() {
         match event {
             Event::End(tag) if tag == end_tag => break,
+            // pulldown-cmark doesn't wrap a *tight* list item's (or any other tight context's)
+            // inline content in Tag::Paragraph -- it emits bare inline events directly at the
+            // block level (confirmed against pulldown-cmark's own event stream: "- one\n- two\n"
+            // yields Start(Item), Text("one"), End(Item), with no Paragraph tag at all). Without
+            // this arm, that content fell through to the catch-all below and was silently
+            // dropped -- losing every item of the overwhelmingly common case of a list with no
+            // blank lines between items. Collect it as an implicit paragraph, stopping (via
+            // `peek`, so the triggering event is never consumed) at `end_tag` or at any event
+            // that starts a real nested block, so those still get handled normally afterward.
+            Event::Text(_)
+            | Event::Code(_)
+            | Event::SoftBreak
+            | Event::HardBreak
+            | Event::Start(Tag::Strong)
+            | Event::Start(Tag::Emphasis)
+            | Event::Start(Tag::Link { .. }) => {
+                let mut builder = InlineBuilder::new(DEFAULT_BODY_SIZE);
+                apply_inline_event(&mut builder, event);
+                loop {
+                    match parser.peek() {
+                        Some(Event::End(tag)) if *tag == end_tag => break,
+                        Some(Event::Start(Tag::List(_) | Tag::CodeBlock(_) | Tag::BlockQuote(_) | Tag::Table(_) | Tag::Heading { .. })) => break,
+                        Some(Event::Rule) => break,
+                        None => break,
+                        _ => {}
+                    }
+                    apply_inline_event(&mut builder, parser.next().expect("just confirmed Some via peek"));
+                }
+                blocks.push(BlockNode::Paragraph { content: builder.runs });
+            }
             Event::Start(Tag::Heading { level, .. }) => {
                 let size = heading_size(level);
                 let content = lower_inline_events(parser, TagEnd::Heading(level), size);
@@ -227,7 +257,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
 }
 
 fn collect_table_cells<'a, I: Iterator<Item = Event<'a>>>(
-    parser: &mut I,
+    parser: &mut std::iter::Peekable<I>,
     end_tag: TagEnd,
 ) -> Vec<Vec<InlineNode>> {
     let mut cells = Vec::new();
@@ -243,10 +273,7 @@ fn collect_table_cells<'a, I: Iterator<Item = Event<'a>>>(
     cells
 }
 
-fn collect_plain_text_until<'a, I: Iterator<Item = Event<'a>>>(
-    parser: &mut I,
-    end_tag: TagEnd,
-) -> String {
+fn collect_plain_text_until<'a, I: Iterator<Item = Event<'a>>>(parser: &mut std::iter::Peekable<I>, end_tag: TagEnd) -> String {
     let mut text = String::new();
     for event in parser.by_ref() {
         match event {
@@ -263,7 +290,7 @@ pub fn parse(markdown: &str) -> Vec<BlockNode> {
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
 
-    let mut parser = Parser::new_ext(markdown, options);
+    let mut parser = Parser::new_ext(markdown, options).peekable();
     let mut slugs = SlugGenerator::new();
     let mut next_diagram_id = 0usize;
     // TagEnd::Item is never opened at the top level, so it never matches; used only as a

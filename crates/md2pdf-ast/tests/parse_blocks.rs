@@ -70,8 +70,71 @@ fn parses_nested_unordered_list() {
         BlockNode::List { ordered, items } => {
             assert!(!ordered);
             assert_eq!(items.len(), 2);
-            // second item contains its own paragraph-less text plus a nested List block
-            assert!(items[1].iter().any(|b| matches!(b, BlockNode::List { .. })));
+            let item0_text: String = items[0]
+                .iter()
+                .filter_map(|b| match b {
+                    BlockNode::Paragraph { content } => Some(content.iter().map(|n| n.text.as_str()).collect::<String>()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(item0_text, "one", "first item's own text should be present, not dropped");
+            let item1_text: String = items[1]
+                .iter()
+                .filter_map(|b| match b {
+                    BlockNode::Paragraph { content } => Some(content.iter().map(|n| n.text.as_str()).collect::<String>()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(item1_text, "two", "second item's own text should be present alongside its nested list");
+            assert!(items[1].iter().any(|b| matches!(b, BlockNode::List { .. })), "second item should still have its nested List block");
+        }
+        other => panic!("expected List, got {other:?}"),
+    }
+}
+
+#[test]
+fn tight_list_items_are_not_dropped() {
+    // Regression test: a "tight" list (no blank lines between items -- the overwhelmingly
+    // common way lists are actually written) doesn't get pulldown-cmark's Tag::Paragraph
+    // wrapper around each item's inline content; it emits bare Text/Strong/Emphasis/Link
+    // events directly inside Tag::Item. The block-level parser only recognized events wrapped
+    // in a known block tag, so every tight list item's content was silently dropped entirely.
+    let md = "- one\n- two\n- three\n";
+    let blocks = parse(md);
+    match &blocks[0] {
+        BlockNode::List { items, .. } => {
+            assert_eq!(items.len(), 3);
+            for (item, expected) in items.iter().zip(["one", "two", "three"]) {
+                let text: String = item
+                    .iter()
+                    .filter_map(|b| match b {
+                        BlockNode::Paragraph { content } => Some(content.iter().map(|n| n.text.as_str()).collect::<String>()),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(text, expected, "tight list item content was dropped");
+            }
+        }
+        other => panic!("expected List, got {other:?}"),
+    }
+}
+
+#[test]
+fn tight_list_item_preserves_inline_styling_and_links() {
+    let md = "- plain **bold** [a link](https://example.com/x) more\n";
+    let blocks = parse(md);
+    match &blocks[0] {
+        BlockNode::List { items, .. } => {
+            assert_eq!(items.len(), 1);
+            let content = items[0].iter().find_map(|b| match b {
+                BlockNode::Paragraph { content } => Some(content),
+                _ => None,
+            });
+            let content = content.expect("expected the tight item's content to survive as a Paragraph");
+            let bold_run = content.iter().find(|n| n.text == "bold").expect("expected a 'bold' run");
+            assert!(bold_run.style.bold, "expected the bold run to carry bold styling");
+            let link_run = content.iter().find(|n| n.text == "a link").expect("expected 'a link' run");
+            assert_eq!(link_run.link_target, Some(LinkTarget::ExternalUrl("https://example.com/x".to_string())));
         }
         other => panic!("expected List, got {other:?}"),
     }

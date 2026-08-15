@@ -67,6 +67,14 @@ pub fn render_pdf(
                         // its own color explicitly or it silently inherits the last shape's fill
                         // (e.g. a code block's light-gray background box drawn earlier on the page).
                         surface.set_fill(Some(paths::krilla_fill(*color)));
+                        // Same issue for stroke: any earlier stroked Path (a thematic break, a
+                        // blockquote border, a table grid line) leaves its stroke active on the
+                        // surface. Left set, text drawn afterward is emitted in PDF text-rendering
+                        // mode 2 (fill *and* stroke) instead of mode 0 (fill only), tracing every
+                        // glyph in that leftover stroke color/width -- visible as faint, "hollow"-
+                        // looking text instead of solid black. Text never wants a stroke of its
+                        // own, so always clear it before drawing.
+                        surface.set_stroke(None);
                         surface.draw_glyphs(
                             Point::from_xy(*x, *y),
                             &krilla_glyphs,

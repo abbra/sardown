@@ -61,6 +61,45 @@ fn renders_a_page_with_a_stroked_path_and_a_raster_image() {
     assert_eq!(doc.get_pages().len(), 1);
 }
 
+#[test]
+fn text_after_a_stroked_path_is_not_drawn_in_fill_and_stroke_mode() {
+    // Regression test: krilla's `Surface` keeps `set_stroke`'s value active across draw calls,
+    // the same way it keeps `set_fill`'s. A stroked Path (thematic breaks, blockquote borders,
+    // table grid lines) left its stroke active on the surface, so any TextRun drawn afterward
+    // came out in PDF text-rendering mode 2 (fill *and* stroke) instead of mode 0 (fill only) --
+    // every glyph traced in the leftover stroke color, visible as faint, washed-out text instead
+    // of solid black.
+    let db = test_font_db();
+    let font_id = db.faces().next().unwrap().id;
+    let page = PositionedPage {
+        page_number: 0,
+        elements: vec![
+            PositionedElement::Path {
+                points: vec![PathCommand::MoveTo(10.0, 10.0), PathCommand::LineTo(100.0, 10.0)],
+                fill: None,
+                stroke: Some(StrokeStyle { color: [200, 200, 200], width: 1.0 }),
+            },
+            PositionedElement::TextRun {
+                x: 72.0,
+                y: 72.0,
+                glyphs: vec![PositionedGlyph { glyph_id: 3, x: 0.0, y: 0.0, x_advance: 10.0, cluster: 0..1 }],
+                text: "x".to_string(),
+                font_id,
+                size: 12.0,
+                color: [0, 0, 0],
+            },
+        ],
+    };
+
+    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new())
+        .expect("render_pdf failed");
+    let doc = lopdf::Document::load_mem(&pdf_bytes).expect("output is not a valid PDF");
+    let page_id = *doc.get_pages().values().next().expect("expected one page");
+    let content = doc.get_page_content(page_id);
+    let content = String::from_utf8_lossy(&content);
+    assert!(!content.contains("2 Tr"), "text should not be drawn in fill+stroke mode after a stroked Path; content stream:\n{content}");
+}
+
 use md2pdf_ast::LinkTarget;
 use md2pdf_enrich::{CompiledDiagram, DiagramTable};
 use md2pdf_layout::{AnchorPosition, AnchorTable, Rect};
