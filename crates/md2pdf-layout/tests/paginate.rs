@@ -47,3 +47,63 @@ fn heading_at_bottom_of_page_moves_with_its_first_line_of_body_text() {
         assert!(!last_is_lone_heading, "found a page ending in an isolated heading with no body text");
     }
 }
+
+use md2pdf_ast::{HighlightedToken, InlineNode, TextStyle};
+
+fn plain_inline(text: &str) -> InlineNode {
+    InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size: 12.0, color: [0, 0, 0] }, link_target: None }
+}
+
+#[test]
+fn blockquote_produces_a_side_border_path_plus_nested_text() {
+    let ast = vec![BlockNode::Blockquote { content: vec![BlockNode::Paragraph { content: vec![plain_inline("Quoted")] }] }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs);
+    let has_path = pages[0].elements.iter().any(|e| matches!(e, PositionedElement::Path { .. }));
+    let has_text = pages[0].elements.iter().any(|e| matches!(e, PositionedElement::TextRun { .. }));
+    assert!(has_path && has_text);
+}
+
+#[test]
+fn thematic_break_produces_a_horizontal_line_path() {
+    let ast = vec![BlockNode::ThematicBreak];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs);
+    assert!(matches!(pages[0].elements[0], PositionedElement::Path { .. }));
+}
+
+#[test]
+fn list_items_render_as_indented_text() {
+    let ast = vec![BlockNode::List {
+        ordered: false,
+        items: vec![
+            vec![BlockNode::Paragraph { content: vec![plain_inline("one")] }],
+            vec![BlockNode::Paragraph { content: vec![plain_inline("two")] }],
+        ],
+    }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs);
+    let text_runs: Vec<_> = pages[0].elements.iter().filter(|e| matches!(e, PositionedElement::TextRun { .. })).collect();
+    assert_eq!(text_runs.len(), 2);
+}
+
+#[test]
+fn code_block_produces_a_background_path_and_highlighted_text_runs() {
+    let ast = vec![BlockNode::CodeBlock {
+        language: None,
+        tokens: vec![HighlightedToken { text: "let ".to_string(), color: [255, 0, 0] }, HighlightedToken { text: "x".to_string(), color: [0, 0, 255] }],
+    }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs);
+    let has_background = pages[0].elements.iter().any(|e| matches!(e, PositionedElement::Path { fill: Some(_), .. }));
+    let colored_runs: Vec<_> = pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            PositionedElement::TextRun { color, .. } => Some(*color),
+            _ => None,
+        })
+        .collect();
+    assert!(has_background);
+    assert!(colored_runs.contains(&[255, 0, 0]) && colored_runs.contains(&[0, 0, 255]));
+}
