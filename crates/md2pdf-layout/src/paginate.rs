@@ -196,6 +196,8 @@ fn render_block(
         }
         BlockNode::CodeBlock { tokens, .. } => {
             let start_y = cursor.y;
+            let start_page = cursor.page_number;
+            let background_insert_at = cursor.current.len();
             let combined: Vec<md2pdf_ast::InlineNode> = tokens
                 .iter()
                 .map(|t| md2pdf_ast::InlineNode {
@@ -210,7 +212,7 @@ fn render_block(
             // syntect leaves at the end of each source line's tokens.
             place_inline_content(cursor, margin_pt, indent_pt + 8.0, &combined, font_system);
             let end_y = cursor.y;
-            cursor.current.push(PositionedElement::Path {
+            let background = PositionedElement::Path {
                 points: vec![
                     PathCommand::MoveTo(margin_pt + indent_pt, start_y - 4.0),
                     PathCommand::LineTo(margin_pt + cursor.content_width_pt, start_y - 4.0),
@@ -220,7 +222,20 @@ fn render_block(
                 ],
                 fill: Some(CODE_BLOCK_BG),
                 stroke: None,
-            });
+            };
+            if cursor.page_number == start_page {
+                // Inserted before the text elements just placed (rather than pushed after): the
+                // PDF renderer paints elements in array order, so an opaque background pushed
+                // *after* its own text would paint over that text instead of sitting behind it.
+                cursor.current.insert(background_insert_at, background);
+            } else {
+                // `place_inline_content` broke to a new page mid-block, which reset
+                // `cursor.current` (via `break_page`'s `mem::take`) — `background_insert_at` no
+                // longer indexes into it. Falling back to a trailing push here at least avoids a
+                // panic; it re-admits the paint-over-text bug, but only for this rare
+                // page-spanning case, not the common single-page one.
+                cursor.current.push(background);
+            }
         }
         BlockNode::Table { headers, rows, .. } => {
             let widths = crate::table::column_widths(headers, rows, cursor.content_width_pt - indent_pt, font_system);
@@ -229,6 +244,10 @@ fn render_block(
 
             let mut col_x = margin_pt + indent_pt;
             for (header, width) in headers.iter().zip(&widths) {
+                // Reset before each cell: `place_inline_content` advances `cursor.y` as it lays
+                // out lines, so without this reset every cell after the first in a row would
+                // start below where the previous cell's text left off instead of at the row's top.
+                cursor.y = top_y;
                 place_inline_content(cursor, margin_pt, col_x - margin_pt, std::slice::from_ref(header), font_system);
                 col_x += width;
             }
@@ -239,6 +258,7 @@ fn render_block(
                 let row_top_y = cursor.y;
                 let mut col_x = margin_pt + indent_pt;
                 for (cell, width) in row.iter().zip(&widths) {
+                    cursor.y = row_top_y;
                     place_inline_content(cursor, margin_pt, col_x - margin_pt, std::slice::from_ref(cell), font_system);
                     col_x += width;
                 }
