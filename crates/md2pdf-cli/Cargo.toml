@@ -19,4 +19,6 @@ md2pdf-pdf = { version = "0.1.0", path = "../md2pdf-pdf" }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 lopdf = "0.44.0"
+pdfium-render = "0.9.3"
