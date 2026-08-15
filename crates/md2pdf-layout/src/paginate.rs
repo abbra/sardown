@@ -485,6 +485,13 @@ fn render_block(
                 }
                 cursor.current.push(PositionedElement::VectorGraphic { x: margin_pt + indent_pt, y: cursor.y, width, height, diagram_id: id.clone() });
                 cursor.y += height;
+                // Same "next block's ascender pokes above a preceding block's hard bottom edge"
+                // issue CodeBlock's own background has (see estimate_next_block_ascent_pt) --
+                // a diagram has a crisp bottom border, so any following block whose first line's
+                // ascender extends further than the flat LINE_SPACING_PT gap visibly punches
+                // into the diagram instead of sitting cleanly below it.
+                let next_ascent_pt = estimate_next_block_ascent_pt(next_block);
+                cursor.y += (next_ascent_pt - LINE_SPACING_PT).max(0.0);
             }
         }
     }

@@ -366,6 +366,56 @@ fn mermaid_diagram_produces_a_vector_graphic_element() {
 }
 
 #[test]
+fn heading_after_mermaid_diagram_does_not_overlap_the_diagrams_bottom_edge() {
+    // Regression test: a diagram has a crisp, hard bottom edge (unlike wrapped body text, where
+    // consecutive baselines sitting close together is normal typography). The flat
+    // LINE_SPACING_PT gap the layout loop adds after every block isn't enough clearance for the
+    // next block's own ascender, so a heading placed right after a diagram had its glyphs poke
+    // up above their own baseline straight into the diagram's box -- visibly overlapping it.
+    // HEADING_SIZES[1] (level 2) is 22.0 -- built by hand here (not via `plain_inline`, which
+    // always uses body-text size 12.0) so estimate_next_block_ascent_pt sees the same size a
+    // real level-2 heading parsed from Markdown would carry.
+    let heading_size = 22.0;
+    let heading_content = InlineNode {
+        text: "Next".to_string(),
+        style: TextStyle { bold: false, italic: false, size: heading_size, color: [0, 0, 0] },
+        link_target: None,
+    };
+    let ast = vec![
+        BlockNode::MermaidDiagram { id: "d1".to_string(), source: "flowchart TD\n A-->B".to_string() },
+        BlockNode::Heading { level: 2, id: "next".to_string(), content: vec![heading_content] },
+    ];
+    let mut diagrams = DiagramTable::new();
+    diagrams.insert("d1".to_string(), CompiledDiagram { svg: "<svg/>".to_string(), width: 140.0, height: 278.0 });
+
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &diagrams).pages;
+
+    let diagram_bottom = pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::VectorGraphic { y, height, .. } => Some(y + height),
+            _ => None,
+        })
+        .expect("expected a VectorGraphic element");
+
+    let heading_baseline = pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { y, .. } => Some(*y),
+            _ => None,
+        })
+        .expect("expected a heading TextRun");
+
+    // H2's approximate ascent is size*0.8 (matches estimate_next_block_ascent_pt's own
+    // approximation) -- the heading's visual top must sit at or below the diagram's bottom edge.
+    let heading_visual_top = heading_baseline - heading_size * 0.8;
+    assert!(heading_visual_top >= diagram_bottom, "heading's ascender (top={heading_visual_top}) overlaps the diagram's bottom edge ({diagram_bottom})");
+}
+
+#[test]
 fn page_break_forces_content_onto_a_new_page() {
     let ast = vec![
         BlockNode::Paragraph { content: vec![plain_inline("first")] },

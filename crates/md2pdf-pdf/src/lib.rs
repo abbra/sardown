@@ -40,6 +40,9 @@ pub fn render_pdf(
     // Cache one krilla::text::Font per fontdb::ID so repeated glyphs on the same page
     // don't reload/re-register the font.
     let mut font_cache: HashMap<fontdb::ID, Font> = HashMap::new();
+    // Built once (not per-diagram): loading system fonts is a real filesystem scan, and a
+    // document can contain many diagrams.
+    let svg_options = svg_render_options();
 
     for page_data in pages {
         let mut page = document.start_page_with(PageSettings::new(page_size));
@@ -101,7 +104,7 @@ pub fn render_pdf(
                     }
                     PositionedElement::VectorGraphic { x, y, width, height, diagram_id } => {
                         if let Some(diagram) = diagrams.get(diagram_id) {
-                            match usvg::Tree::from_str(&diagram.svg, &usvg::Options::default()) {
+                            match usvg::Tree::from_str(&diagram.svg, &svg_options) {
                                 Ok(tree) => {
                                     let size = Size::from_wh(*width, *height).context("invalid diagram size")?;
                                     surface.push_transform(&Transform::from_translate(*x, *y));
@@ -129,4 +132,30 @@ pub fn render_pdf(
     }
 
     document.finish().context("krilla failed to serialize the document")
+}
+
+/// usvg needs a populated font database to shape `<text>` elements into glyph outlines --
+/// `Options::default()` ships an empty one, which silently drops every text label in a diagram
+/// (boxes/arrows still render fine, since they're pure geometry with no font dependency).
+/// Loading system fonts isn't sufficient by itself either: fontconfig can advertise a generic
+/// alias (e.g. "sans-serif" -> "FreeSans") for a font that isn't actually installed, and
+/// `fontdb::Database::query` has no further fallback once every requested family fails to match
+/// a loaded face -- so the generic sans-serif alias is repointed at whatever's actually on disk
+/// if the configured one doesn't resolve to anything real.
+fn svg_render_options() -> usvg::Options<'static> {
+    let mut options = usvg::Options::default();
+    ensure_resolvable_sans_serif(options.fontdb_mut());
+    options
+}
+
+fn ensure_resolvable_sans_serif(fontdb: &mut fontdb::Database) {
+    fontdb.load_system_fonts();
+    let alias = fontdb.family_name(&fontdb::Family::SansSerif).to_string();
+    let alias_resolves = fontdb.faces().any(|face| face.families.iter().any(|(name, _)| *name == alias));
+    if !alias_resolves {
+        let fallback = fontdb.faces().next().and_then(|face| face.families.first().map(|(name, _)| name.clone()));
+        if let Some(fallback) = fallback {
+            fontdb.set_sans_serif_family(fallback);
+        }
+    }
 }
