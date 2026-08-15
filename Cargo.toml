@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/md2pdf-ast",
+    "crates/md2pdf-enrich",
+    "crates/md2pdf-layout",
+    "crates/md2pdf-pdf",
+    "crates/md2pdf-cli",
+]
+
+[workspace.package]
+edition = "2021"
