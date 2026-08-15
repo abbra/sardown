@@ -27,7 +27,8 @@ fn renders_a_single_page_with_one_text_run_to_valid_pdf_bytes() {
         }],
     };
 
-    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new()).expect("render_pdf failed");
+    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new())
+        .expect("render_pdf failed");
 
     assert!(pdf_bytes.starts_with(b"%PDF-"), "output does not start with a PDF header");
     let doc = lopdf::Document::load_mem(&pdf_bytes).expect("krilla output is not a valid PDF");
@@ -54,7 +55,64 @@ fn renders_a_page_with_a_stroked_path_and_a_raster_image() {
         ],
     };
 
-    let pdf_bytes = render_pdf(&[page], &db, &images).expect("render_pdf failed");
+    let pdf_bytes = render_pdf(&[page], &db, &images, &DiagramTable::new(), &AnchorTable::new())
+        .expect("render_pdf failed");
     let doc = lopdf::Document::load_mem(&pdf_bytes).expect("output is not a valid PDF");
     assert_eq!(doc.get_pages().len(), 1);
+}
+
+use md2pdf_ast::LinkTarget;
+use md2pdf_enrich::{CompiledDiagram, DiagramTable};
+use md2pdf_layout::{AnchorPosition, AnchorTable, Rect};
+
+fn valid_test_svg() -> String {
+    // Minimal but well-formed SVG usvg can parse — a single rectangle.
+    r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50" viewBox="0 0 100 50">
+        <rect x="0" y="0" width="100" height="50" fill="#ff0000"/>
+    </svg>"##
+        .to_string()
+}
+
+#[test]
+fn renders_a_page_with_a_diagram_and_both_link_kinds() {
+    let db = test_font_db();
+    let mut diagrams = DiagramTable::new();
+    diagrams.insert("d1".to_string(), CompiledDiagram { svg: valid_test_svg(), width: 100.0, height: 50.0 });
+
+    let mut anchors = AnchorTable::new();
+    anchors.insert("target".to_string(), AnchorPosition { page: 0, x: 72.0, y: 100.0 });
+
+    let page = PositionedPage {
+        page_number: 0,
+        elements: vec![
+            PositionedElement::VectorGraphic { x: 10.0, y: 10.0, width: 100.0, height: 50.0, diagram_id: "d1".to_string() },
+            PositionedElement::LinkAnnotation {
+                rect: Rect { x: 10.0, y: 70.0, width: 80.0, height: 12.0 },
+                destination: LinkTarget::ExternalUrl("https://example.com".to_string()),
+            },
+            PositionedElement::LinkAnnotation {
+                rect: Rect { x: 10.0, y: 90.0, width: 80.0, height: 12.0 },
+                destination: LinkTarget::InternalAnchor("target".to_string()),
+            },
+        ],
+    };
+
+    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &diagrams, &anchors)
+        .expect("render_pdf failed");
+    let doc = lopdf::Document::load_mem(&pdf_bytes).expect("output is not a valid PDF");
+    assert_eq!(doc.get_pages().len(), 1);
+}
+
+#[test]
+fn dangling_internal_anchor_is_skipped_not_errored() {
+    let db = test_font_db();
+    let page = PositionedPage {
+        page_number: 0,
+        elements: vec![PositionedElement::LinkAnnotation {
+            rect: Rect { x: 10.0, y: 10.0, width: 80.0, height: 12.0 },
+            destination: LinkTarget::InternalAnchor("does-not-exist".to_string()),
+        }],
+    };
+    let result = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new());
+    assert!(result.is_ok(), "a dangling internal link should be silently skipped, not fail the whole render");
 }

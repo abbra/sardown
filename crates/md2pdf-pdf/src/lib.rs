@@ -1,4 +1,5 @@
 mod glyphs;
+mod links;
 mod paths;
 
 use anyhow::Context;
@@ -10,7 +11,9 @@ use krilla::image::Image;
 use krilla::page::PageSettings;
 use krilla::text::Font;
 use krilla::Data;
-use md2pdf_layout::{ImageTable, PositionedElement, PositionedPage};
+use krilla_svg::SurfaceExt;
+use md2pdf_enrich::DiagramTable;
+use md2pdf_layout::{AnchorTable, ImageTable, PositionedElement, PositionedPage};
 use std::collections::HashMap;
 
 const PAGE_WIDTH_PT: f32 = 612.0; // US Letter, matches Phase 1's single fixed page size
@@ -24,6 +27,8 @@ pub fn render_pdf(
     pages: &[PositionedPage],
     font_data: &fontdb::Database,
     images: &ImageTable,
+    diagrams: &DiagramTable,
+    anchors: &AnchorTable,
 ) -> anyhow::Result<Vec<u8>> {
     let mut document = Document::new();
     let _ = pdf_a2b_configuration()?; // wired into Document::new_with in Phase 4; validated here for now
@@ -37,52 +42,77 @@ pub fn render_pdf(
 
     for page_data in pages {
         let mut page = document.start_page_with(PageSettings::new(page_size));
-        let mut surface = page.surface();
+        let mut pending_annotations = Vec::new();
 
-        for element in &page_data.elements {
-            match element {
-                PositionedElement::TextRun { x, y, glyphs, text, font_id, size, .. } => {
-                    let font = match font_cache.get(font_id) {
-                        Some(f) => f.clone(),
-                        None => {
-                            let font = font_data
-                                .with_face_data(*font_id, |data, index| Font::new(Data::from(data.to_vec()), index))
-                                .context("font id not found in fontdb")?
-                                .context("krilla::text::Font::new rejected the font data")?;
-                            font_cache.insert(*font_id, font.clone());
-                            font
+        {
+            let mut surface = page.surface();
+            for element in &page_data.elements {
+                match element {
+                    PositionedElement::TextRun { x, y, glyphs, text, font_id, size, .. } => {
+                        let font = match font_cache.get(font_id) {
+                            Some(f) => f.clone(),
+                            None => {
+                                let font = font_data
+                                    .with_face_data(*font_id, |data, index| Font::new(Data::from(data.to_vec()), index))
+                                    .context("font id not found in fontdb")?
+                                    .context("krilla::text::Font::new rejected the font data")?;
+                                font_cache.insert(*font_id, font.clone());
+                                font
+                            }
+                        };
+                        let units_per_em = font.units_per_em();
+                        let krilla_glyphs: Vec<_> =
+                            glyphs.iter().map(|g| glyphs::to_krilla_glyph(g, units_per_em)).collect();
+                        surface.draw_glyphs(
+                            Point::from_xy(*x, *y),
+                            &krilla_glyphs,
+                            font,
+                            text,
+                            *size,
+                            false, // outlined: false selects the normal (non-Type-3) glyph path
+                        );
+                    }
+                    PositionedElement::Path { points, fill, stroke } => {
+                        let path = paths::build_path(points);
+                        surface.set_fill(fill.map(paths::krilla_fill));
+                        surface.set_stroke(stroke.as_ref().map(paths::krilla_stroke));
+                        surface.draw_path(&path);
+                    }
+                    PositionedElement::RasterImage { x, y, width, height, image_id } => {
+                        if let Some(decoded) = images.get(image_id) {
+                            let image = Image::from_rgba8(decoded.rgba8.clone(), decoded.width, decoded.height);
+                            let size = Size::from_wh(*width, *height).context("invalid image size")?;
+                            surface.push_transform(&Transform::from_translate(*x, *y));
+                            surface.draw_image(image, size);
+                            surface.pop();
                         }
-                    };
-                    let units_per_em = font.units_per_em();
-                    let krilla_glyphs: Vec<_> =
-                        glyphs.iter().map(|g| glyphs::to_krilla_glyph(g, units_per_em)).collect();
-                    surface.draw_glyphs(
-                        Point::from_xy(*x, *y),
-                        &krilla_glyphs,
-                        font,
-                        text,
-                        *size,
-                        false, // outlined: false selects the normal (non-Type-3) glyph path
-                    );
-                }
-                PositionedElement::Path { points, fill, stroke } => {
-                    let path = paths::build_path(points);
-                    surface.set_fill(fill.map(paths::krilla_fill));
-                    surface.set_stroke(stroke.as_ref().map(paths::krilla_stroke));
-                    surface.draw_path(&path);
-                }
-                PositionedElement::RasterImage { x, y, width, height, image_id } => {
-                    if let Some(decoded) = images.get(image_id) {
-                        let image = Image::from_rgba8(decoded.rgba8.clone(), decoded.width, decoded.height);
-                        let size = Size::from_wh(*width, *height).context("invalid image size")?;
-                        surface.push_transform(&Transform::from_translate(*x, *y));
-                        surface.draw_image(image, size);
-                        surface.pop();
+                    }
+                    PositionedElement::VectorGraphic { x, y, width, height, diagram_id } => {
+                        if let Some(diagram) = diagrams.get(diagram_id) {
+                            match usvg::Tree::from_str(&diagram.svg, &usvg::Options::default()) {
+                                Ok(tree) => {
+                                    let size = Size::from_wh(*width, *height).context("invalid diagram size")?;
+                                    surface.push_transform(&Transform::from_translate(*x, *y));
+                                    surface.draw_svg(&tree, size, krilla_svg::SvgSettings::default());
+                                    surface.pop();
+                                }
+                                Err(e) => {
+                                    eprintln!("warning: failed to re-parse diagram '{diagram_id}' SVG at render time: {e}")
+                                }
+                            }
+                        }
+                    }
+                    PositionedElement::LinkAnnotation { rect, destination } => {
+                        if let Some(annotation) = links::build_annotation(rect, destination, anchors) {
+                            pending_annotations.push(annotation);
+                        }
                     }
                 }
-                PositionedElement::VectorGraphic { .. } => {} // Phase 3
-                PositionedElement::LinkAnnotation { .. } => {} // Phase 3
             }
+        } // `surface` dropped here, releasing its borrow of `page`
+
+        for annotation in pending_annotations {
+            page.add_annotation(annotation);
         }
     }
 
