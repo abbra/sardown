@@ -1,4 +1,6 @@
+mod paginate;
 mod shape;
+pub use paginate::layout;
 pub use shape::shape_paragraph;
 
 #[derive(Debug, Clone, Copy)]
