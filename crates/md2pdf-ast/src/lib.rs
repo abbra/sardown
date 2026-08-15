@@ -47,6 +47,15 @@ pub struct TextStyle {
 pub enum LinkTarget {
     InternalAnchor(String),
     ExternalUrl(String),
+    /// Transient: produced by md2pdf-book while parsing a chapter, for a relative link that
+    /// names another chapter in the same book. Rewritten to `InternalAnchor` (or dropped, if
+    /// unresolvable) once the whole book's heading-slug map is known -- never reaches
+    /// md2pdf-layout or md2pdf-pdf in practice; see `links::build_annotation`'s arm for this
+    /// variant for the defensive fallback if that invariant is ever violated.
+    CrossFileAnchor {
+        file: std::path::PathBuf,
+        fragment: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

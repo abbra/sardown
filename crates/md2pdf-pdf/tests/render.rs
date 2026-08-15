@@ -157,6 +157,24 @@ fn dangling_internal_anchor_is_skipped_not_errored() {
 }
 
 #[test]
+fn cross_file_anchor_reaching_pdf_render_is_skipped_not_errored() {
+    // Regression / defense-in-depth: CrossFileAnchor is transient and md2pdf-book always
+    // rewrites it to InternalAnchor (or drops it) before handing the AST to layout()/render_pdf.
+    // If one ever slipped through anyway, rendering should degrade gracefully (no annotation)
+    // rather than panic.
+    let db = test_font_db();
+    let page = PositionedPage {
+        page_number: 0,
+        elements: vec![PositionedElement::LinkAnnotation {
+            rect: Rect { x: 10.0, y: 10.0, width: 80.0, height: 12.0 },
+            destination: LinkTarget::CrossFileAnchor { file: std::path::PathBuf::from("other.md"), fragment: None },
+        }],
+    };
+    let result = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new());
+    assert!(result.is_ok(), "a CrossFileAnchor reaching the renderer should be skipped, not fail the whole render");
+}
+
+#[test]
 fn embedded_font_is_subsetted_not_fully_embedded() {
     let db = test_font_db();
     let font_id = db.faces().next().unwrap().id;

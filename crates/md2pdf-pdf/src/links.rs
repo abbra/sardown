@@ -15,6 +15,10 @@ pub fn build_annotation(rect: &Rect, destination: &LinkTarget, anchors: &AnchorT
             let anchor = anchors.get(id)?;
             Target::Destination(Destination::Xyz(XyzDestination::new(anchor.page, Point::from_xy(anchor.x, anchor.y))))
         }
+        // Should never reach rendering -- md2pdf-book always resolves or drops CrossFileAnchor
+        // before calling layout(). Degrade the same way a dangling InternalAnchor does (no
+        // annotation, not a panic) rather than assume the invariant can never be violated.
+        LinkTarget::CrossFileAnchor { .. } => return None,
     };
     Some(Annotation::new_link(LinkAnnotation::new(krilla_rect, target), None))
 }
