@@ -116,3 +116,55 @@ fn dangling_internal_anchor_is_skipped_not_errored() {
     let result = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new());
     assert!(result.is_ok(), "a dangling internal link should be silently skipped, not fail the whole render");
 }
+
+#[test]
+fn embedded_font_is_subsetted_not_fully_embedded() {
+    let db = test_font_db();
+    let font_id = db.faces().next().unwrap().id;
+    let source_font_bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../md2pdf-layout/tests/fixtures/DroidSans.ttf")).unwrap();
+
+    let page = PositionedPage {
+        page_number: 0,
+        elements: vec![PositionedElement::TextRun {
+            x: 72.0,
+            y: 72.0,
+            glyphs: vec![PositionedGlyph { glyph_id: 3, x: 0.0, y: 0.0, x_advance: 10.0, cluster: 0..1 }],
+            text: "x".to_string(),
+            font_id,
+            size: 12.0,
+            color: [0, 0, 0],
+        }],
+    };
+    let pdf_bytes = render_pdf(
+        &[page],
+        &db,
+        &ImageTable::new(),
+        &DiagramTable::new(),
+        &AnchorTable::new(),
+    )
+    .unwrap();
+
+    // krilla doesn't set the (spec-optional) `Length1` key on FontFile2 streams, so the only
+    // reliable way to find the embedded font program is to follow FontDescriptor -> FontFile2
+    // directly, confirmed by inspecting the actual object graph krilla produces.
+    let doc = lopdf::Document::load_mem(&pdf_bytes).unwrap();
+    let embedded_font_bytes: usize = doc
+        .objects
+        .values()
+        .filter_map(|obj| obj.as_dict().ok())
+        .filter(|dict| dict.get(b"Type").ok().and_then(|t| t.as_name().ok()) == Some(b"FontDescriptor"))
+        .filter_map(|dict| dict.get(b"FontFile2").ok())
+        .filter_map(|font_file| font_file.as_reference().ok())
+        .filter_map(|reference| doc.get_object(reference).ok())
+        .filter_map(|obj| obj.as_stream().ok())
+        .map(|stream| stream.content.len())
+        .sum();
+
+    assert!(embedded_font_bytes > 0, "no embedded font program (FontDescriptor -> FontFile2) found in output PDF");
+    assert!(
+        embedded_font_bytes < source_font_bytes.len() / 2,
+        "embedded font ({embedded_font_bytes} bytes) is not meaningfully smaller than the full source font \
+         ({} bytes) — subsetting does not appear to be occurring",
+        source_font_bytes.len()
+    );
+}
