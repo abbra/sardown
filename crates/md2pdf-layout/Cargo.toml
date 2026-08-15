@@ -8,3 +8,4 @@ cosmic-text = "0.19.0"
 fontdb = "0.23"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
 md2pdf-ast = { version = "0.1.0", path = "../md2pdf-ast" }
+md2pdf-enrich = { version = "0.1.0", path = "../md2pdf-enrich" }

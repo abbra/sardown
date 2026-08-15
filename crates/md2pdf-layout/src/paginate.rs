@@ -1,6 +1,7 @@
 use crate::{shape_paragraph, shape_rich_paragraph, ImageTable, PageGeometry, PathCommand, PositionedElement, PositionedPage, StrokeStyle};
 use cosmic_text::FontSystem;
 use md2pdf_ast::BlockNode;
+use md2pdf_enrich::DiagramTable;
 
 const PT_PER_MM: f32 = 2.834645669;
 const LINE_SPACING_PT: f32 = 4.0; // gap after each block
@@ -159,6 +160,7 @@ fn render_block(
     indent_pt: f32,
     font_system: &mut FontSystem,
     images: &ImageTable,
+    diagrams: &DiagramTable,
 ) {
     match block {
         BlockNode::Heading { content, .. } => {
@@ -175,7 +177,7 @@ fn render_block(
         BlockNode::Blockquote { content } => {
             let start_y = cursor.y;
             for child in content {
-                render_block(child, cursor, margin_pt, indent_pt + BLOCKQUOTE_INDENT_PT, font_system, images);
+                render_block(child, cursor, margin_pt, indent_pt + BLOCKQUOTE_INDENT_PT, font_system, images, diagrams);
             }
             let end_y = cursor.y;
             cursor.current.push(PositionedElement::Path {
@@ -199,7 +201,7 @@ fn render_block(
         BlockNode::List { items, .. } => {
             for item in items {
                 for child in item {
-                    render_block(child, cursor, margin_pt, indent_pt + LIST_INDENT_PT, font_system, images);
+                    render_block(child, cursor, margin_pt, indent_pt + LIST_INDENT_PT, font_system, images, diagrams);
                 }
             }
         }
@@ -274,7 +276,22 @@ fn render_block(
             }
         }
         BlockNode::Image { source: md2pdf_ast::ImageSource::External(_), .. } => {} // skipped, see decode_images
-        BlockNode::MermaidDiagram { .. } => {} // Phase 3
+        BlockNode::MermaidDiagram { id, .. } => {
+            if let Some(diagram) = diagrams.get(id) {
+                let max_width = cursor.content_width_pt - indent_pt;
+                let aspect = diagram.height / diagram.width;
+                let (width, height) = if diagram.width > max_width {
+                    (max_width, max_width * aspect)
+                } else {
+                    (diagram.width, diagram.height)
+                };
+                if cursor.remaining_height() < height && !cursor.current.is_empty() {
+                    cursor.break_page(margin_pt);
+                }
+                cursor.current.push(PositionedElement::VectorGraphic { x: margin_pt + indent_pt, y: cursor.y, width, height, diagram_id: id.clone() });
+                cursor.y += height;
+            }
+        }
     }
 }
 
@@ -288,12 +305,13 @@ pub fn layout(
     geometry: &PageGeometry,
     font_system: &mut FontSystem,
     base_dir: &std::path::Path,
+    diagrams: &DiagramTable,
 ) -> LayoutOutput {
     let images = crate::image::decode_images(ast, base_dir);
     let margin_pt = geometry.margin_mm * PT_PER_MM;
     let mut cursor = Cursor::new(geometry);
     for block in ast {
-        render_block(block, &mut cursor, margin_pt, 0.0, font_system, &images);
+        render_block(block, &mut cursor, margin_pt, 0.0, font_system, &images, diagrams);
         cursor.y += LINE_SPACING_PT;
     }
     LayoutOutput { pages: cursor.finish(), images }
