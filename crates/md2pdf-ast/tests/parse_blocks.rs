@@ -220,3 +220,47 @@ fn assigns_sequential_ids_to_multiple_diagrams() {
         .collect();
     assert_eq!(ids, vec!["diagram-0", "diagram-1"]);
 }
+
+#[test]
+fn parse_with_slugs_shares_slug_generator_across_calls() {
+    let mut slugs = md2pdf_ast::SlugGenerator::new();
+    let mut next_diagram_id = 0usize;
+    let first = md2pdf_ast::parse_with_slugs("# Overview\n", &mut slugs, &mut next_diagram_id);
+    let second = md2pdf_ast::parse_with_slugs("# Overview\n", &mut slugs, &mut next_diagram_id);
+
+    let id_of = |blocks: &[BlockNode]| match &blocks[0] {
+        BlockNode::Heading { id, .. } => id.clone(),
+        other => panic!("expected Heading, got {other:?}"),
+    };
+    assert_eq!(id_of(&first), "overview");
+    assert_eq!(id_of(&second), "overview-1", "second call's heading should be deduplicated against the first");
+}
+
+#[test]
+fn parse_with_slugs_shares_diagram_id_counter_across_calls() {
+    let mut slugs = md2pdf_ast::SlugGenerator::new();
+    let mut next_diagram_id = 0usize;
+    let md = "```mermaid\nflowchart TD\n    A --> B\n```\n";
+    let first = md2pdf_ast::parse_with_slugs(md, &mut slugs, &mut next_diagram_id);
+    let second = md2pdf_ast::parse_with_slugs(md, &mut slugs, &mut next_diagram_id);
+
+    let id_of = |blocks: &[BlockNode]| match &blocks[0] {
+        BlockNode::MermaidDiagram { id, .. } => id.clone(),
+        other => panic!("expected MermaidDiagram, got {other:?}"),
+    };
+    assert_eq!(id_of(&first), "diagram-0");
+    assert_eq!(id_of(&second), "diagram-1", "second call's diagram id should not collide with the first");
+}
+
+#[test]
+fn heading_style_for_level_matches_parse_generated_sizes() {
+    let ast = parse("# H1\n\n## H2\n");
+    let size_of = |block: &BlockNode| match block {
+        BlockNode::Heading { content, .. } => content[0].style.size,
+        other => panic!("expected Heading, got {other:?}"),
+    };
+    assert_eq!(md2pdf_ast::heading_style_for_level(1).size, size_of(&ast[0]));
+    assert_eq!(md2pdf_ast::heading_style_for_level(2).size, size_of(&ast[1]));
+    assert!(!md2pdf_ast::heading_style_for_level(1).bold);
+    assert!(!md2pdf_ast::heading_style_for_level(1).italic);
+}

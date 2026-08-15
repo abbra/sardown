@@ -286,16 +286,33 @@ fn collect_plain_text_until<'a, I: Iterator<Item = Event<'a>>>(parser: &mut std:
 }
 
 pub fn parse(markdown: &str) -> Vec<BlockNode> {
+    let mut slugs = SlugGenerator::new();
+    let mut next_diagram_id = 0usize;
+    parse_with_slugs(markdown, &mut slugs, &mut next_diagram_id)
+}
+
+/// Like `parse`, but takes externally-owned slug and diagram-id state instead of creating fresh
+/// state on every call. Used by md2pdf-book to parse multiple chapter files into one combined
+/// document without heading ids or diagram ids from different chapters colliding.
+pub fn parse_with_slugs(markdown: &str, slugs: &mut SlugGenerator, next_diagram_id: &mut usize) -> Vec<BlockNode> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
 
     let mut parser = Parser::new_ext(markdown, options).peekable();
-    let mut slugs = SlugGenerator::new();
-    let mut next_diagram_id = 0usize;
     // TagEnd::Item is never opened at the top level, so it never matches; used only as a
     // sentinel that can't legitimately occur, meaning we consume until the iterator is exhausted.
-    lower_block_events(&mut parser, TagEnd::Item, &mut slugs, &mut next_diagram_id)
+    lower_block_events(&mut parser, TagEnd::Item, slugs, next_diagram_id)
+}
+
+/// The `TextStyle` a heading of `level` gets from `parse()` -- same size table, non-bold,
+/// non-italic, default color. Lets callers outside the parser (md2pdf-book, synthesizing a
+/// chapter's title heading from its SUMMARY.md entry) build a `BlockNode::Heading` that matches
+/// what parsing that same text as `# Title` would have produced, without duplicating
+/// `HEADING_SIZES`.
+pub fn heading_style_for_level(level: u8) -> TextStyle {
+    let size = HEADING_SIZES[(level.clamp(1, 6) - 1) as usize];
+    TextStyle { bold: false, italic: false, size, color: DEFAULT_COLOR }
 }
 
 fn heading_level_u8(level: HeadingLevel) -> u8 {

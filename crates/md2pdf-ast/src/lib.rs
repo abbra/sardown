@@ -1,6 +1,6 @@
 mod parse;
 mod slug;
-pub use parse::parse;
+pub use parse::{heading_style_for_level, parse, parse_with_slugs};
 pub use slug::{generate_heading_id, SlugGenerator};
 
 #[derive(Debug, Clone, PartialEq)]
