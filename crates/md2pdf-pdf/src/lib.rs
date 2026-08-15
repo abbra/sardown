@@ -10,7 +10,7 @@ use krilla::geom::{Point, Size, Transform};
 use krilla::image::Image;
 use krilla::page::PageSettings;
 use krilla::text::Font;
-use krilla::Data;
+use krilla::{Data, SerializeSettings};
 use krilla_svg::SurfaceExt;
 use md2pdf_enrich::DiagramTable;
 use md2pdf_layout::{AnchorTable, ImageTable, PositionedElement, PositionedPage};
@@ -30,8 +30,9 @@ pub fn render_pdf(
     diagrams: &DiagramTable,
     anchors: &AnchorTable,
 ) -> anyhow::Result<Vec<u8>> {
-    let mut document = Document::new();
-    let _ = pdf_a2b_configuration()?; // wired into Document::new_with in Phase 4; validated here for now
+    let configuration = pdf_a2b_configuration()?;
+    let settings = SerializeSettings { configuration, ..Default::default() };
+    let mut document = Document::new_with(settings);
 
     let page_size = Size::from_wh(PAGE_WIDTH_PT, PAGE_HEIGHT_PT)
         .context("invalid fixed page size constants")?;
