@@ -49,7 +49,7 @@ pub fn render_pdf(
             let mut surface = page.surface();
             for element in &page_data.elements {
                 match element {
-                    PositionedElement::TextRun { x, y, glyphs, text, font_id, size, .. } => {
+                    PositionedElement::TextRun { x, y, glyphs, text, font_id, size, color } => {
                         let font = match font_cache.get(font_id) {
                             Some(f) => f.clone(),
                             None => {
@@ -61,9 +61,12 @@ pub fn render_pdf(
                                 font
                             }
                         };
-                        let units_per_em = font.units_per_em();
-                        let krilla_glyphs: Vec<_> =
-                            glyphs.iter().map(|g| glyphs::to_krilla_glyph(g, units_per_em)).collect();
+                        let krilla_glyphs: Vec<_> = glyphs.iter().map(|g| glyphs::to_krilla_glyph(g, *size)).collect();
+                        // `draw_glyphs` has no color parameter of its own — it fills with
+                        // whatever `set_fill` last set on the surface, so every text run must set
+                        // its own color explicitly or it silently inherits the last shape's fill
+                        // (e.g. a code block's light-gray background box drawn earlier on the page).
+                        surface.set_fill(Some(paths::krilla_fill(*color)));
                         surface.draw_glyphs(
                             Point::from_xy(*x, *y),
                             &krilla_glyphs,
