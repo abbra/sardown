@@ -13,11 +13,15 @@ fn letter_geometry() -> PageGeometry {
     PageGeometry { page_width_mm: 215.9, page_height_mm: 279.4, margin_mm: 25.4 } // US Letter, 1in margins
 }
 
+fn fixtures_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
+}
+
 #[test]
 fn single_short_paragraph_fits_on_one_page() {
     let ast = parse("Just one short paragraph.\n");
     let mut fs = test_font_system();
-    let pages = layout(&ast, &letter_geometry(), &mut fs);
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir()).pages;
     assert_eq!(pages.len(), 1);
     assert!(!pages[0].elements.is_empty());
 }
@@ -28,7 +32,7 @@ fn many_headings_overflow_onto_a_second_page() {
     let md: String = (0..60).map(|i| format!("# Heading {i}\n\n")).collect();
     let blocks: Vec<BlockNode> = parse(&md);
     let mut fs = test_font_system();
-    let pages = layout(&blocks, &letter_geometry(), &mut fs);
+    let pages = layout(&blocks, &letter_geometry(), &mut fs, &fixtures_dir()).pages;
     assert!(pages.len() >= 2, "expected content to overflow onto a second page, got {} page(s)", pages.len());
     assert_eq!(pages[0].page_number, 0);
     assert_eq!(pages[1].page_number, 1);
@@ -41,7 +45,7 @@ fn heading_at_bottom_of_page_moves_with_its_first_line_of_body_text() {
     let md = "# T\n\nBody\n".repeat(40); // pad until a heading lands near a page boundary
     let blocks = parse(&md);
     let mut fs = test_font_system();
-    let pages = layout(&blocks, &letter_geometry(), &mut fs);
+    let pages = layout(&blocks, &letter_geometry(), &mut fs, &fixtures_dir()).pages;
     for page in &pages[..pages.len() - 1] {
         let last_is_lone_heading = matches!(page.elements.last(), Some(PositionedElement::TextRun { .. })) && page.elements.len() == 1;
         assert!(!last_is_lone_heading, "found a page ending in an isolated heading with no body text");
@@ -58,7 +62,7 @@ fn plain_inline(text: &str) -> InlineNode {
 fn blockquote_produces_a_side_border_path_plus_nested_text() {
     let ast = vec![BlockNode::Blockquote { content: vec![BlockNode::Paragraph { content: vec![plain_inline("Quoted")] }] }];
     let mut fs = test_font_system();
-    let pages = layout(&ast, &letter_geometry(), &mut fs);
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir()).pages;
     let has_path = pages[0].elements.iter().any(|e| matches!(e, PositionedElement::Path { .. }));
     let has_text = pages[0].elements.iter().any(|e| matches!(e, PositionedElement::TextRun { .. }));
     assert!(has_path && has_text);
@@ -68,7 +72,7 @@ fn blockquote_produces_a_side_border_path_plus_nested_text() {
 fn thematic_break_produces_a_horizontal_line_path() {
     let ast = vec![BlockNode::ThematicBreak];
     let mut fs = test_font_system();
-    let pages = layout(&ast, &letter_geometry(), &mut fs);
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir()).pages;
     assert!(matches!(pages[0].elements[0], PositionedElement::Path { .. }));
 }
 
@@ -82,7 +86,7 @@ fn list_items_render_as_indented_text() {
         ],
     }];
     let mut fs = test_font_system();
-    let pages = layout(&ast, &letter_geometry(), &mut fs);
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir()).pages;
     let text_runs: Vec<_> = pages[0].elements.iter().filter(|e| matches!(e, PositionedElement::TextRun { .. })).collect();
     assert_eq!(text_runs.len(), 2);
 }
@@ -94,7 +98,7 @@ fn code_block_produces_a_background_path_and_highlighted_text_runs() {
         tokens: vec![HighlightedToken { text: "let ".to_string(), color: [255, 0, 0] }, HighlightedToken { text: "x".to_string(), color: [0, 0, 255] }],
     }];
     let mut fs = test_font_system();
-    let pages = layout(&ast, &letter_geometry(), &mut fs);
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir()).pages;
     let has_background = pages[0].elements.iter().any(|e| matches!(e, PositionedElement::Path { fill: Some(_), .. }));
     let colored_runs: Vec<_> = pages[0]
         .elements

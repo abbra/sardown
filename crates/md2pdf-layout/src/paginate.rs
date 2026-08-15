@@ -1,4 +1,4 @@
-use crate::{shape_paragraph, PageGeometry, PathCommand, PositionedElement, PositionedPage, StrokeStyle};
+use crate::{shape_paragraph, ImageTable, PageGeometry, PathCommand, PositionedElement, PositionedPage, StrokeStyle};
 use cosmic_text::FontSystem;
 use md2pdf_ast::BlockNode;
 
@@ -87,7 +87,14 @@ fn place_inline_content(
     }
 }
 
-fn render_block(block: &BlockNode, cursor: &mut Cursor, margin_pt: f32, indent_pt: f32, font_system: &mut FontSystem) {
+fn render_block(
+    block: &BlockNode,
+    cursor: &mut Cursor,
+    margin_pt: f32,
+    indent_pt: f32,
+    font_system: &mut FontSystem,
+    images: &ImageTable,
+) {
     match block {
         BlockNode::Heading { content, .. } => {
             let heading_size = content.first().map(|c| c.style.size).unwrap_or(12.0);
@@ -103,7 +110,7 @@ fn render_block(block: &BlockNode, cursor: &mut Cursor, margin_pt: f32, indent_p
         BlockNode::Blockquote { content } => {
             let start_y = cursor.y;
             for child in content {
-                render_block(child, cursor, margin_pt, indent_pt + BLOCKQUOTE_INDENT_PT, font_system);
+                render_block(child, cursor, margin_pt, indent_pt + BLOCKQUOTE_INDENT_PT, font_system, images);
             }
             let end_y = cursor.y;
             cursor.current.push(PositionedElement::Path {
@@ -127,7 +134,7 @@ fn render_block(block: &BlockNode, cursor: &mut Cursor, margin_pt: f32, indent_p
         BlockNode::List { items, .. } => {
             for item in items {
                 for child in item {
-                    render_block(child, cursor, margin_pt, indent_pt + LIST_INDENT_PT, font_system);
+                    render_block(child, cursor, margin_pt, indent_pt + LIST_INDENT_PT, font_system, images);
                 }
             }
         }
@@ -185,17 +192,45 @@ fn render_block(block: &BlockNode, cursor: &mut Cursor, margin_pt: f32, indent_p
 
             cursor.current.push(crate::table::grid_path(margin_pt + indent_pt, top_y, cursor.y, header_bottom_y, &widths));
         }
-        BlockNode::Image { .. } => {} // Task 5
+        BlockNode::Image { source: md2pdf_ast::ImageSource::Embedded(path), .. } => {
+            let key = path.to_string_lossy().to_string();
+            if let Some(decoded) = images.get(&key) {
+                let max_width = cursor.content_width_pt - indent_pt;
+                let aspect = decoded.height as f32 / decoded.width as f32;
+                let (width, height) = if decoded.width as f32 > max_width {
+                    (max_width, max_width * aspect)
+                } else {
+                    (decoded.width as f32, decoded.height as f32)
+                };
+                if cursor.remaining_height() < height && !cursor.current.is_empty() {
+                    cursor.break_page(margin_pt);
+                }
+                cursor.current.push(PositionedElement::RasterImage { x: margin_pt + indent_pt, y: cursor.y, width, height, image_id: key });
+                cursor.y += height;
+            }
+        }
+        BlockNode::Image { source: md2pdf_ast::ImageSource::External(_), .. } => {} // skipped, see decode_images
         BlockNode::MermaidDiagram { .. } => {} // Phase 3
     }
 }
 
-pub fn layout(ast: &[BlockNode], geometry: &PageGeometry, font_system: &mut FontSystem) -> Vec<PositionedPage> {
+pub struct LayoutOutput {
+    pub pages: Vec<PositionedPage>,
+    pub images: ImageTable,
+}
+
+pub fn layout(
+    ast: &[BlockNode],
+    geometry: &PageGeometry,
+    font_system: &mut FontSystem,
+    base_dir: &std::path::Path,
+) -> LayoutOutput {
+    let images = crate::image::decode_images(ast, base_dir);
     let margin_pt = geometry.margin_mm * PT_PER_MM;
     let mut cursor = Cursor::new(geometry);
     for block in ast {
-        render_block(block, &mut cursor, margin_pt, 0.0, font_system);
+        render_block(block, &mut cursor, margin_pt, 0.0, font_system, &images);
         cursor.y += LINE_SPACING_PT;
     }
-    cursor.finish()
+    LayoutOutput { pages: cursor.finish(), images }
 }

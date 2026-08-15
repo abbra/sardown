@@ -1,7 +1,9 @@
+mod image;
 mod paginate;
 mod shape;
 mod table;
-pub use paginate::layout;
+pub use image::{decode_images, DecodedImage, ImageTable};
+pub use paginate::{layout, LayoutOutput};
 pub use shape::shape_paragraph;
 
 #[doc(hidden)]
@@ -77,5 +79,12 @@ pub enum PositionedElement {
     LinkAnnotation {
         rect: Rect,
         destination: md2pdf_ast::LinkTarget,
+    },
+    RasterImage {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        image_id: String,
     },
 }
