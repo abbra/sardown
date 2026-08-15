@@ -26,9 +26,34 @@ fn renders_a_single_page_with_one_text_run_to_valid_pdf_bytes() {
         }],
     };
 
-    let pdf_bytes = render_pdf(&[page], &db).expect("render_pdf failed");
+    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new()).expect("render_pdf failed");
 
     assert!(pdf_bytes.starts_with(b"%PDF-"), "output does not start with a PDF header");
     let doc = lopdf::Document::load_mem(&pdf_bytes).expect("krilla output is not a valid PDF");
     assert_eq!(doc.get_pages().len(), 1, "expected exactly one page");
+}
+
+use md2pdf_layout::{DecodedImage, ImageTable, PathCommand, StrokeStyle};
+
+#[test]
+fn renders_a_page_with_a_stroked_path_and_a_raster_image() {
+    let db = test_font_db();
+    let mut images = ImageTable::new();
+    images.insert("dot.png".to_string(), DecodedImage { rgba8: vec![255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255], width: 2, height: 2 });
+
+    let page = PositionedPage {
+        page_number: 0,
+        elements: vec![
+            PositionedElement::Path {
+                points: vec![PathCommand::MoveTo(10.0, 10.0), PathCommand::LineTo(100.0, 10.0)],
+                fill: None,
+                stroke: Some(StrokeStyle { color: [0, 0, 0], width: 1.0 }),
+            },
+            PositionedElement::RasterImage { x: 10.0, y: 20.0, width: 50.0, height: 50.0, image_id: "dot.png".to_string() },
+        ],
+    };
+
+    let pdf_bytes = render_pdf(&[page], &db, &images).expect("render_pdf failed");
+    let doc = lopdf::Document::load_mem(&pdf_bytes).expect("output is not a valid PDF");
+    assert_eq!(doc.get_pages().len(), 1);
 }
