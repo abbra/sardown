@@ -1,0 +1,114 @@
+use crate::{BlockNode, InlineNode, LinkTarget, SlugGenerator, TextStyle};
+use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+
+const DEFAULT_BODY_SIZE: f32 = 12.0;
+const HEADING_SIZES: [f32; 6] = [28.0, 22.0, 18.0, 16.0, 14.0, 12.0];
+const DEFAULT_COLOR: [u8; 3] = [0, 0, 0];
+
+struct InlineBuilder {
+    runs: Vec<InlineNode>,
+    bold_depth: u32,
+    italic_depth: u32,
+    link_target: Option<LinkTarget>,
+    base_size: f32,
+}
+
+impl InlineBuilder {
+    fn new(base_size: f32) -> Self {
+        Self { runs: Vec::new(), bold_depth: 0, italic_depth: 0, link_target: None, base_size }
+    }
+
+    fn push_text(&mut self, text: String) {
+        if text.is_empty() {
+            return;
+        }
+        self.runs.push(InlineNode {
+            text,
+            style: TextStyle {
+                bold: self.bold_depth > 0,
+                italic: self.italic_depth > 0,
+                size: self.base_size,
+                color: DEFAULT_COLOR,
+            },
+            link_target: self.link_target.clone(),
+        });
+    }
+}
+
+fn link_target_from_url(url: &str) -> LinkTarget {
+    if let Some(anchor) = url.strip_prefix('#') {
+        LinkTarget::InternalAnchor(anchor.to_string())
+    } else {
+        LinkTarget::ExternalUrl(url.to_string())
+    }
+}
+
+fn lower_inline_events<'a, I: Iterator<Item = Event<'a>>>(
+    events: &mut I,
+    end_tag: TagEnd,
+    base_size: f32,
+) -> Vec<InlineNode> {
+    let mut builder = InlineBuilder::new(base_size);
+    for event in events.by_ref() {
+        match event {
+            Event::End(tag) if tag == end_tag => break,
+            Event::Text(text) => builder.push_text(text.into_string()),
+            Event::Code(text) => builder.push_text(text.into_string()),
+            Event::Start(Tag::Strong) => builder.bold_depth += 1,
+            Event::End(TagEnd::Strong) => builder.bold_depth = builder.bold_depth.saturating_sub(1),
+            Event::Start(Tag::Emphasis) => builder.italic_depth += 1,
+            Event::End(TagEnd::Emphasis) => builder.italic_depth = builder.italic_depth.saturating_sub(1),
+            Event::Start(Tag::Link { dest_url, .. }) => {
+                builder.link_target = Some(link_target_from_url(&dest_url));
+            }
+            Event::End(TagEnd::Link) => builder.link_target = None,
+            Event::SoftBreak | Event::HardBreak => builder.push_text(" ".to_string()),
+            _ => {}
+        }
+    }
+    builder.runs
+}
+
+pub fn parse(markdown: &str) -> Vec<BlockNode> {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+
+    let mut parser = Parser::new_ext(markdown, options);
+    let mut slugs = SlugGenerator::new();
+    let mut blocks = Vec::new();
+
+    while let Some(event) = parser.next() {
+        match event {
+            Event::Start(Tag::Heading { level, .. }) => {
+                let size = heading_size(level);
+                let content = lower_inline_events(&mut parser, TagEnd::Heading(level), size);
+                let text: String = content.iter().map(|n| n.text.as_str()).collect::<Vec<_>>().join("");
+                let id = slugs.generate(&text);
+                blocks.push(BlockNode::Heading { level: heading_level_u8(level), id, content });
+            }
+            Event::Start(Tag::Paragraph) => {
+                let content = lower_inline_events(&mut parser, TagEnd::Paragraph, DEFAULT_BODY_SIZE);
+                blocks.push(BlockNode::Paragraph { content });
+            }
+            _ => {} // other block kinds are handled in Task 5
+        }
+    }
+
+    blocks
+}
+
+fn heading_level_u8(level: HeadingLevel) -> u8 {
+    match level {
+        HeadingLevel::H1 => 1,
+        HeadingLevel::H2 => 2,
+        HeadingLevel::H3 => 3,
+        HeadingLevel::H4 => 4,
+        HeadingLevel::H5 => 5,
+        HeadingLevel::H6 => 6,
+    }
+}
+
+fn heading_size(level: HeadingLevel) -> f32 {
+    HEADING_SIZES[(heading_level_u8(level) - 1) as usize]
+}
