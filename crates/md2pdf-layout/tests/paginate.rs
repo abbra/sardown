@@ -365,6 +365,31 @@ fn mermaid_diagram_produces_a_vector_graphic_element() {
     }
 }
 
+#[test]
+fn page_break_forces_content_onto_a_new_page() {
+    let ast = vec![
+        BlockNode::Paragraph { content: vec![plain_inline("first")] },
+        BlockNode::PageBreak,
+        BlockNode::Paragraph { content: vec![plain_inline("second")] },
+    ];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+    assert_eq!(pages.len(), 2, "expected PageBreak to force a second page");
+
+    let page0_has_first = pages[0].elements.iter().any(|e| matches!(e, PositionedElement::TextRun { text, .. } if text == "first"));
+    let page1_has_second = pages[1].elements.iter().any(|e| matches!(e, PositionedElement::TextRun { text, .. } if text == "second"));
+    assert!(page0_has_first, "expected 'first' to stay on page 0");
+    assert!(page1_has_second, "expected 'second' to be pushed onto page 1 by the break");
+}
+
+#[test]
+fn page_break_at_the_very_start_does_not_create_a_blank_leading_page() {
+    let ast = vec![BlockNode::PageBreak, BlockNode::Paragraph { content: vec![plain_inline("only")] }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+    assert_eq!(pages.len(), 1, "a PageBreak with nothing yet on the current page should not force a blank page");
+}
+
 use md2pdf_ast::LinkTarget;
 
 #[test]

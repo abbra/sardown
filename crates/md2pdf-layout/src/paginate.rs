@@ -246,6 +246,11 @@ fn render_block(
             });
             cursor.y += 12.0;
         }
+        BlockNode::PageBreak => {
+            if !cursor.current.is_empty() {
+                cursor.break_page(margin_pt);
+            }
+        }
         BlockNode::List { items, .. } => {
             for (item_i, item) in items.iter().enumerate() {
                 for (child_i, child) in item.iter().enumerate() {
