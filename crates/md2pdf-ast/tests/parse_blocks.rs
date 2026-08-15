@@ -109,3 +109,30 @@ fn parses_external_and_relative_images() {
         other => panic!("expected Image, got {other:?}"),
     }
 }
+
+#[test]
+fn parses_mermaid_fenced_code_block_as_diagram_not_code_block() {
+    let md = "```mermaid\nflowchart TD\n    A --> B\n```\n";
+    let blocks = parse(md);
+    match &blocks[0] {
+        BlockNode::MermaidDiagram { id, source } => {
+            assert_eq!(id, "diagram-0");
+            assert!(source.contains("flowchart TD"));
+        }
+        other => panic!("expected MermaidDiagram, got {other:?}"),
+    }
+}
+
+#[test]
+fn assigns_sequential_ids_to_multiple_diagrams() {
+    let md = "```mermaid\nflowchart TD\n    A --> B\n```\n\n```mermaid\nflowchart TD\n    C --> D\n```\n";
+    let blocks = parse(md);
+    let ids: Vec<_> = blocks
+        .iter()
+        .map(|b| match b {
+            BlockNode::MermaidDiagram { id, .. } => id.as_str(),
+            other => panic!("expected MermaidDiagram, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(ids, vec!["diagram-0", "diagram-1"]);
+}

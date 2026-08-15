@@ -90,6 +90,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
     parser: &mut I,
     end_tag: TagEnd,
     slugs: &mut SlugGenerator,
+    next_diagram_id: &mut usize,
 ) -> Vec<BlockNode> {
     let mut blocks = Vec::new();
     while let Some(event) = parser.next() {
@@ -147,13 +148,16 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                         _ => {}
                     }
                 }
-                blocks.push(BlockNode::CodeBlock {
-                    language,
-                    tokens: vec![HighlightedToken { text: raw, color: DEFAULT_COLOR }],
-                });
+                if language.as_deref() == Some("mermaid") {
+                    let id = format!("diagram-{next_diagram_id}");
+                    *next_diagram_id += 1;
+                    blocks.push(BlockNode::MermaidDiagram { id, source: raw });
+                } else {
+                    blocks.push(BlockNode::CodeBlock { language, tokens: vec![HighlightedToken { text: raw, color: DEFAULT_COLOR }] });
+                }
             }
             Event::Start(Tag::BlockQuote(_)) => {
-                let content = lower_block_events(parser, TagEnd::BlockQuote(None), slugs);
+                let content = lower_block_events(parser, TagEnd::BlockQuote(None), slugs, next_diagram_id);
                 blocks.push(BlockNode::Blockquote { content });
             }
             Event::Rule => blocks.push(BlockNode::ThematicBreak),
@@ -163,7 +167,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                 while let Some(event) = parser.next() {
                     match event {
                         Event::Start(Tag::Item) => {
-                            items.push(lower_block_events(parser, TagEnd::Item, slugs));
+                            items.push(lower_block_events(parser, TagEnd::Item, slugs, next_diagram_id));
                         }
                         Event::End(TagEnd::List(_)) => break,
                         _ => {}
@@ -255,9 +259,10 @@ pub fn parse(markdown: &str) -> Vec<BlockNode> {
 
     let mut parser = Parser::new_ext(markdown, options);
     let mut slugs = SlugGenerator::new();
+    let mut next_diagram_id = 0usize;
     // TagEnd::Item is never opened at the top level, so it never matches; used only as a
     // sentinel that can't legitimately occur, meaning we consume until the iterator is exhausted.
-    lower_block_events(&mut parser, TagEnd::Item, &mut slugs)
+    lower_block_events(&mut parser, TagEnd::Item, &mut slugs, &mut next_diagram_id)
 }
 
 fn heading_level_u8(level: HeadingLevel) -> u8 {
