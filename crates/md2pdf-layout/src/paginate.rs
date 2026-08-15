@@ -160,7 +160,31 @@ fn render_block(block: &BlockNode, cursor: &mut Cursor, margin_pt: f32, indent_p
                 stroke: None,
             });
         }
-        BlockNode::Table { .. } => {} // Task 4
+        BlockNode::Table { headers, rows, .. } => {
+            let widths = crate::table::column_widths(headers, rows, cursor.content_width_pt - indent_pt, font_system);
+            let top_y = cursor.y;
+            let row_height = 20.0;
+
+            let mut col_x = margin_pt + indent_pt;
+            for (header, width) in headers.iter().zip(&widths) {
+                place_inline_content(cursor, margin_pt, col_x - margin_pt, std::slice::from_ref(header), font_system);
+                col_x += width;
+            }
+            cursor.y = top_y + row_height;
+            let header_bottom_y = cursor.y;
+
+            for row in rows {
+                let row_top_y = cursor.y;
+                let mut col_x = margin_pt + indent_pt;
+                for (cell, width) in row.iter().zip(&widths) {
+                    place_inline_content(cursor, margin_pt, col_x - margin_pt, std::slice::from_ref(cell), font_system);
+                    col_x += width;
+                }
+                cursor.y = row_top_y + row_height;
+            }
+
+            cursor.current.push(crate::table::grid_path(margin_pt + indent_pt, top_y, cursor.y, header_bottom_y, &widths));
+        }
         BlockNode::Image { .. } => {} // Task 5
         BlockNode::MermaidDiagram { .. } => {} // Phase 3
     }

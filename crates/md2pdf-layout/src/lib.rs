@@ -1,7 +1,13 @@
 mod paginate;
 mod shape;
+mod table;
 pub use paginate::layout;
 pub use shape::shape_paragraph;
+
+#[doc(hidden)]
+pub mod test_support {
+    pub use crate::table::column_widths;
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct PageGeometry {
