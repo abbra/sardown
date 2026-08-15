@@ -1,3 +1,6 @@
+mod slug;
+pub use slug::{generate_heading_id, SlugGenerator};
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum BlockNode {
     Heading {
