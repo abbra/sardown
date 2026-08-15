@@ -1,5 +1,5 @@
-use crate::{BlockNode, InlineNode, LinkTarget, SlugGenerator, TextStyle};
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use crate::{BlockNode, HighlightedToken, InlineNode, LinkTarget, SlugGenerator, TextStyle};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 const DEFAULT_BODY_SIZE: f32 = 12.0;
 const HEADING_SIZES: [f32; 6] = [28.0, 22.0, 18.0, 16.0, 14.0, 12.0];
@@ -69,6 +69,69 @@ fn lower_inline_events<'a, I: Iterator<Item = Event<'a>>>(
     builder.runs
 }
 
+fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
+    parser: &mut I,
+    end_tag: TagEnd,
+    slugs: &mut SlugGenerator,
+) -> Vec<BlockNode> {
+    let mut blocks = Vec::new();
+    while let Some(event) = parser.next() {
+        match event {
+            Event::End(tag) if tag == end_tag => break,
+            Event::Start(Tag::Heading { level, .. }) => {
+                let size = heading_size(level);
+                let content = lower_inline_events(parser, TagEnd::Heading(level), size);
+                let text: String = content.iter().map(|n| n.text.as_str()).collect::<Vec<_>>().join("");
+                let id = slugs.generate(&text);
+                blocks.push(BlockNode::Heading { level: heading_level_u8(level), id, content });
+            }
+            Event::Start(Tag::Paragraph) => {
+                let content = lower_inline_events(parser, TagEnd::Paragraph, DEFAULT_BODY_SIZE);
+                blocks.push(BlockNode::Paragraph { content });
+            }
+            Event::Start(Tag::CodeBlock(kind)) => {
+                let language = match kind {
+                    CodeBlockKind::Fenced(lang) if !lang.is_empty() => Some(lang.into_string()),
+                    _ => None,
+                };
+                let mut raw = String::new();
+                for event in parser.by_ref() {
+                    match event {
+                        Event::Text(text) => raw.push_str(&text),
+                        Event::End(TagEnd::CodeBlock) => break,
+                        _ => {}
+                    }
+                }
+                blocks.push(BlockNode::CodeBlock {
+                    language,
+                    tokens: vec![HighlightedToken { text: raw, color: DEFAULT_COLOR }],
+                });
+            }
+            Event::Start(Tag::BlockQuote(_)) => {
+                let content = lower_block_events(parser, TagEnd::BlockQuote(None), slugs);
+                blocks.push(BlockNode::Blockquote { content });
+            }
+            Event::Rule => blocks.push(BlockNode::ThematicBreak),
+            Event::Start(Tag::List(start)) => {
+                let ordered = start.is_some();
+                let mut items = Vec::new();
+                while let Some(event) = parser.next() {
+                    match event {
+                        Event::Start(Tag::Item) => {
+                            items.push(lower_block_events(parser, TagEnd::Item, slugs));
+                        }
+                        Event::End(TagEnd::List(_)) => break,
+                        _ => {}
+                    }
+                }
+                blocks.push(BlockNode::List { ordered, items });
+            }
+            _ => {}
+        }
+    }
+    blocks
+}
+
 pub fn parse(markdown: &str) -> Vec<BlockNode> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
@@ -76,26 +139,9 @@ pub fn parse(markdown: &str) -> Vec<BlockNode> {
 
     let mut parser = Parser::new_ext(markdown, options);
     let mut slugs = SlugGenerator::new();
-    let mut blocks = Vec::new();
-
-    while let Some(event) = parser.next() {
-        match event {
-            Event::Start(Tag::Heading { level, .. }) => {
-                let size = heading_size(level);
-                let content = lower_inline_events(&mut parser, TagEnd::Heading(level), size);
-                let text: String = content.iter().map(|n| n.text.as_str()).collect::<Vec<_>>().join("");
-                let id = slugs.generate(&text);
-                blocks.push(BlockNode::Heading { level: heading_level_u8(level), id, content });
-            }
-            Event::Start(Tag::Paragraph) => {
-                let content = lower_inline_events(&mut parser, TagEnd::Paragraph, DEFAULT_BODY_SIZE);
-                blocks.push(BlockNode::Paragraph { content });
-            }
-            _ => {} // other block kinds are handled in Task 5
-        }
-    }
-
-    blocks
+    // TagEnd::Item is never opened at the top level, so it never matches; used only as a
+    // sentinel that can't legitimately occur, meaning we consume until the iterator is exhausted.
+    lower_block_events(&mut parser, TagEnd::Item, &mut slugs)
 }
 
 fn heading_level_u8(level: HeadingLevel) -> u8 {
