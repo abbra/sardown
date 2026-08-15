@@ -19,7 +19,8 @@ fn renders_a_single_page_with_one_text_run_to_valid_pdf_bytes() {
         elements: vec![PositionedElement::TextRun {
             x: 72.0,
             y: 72.0,
-            glyphs: vec![PositionedGlyph { glyph_id: 3, x: 0.0, y: 0.0, x_advance: 10.0 }],
+            glyphs: vec![PositionedGlyph { glyph_id: 3, x: 0.0, y: 0.0, x_advance: 10.0, cluster: 0..1 }],
+            text: "x".to_string(),
             font_id,
             size: 12.0,
             color: [0, 0, 0],

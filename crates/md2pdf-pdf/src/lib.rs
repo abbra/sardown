@@ -41,7 +41,7 @@ pub fn render_pdf(
 
         for element in &page_data.elements {
             match element {
-                PositionedElement::TextRun { x, y, glyphs, font_id, size, .. } => {
+                PositionedElement::TextRun { x, y, glyphs, text, font_id, size, .. } => {
                     let font = match font_cache.get(font_id) {
                         Some(f) => f.clone(),
                         None => {
@@ -54,17 +54,13 @@ pub fn render_pdf(
                         }
                     };
                     let units_per_em = font.units_per_em();
-                    let text_for_range = " ".repeat(glyphs.len()); // placeholder text; real text threaded through in Phase 3
-                    let krilla_glyphs: Vec<_> = glyphs
-                        .iter()
-                        .enumerate()
-                        .map(|(i, g)| glyphs::to_krilla_glyph(g, i..i + 1, units_per_em))
-                        .collect();
+                    let krilla_glyphs: Vec<_> =
+                        glyphs.iter().map(|g| glyphs::to_krilla_glyph(g, units_per_em)).collect();
                     surface.draw_glyphs(
                         Point::from_xy(*x, *y),
                         &krilla_glyphs,
                         font,
-                        &text_for_range,
+                        text,
                         *size,
                         false, // outlined: false selects the normal (non-Type-3) glyph path
                     );

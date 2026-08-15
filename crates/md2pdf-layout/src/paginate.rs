@@ -1,4 +1,4 @@
-use crate::{shape_paragraph, ImageTable, PageGeometry, PathCommand, PositionedElement, PositionedPage, StrokeStyle};
+use crate::{shape_paragraph, shape_rich_paragraph, ImageTable, PageGeometry, PathCommand, PositionedElement, PositionedPage, StrokeStyle};
 use cosmic_text::FontSystem;
 use md2pdf_ast::BlockNode;
 
@@ -87,6 +87,71 @@ fn place_inline_content(
     }
 }
 
+/// Like `place_inline_content`, but keeps multiple styled runs (e.g. syntax-highlighted tokens)
+/// flowing on the same visual line instead of giving each its own line.
+///
+/// `shape_rich_paragraph` emits one `ShapedRun` per *span* — every color/style change starts a
+/// new one, even mid-line. Runs sharing the same pre-placement `y` (cosmic-text's `run.line_y`)
+/// came from the same visual line and must be placed at one shared final `y` with a single
+/// cursor advance, not one advance per run (that was the actual bug: naively calling
+/// `place_text_run` per run advanced the cursor once per span instead of once per line).
+fn place_rich_inline_content(
+    cursor: &mut Cursor,
+    margin_pt: f32,
+    indent_pt: f32,
+    content: &[md2pdf_ast::InlineNode],
+    font_system: &mut FontSystem,
+) {
+    let shaped = shape_rich_paragraph(font_system, content, cursor.content_width_pt - indent_pt);
+    let mut iter = shaped.into_iter().peekable();
+
+    let mut content_start_y = cursor.y;
+    let mut first_line_y: Option<f32> = None;
+
+    while let Some(first) = iter.next() {
+        let line_y = match &first.element {
+            PositionedElement::TextRun { y, .. } => *y,
+            _ => unreachable!("shape_rich_paragraph only produces TextRun elements"),
+        };
+        let baseline_line_y = *first_line_y.get_or_insert(line_y);
+
+        let mut line_height = match &first.element {
+            PositionedElement::TextRun { size, .. } => estimate_line_height(*size),
+            _ => unreachable!(),
+        };
+        let mut group = vec![first];
+        while let Some(next) = iter.peek() {
+            let same_line = matches!(&next.element, PositionedElement::TextRun { y, .. } if *y == line_y);
+            if !same_line {
+                break;
+            }
+            let next = iter.next().unwrap();
+            if let PositionedElement::TextRun { size, .. } = &next.element {
+                line_height = line_height.max(estimate_line_height(*size));
+            }
+            group.push(next);
+        }
+
+        let mut placed_y = content_start_y + (line_y - baseline_line_y);
+        if cursor.page_height_pt - placed_y < line_height && !cursor.current.is_empty() {
+            cursor.break_page(margin_pt);
+            content_start_y = cursor.y;
+            first_line_y = Some(line_y);
+            placed_y = content_start_y;
+        }
+
+        for shaped_run in group {
+            let mut element = shaped_run.element;
+            if let PositionedElement::TextRun { x, y, .. } = &mut element {
+                *x += margin_pt + indent_pt;
+                *y = placed_y;
+            }
+            cursor.current.push(element);
+        }
+        cursor.y = placed_y + line_height;
+    }
+}
+
 fn render_block(
     block: &BlockNode,
     cursor: &mut Cursor,
@@ -148,12 +213,11 @@ fn render_block(
                     link_target: None,
                 })
                 .collect();
-            // Split into one shape_paragraph call per HighlightedToken so each keeps its own
-            // color; a single combined call would flatten all tokens to the first run's color
-            // (shape_paragraph's Phase 1 limitation, see its doc comment).
-            for run in &combined {
-                place_inline_content(cursor, margin_pt, indent_pt + 8.0, std::slice::from_ref(run), font_system);
-            }
+            // One rich-shaping call over all tokens so tokens on the same source line (e.g.
+            // "fn " and "main" as separate syntect tokens) flow together on one visual line,
+            // each keeping its own color; line breaks come from the embedded `\n` characters
+            // syntect leaves at the end of each source line's tokens.
+            place_rich_inline_content(cursor, margin_pt, indent_pt + 8.0, &combined, font_system);
             let end_y = cursor.y;
             cursor.current.push(PositionedElement::Path {
                 points: vec![

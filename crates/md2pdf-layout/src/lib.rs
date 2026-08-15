@@ -4,7 +4,7 @@ mod shape;
 mod table;
 pub use image::{decode_images, DecodedImage, ImageTable};
 pub use paginate::{layout, LayoutOutput};
-pub use shape::shape_paragraph;
+pub use shape::{shape_paragraph, shape_rich_paragraph, ShapedRun};
 
 #[doc(hidden)]
 pub mod test_support {
@@ -24,12 +24,15 @@ pub struct PositionedPage {
     pub elements: Vec<PositionedElement>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct PositionedGlyph {
     pub glyph_id: u16,
     pub x: f32,
     pub y: f32,
     pub x_advance: f32,
+    /// Byte range of this glyph's source cluster within the owning `TextRun`'s `text` field —
+    /// needed to build a correct ToUnicode mapping so extracted/copied PDF text is accurate.
+    pub cluster: std::ops::Range<usize>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -60,6 +63,8 @@ pub enum PositionedElement {
         x: f32,
         y: f32,
         glyphs: Vec<PositionedGlyph>,
+        /// The shaped line's source text — `PositionedGlyph::cluster` indexes into this.
+        text: String,
         font_id: fontdb::ID,
         size: f32,
         color: [u8; 3],
