@@ -6,6 +6,7 @@ members = [
     "crates/md2pdf-layout",
     "crates/md2pdf-pdf",
     "crates/md2pdf-cli",
+    "crates/md2pdf-book",
 ]
 
 [workspace.package]
