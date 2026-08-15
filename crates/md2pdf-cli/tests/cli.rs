@@ -49,6 +49,21 @@ fn renders_all_phase_2_block_kinds_to_a_valid_pdf() {
 }
 
 #[test]
+fn render_book_subcommand_produces_a_multi_page_pdf_from_an_mdbook_source_tree() {
+    let out_path = std::env::temp_dir().join("md2pdf-test-book.pdf");
+    let _ = std::fs::remove_file(&out_path);
+
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render-book").arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/mini-book")).arg("-o").arg(&out_path);
+    cmd.assert().success();
+
+    let bytes = std::fs::read(&out_path).expect("output PDF was not written");
+    assert!(bytes.starts_with(b"%PDF-"));
+    let doc = lopdf::Document::load_mem(&bytes).expect("output is not a valid PDF");
+    assert_eq!(doc.get_pages().len(), 2, "expected one page per chapter (each chapter forces its own page break)");
+}
+
+#[test]
 fn renders_diagrams_and_links_to_a_valid_pdf() {
     let out_path = std::env::temp_dir().join("md2pdf-test-linking.pdf");
     let _ = std::fs::remove_file(&out_path);

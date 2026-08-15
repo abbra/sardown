@@ -1667,6 +1667,7 @@ dependencies = [
  "image",
  "lopdf",
  "md2pdf-ast",
+ "md2pdf-book",
  "md2pdf-enrich",
  "md2pdf-layout",
  "md2pdf-pdf",
