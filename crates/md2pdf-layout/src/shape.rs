@@ -99,6 +99,14 @@ pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode]
         // krilla's draw_glyphs positions glyphs by cumulative advance starting from the run's
         // `start` point, so every group needs its own correct starting offset or later groups on
         // the same line would all draw starting from the same x and overlap.
+        //
+        // A line can *also* contain glyphs from more than one font within a single span, when a
+        // character isn't covered by the span's primary font and cosmic-text substitutes a
+        // fallback font for just that glyph (e.g. an arrow or symbol missing from the main
+        // sans-serif face). A `TextRun` carries one `font_id` for all of its glyphs, so without
+        // also flushing on a font change, a fallback glyph's ID -- valid only in the fallback
+        // font's glyph table -- ends up rendered against whichever font the *last* glyph in the
+        // group happened to resolve to, showing an unrelated, effectively random glyph instead.
         let line_text = run.text.to_string();
         let mut current_span: Option<usize> = None;
         let mut current_font_id: Option<fontdb::ID> = None;
@@ -107,7 +115,9 @@ pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode]
 
         for glyph in run.glyphs {
             let span_index = span_index_for(glyph.start);
-            if current_span.is_some() && current_span != Some(span_index) {
+            let span_changed = current_span.is_some() && current_span != Some(span_index);
+            let font_changed = current_font_id.is_some() && current_font_id != Some(glyph.font_id);
+            if span_changed || font_changed {
                 let span = &spans[current_span.unwrap()];
                 runs.push(ShapedRun {
                     source_index: current_span.unwrap(),

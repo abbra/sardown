@@ -1,0 +1,8 @@
+Cantarell-VF.otf is copyright 2019 The Cantarell Project Authors
+(https://gitlab.gnome.org/GNOME/cantarell-fonts) and licensed under the
+SIL Open Font License, Version 1.1. See https://scripts.sil.org/OFL for
+the full license text.
+
+Included as a second test font (one that covers U+2192 RIGHTWARDS ARROW,
+which DroidSans.ttf does not) to exercise cross-font glyph fallback in
+shape_rich_paragraph's tests.
