@@ -4,3 +4,5 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
+md2pdf-ast = { version = "0.1.0", path = "../md2pdf-ast" }
+syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
