@@ -33,6 +33,7 @@ fn main() -> anyhow::Result<()> {
 
             let highlighter = Highlighter::new();
             let ast = highlighter.highlight(ast);
+            let diagrams = md2pdf_enrich::compile_diagrams(&ast);
 
             let base_dir = input.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
 
@@ -40,8 +41,14 @@ fn main() -> anyhow::Result<()> {
             font_db.load_system_fonts();
             let mut font_system = cosmic_text::FontSystem::new_with_locale_and_db("en-US".to_string(), font_db);
 
-            let output_layout = layout(&ast, &us_letter(), &mut font_system, &base_dir);
-            let pdf_bytes = md2pdf_pdf::render_pdf(&output_layout.pages, font_system.db(), &output_layout.images)?;
+            let output_layout = layout(&ast, &us_letter(), &mut font_system, &base_dir, &diagrams);
+            let pdf_bytes = md2pdf_pdf::render_pdf(
+                &output_layout.pages,
+                font_system.db(),
+                &output_layout.images,
+                &diagrams,
+                &output_layout.anchors,
+            )?;
             std::fs::write(&output, pdf_bytes)?;
             Ok(())
         }
