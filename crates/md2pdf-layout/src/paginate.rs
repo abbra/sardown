@@ -176,6 +176,22 @@ fn measure_row_height(
     max_height
 }
 
+/// A rough "how tall is this block's first line" estimate, used only to reserve enough gap
+/// after a code block that its background doesn't reach up into the next block's ascender (see
+/// the `BlockNode::CodeBlock` arm). Blocks without an obvious first-line size (tables, images,
+/// diagrams, thematic breaks) fall back to `DEFAULT_BODY_SIZE_PT`, matching typical body text --
+/// the only block kind whose ascent meaningfully exceeds that by enough to matter here is a
+/// heading, since `HEADING_SIZES` (md2pdf-ast) run well above body text.
+fn estimate_next_block_ascent_pt(next_block: Option<&BlockNode>) -> f32 {
+    const DEFAULT_BODY_SIZE_PT: f32 = 12.0;
+    let size = match next_block {
+        Some(BlockNode::Heading { content, .. }) => content.first().map(|n| n.style.size).unwrap_or(DEFAULT_BODY_SIZE_PT),
+        Some(BlockNode::Paragraph { content }) => content.first().map(|n| n.style.size).unwrap_or(DEFAULT_BODY_SIZE_PT),
+        _ => DEFAULT_BODY_SIZE_PT,
+    };
+    size * 0.8
+}
+
 fn render_block(
     block: &BlockNode,
     cursor: &mut Cursor,
@@ -184,6 +200,7 @@ fn render_block(
     font_system: &mut FontSystem,
     images: &ImageTable,
     diagrams: &DiagramTable,
+    next_block: Option<&BlockNode>,
 ) {
     match block {
         BlockNode::Heading { content, id, .. } => {
@@ -206,8 +223,9 @@ fn render_block(
         }
         BlockNode::Blockquote { content } => {
             let start_y = cursor.y;
-            for child in content {
-                render_block(child, cursor, margin_pt, indent_pt + BLOCKQUOTE_INDENT_PT, font_system, images, diagrams);
+            for (i, child) in content.iter().enumerate() {
+                let child_next = content.get(i + 1).or(next_block);
+                render_block(child, cursor, margin_pt, indent_pt + BLOCKQUOTE_INDENT_PT, font_system, images, diagrams, child_next);
             }
             let end_y = cursor.y;
             cursor.current.push(PositionedElement::Path {
@@ -229,9 +247,13 @@ fn render_block(
             cursor.y += 12.0;
         }
         BlockNode::List { items, .. } => {
-            for item in items {
-                for child in item {
-                    render_block(child, cursor, margin_pt, indent_pt + LIST_INDENT_PT, font_system, images, diagrams);
+            for (item_i, item) in items.iter().enumerate() {
+                for (child_i, child) in item.iter().enumerate() {
+                    let child_next = item
+                        .get(child_i + 1)
+                        .or_else(|| items.get(item_i + 1).and_then(|next_item| next_item.first()))
+                        .or(next_block);
+                    render_block(child, cursor, margin_pt, indent_pt + LIST_INDENT_PT, font_system, images, diagrams, child_next);
                 }
             }
         }
@@ -310,6 +332,16 @@ fn render_block(
                 }
                 cursor.current.insert(0, background_rect(margin_pt - TOP_PAD_PT, end_y + BOTTOM_PAD_PT));
             }
+
+            // The layout loop always adds a flat `LINE_SPACING_PT` gap after every block,
+            // sized for typical body text -- nowhere near enough clearance if the next block is
+            // a heading, whose much larger ascent would otherwise reach up into this block's
+            // opaque background (observed: an H2 heading's top visibly sliced by the code
+            // block's bottom edge). Reserve whatever extra the next block's actual ascent needs
+            // beyond what LINE_SPACING_PT already provides.
+            let next_ascent_pt = estimate_next_block_ascent_pt(next_block);
+            let extra_gap_needed_pt = (next_ascent_pt + BOTTOM_PAD_PT - LINE_SPACING_PT).max(0.0);
+            cursor.y += extra_gap_needed_pt;
         }
         BlockNode::Table { headers, rows, .. } => {
             let widths = crate::table::column_widths(headers, rows, cursor.content_width_pt - indent_pt, font_system);
@@ -469,8 +501,8 @@ pub fn layout(
     let images = crate::image::decode_images(ast, base_dir);
     let margin_pt = geometry.margin_mm * PT_PER_MM;
     let mut cursor = Cursor::new(geometry);
-    for block in ast {
-        render_block(block, &mut cursor, margin_pt, 0.0, font_system, &images, diagrams);
+    for (i, block) in ast.iter().enumerate() {
+        render_block(block, &mut cursor, margin_pt, 0.0, font_system, &images, diagrams, ast.get(i + 1));
         cursor.y += LINE_SPACING_PT;
     }
     let (pages, anchors) = cursor.finish();
