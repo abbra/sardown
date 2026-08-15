@@ -1,5 +1,5 @@
-use crate::{BlockNode, HighlightedToken, InlineNode, LinkTarget, SlugGenerator, TextStyle};
-use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use crate::{BlockNode, ColumnAlignment, HighlightedToken, ImageSource, InlineNode, LinkTarget, SlugGenerator, TextStyle};
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 const DEFAULT_BODY_SIZE: f32 = 12.0;
 const HEADING_SIZES: [f32; 6] = [28.0, 22.0, 18.0, 16.0, 14.0, 12.0];
@@ -43,6 +43,26 @@ fn link_target_from_url(url: &str) -> LinkTarget {
     }
 }
 
+/// Applies one inline event to `builder`. Shared between `lower_inline_events`'s main loop and
+/// the paragraph-vs-standalone-image peek in `lower_block_events`, which needs to apply an
+/// already-consumed "first event" before continuing the normal loop.
+fn apply_inline_event(builder: &mut InlineBuilder, event: Event) {
+    match event {
+        Event::Text(text) => builder.push_text(text.into_string()),
+        Event::Code(text) => builder.push_text(text.into_string()),
+        Event::Start(Tag::Strong) => builder.bold_depth += 1,
+        Event::End(TagEnd::Strong) => builder.bold_depth = builder.bold_depth.saturating_sub(1),
+        Event::Start(Tag::Emphasis) => builder.italic_depth += 1,
+        Event::End(TagEnd::Emphasis) => builder.italic_depth = builder.italic_depth.saturating_sub(1),
+        Event::Start(Tag::Link { dest_url, .. }) => {
+            builder.link_target = Some(link_target_from_url(&dest_url));
+        }
+        Event::End(TagEnd::Link) => builder.link_target = None,
+        Event::SoftBreak | Event::HardBreak => builder.push_text(" ".to_string()),
+        _ => {}
+    }
+}
+
 fn lower_inline_events<'a, I: Iterator<Item = Event<'a>>>(
     events: &mut I,
     end_tag: TagEnd,
@@ -50,23 +70,20 @@ fn lower_inline_events<'a, I: Iterator<Item = Event<'a>>>(
 ) -> Vec<InlineNode> {
     let mut builder = InlineBuilder::new(base_size);
     for event in events.by_ref() {
-        match event {
-            Event::End(tag) if tag == end_tag => break,
-            Event::Text(text) => builder.push_text(text.into_string()),
-            Event::Code(text) => builder.push_text(text.into_string()),
-            Event::Start(Tag::Strong) => builder.bold_depth += 1,
-            Event::End(TagEnd::Strong) => builder.bold_depth = builder.bold_depth.saturating_sub(1),
-            Event::Start(Tag::Emphasis) => builder.italic_depth += 1,
-            Event::End(TagEnd::Emphasis) => builder.italic_depth = builder.italic_depth.saturating_sub(1),
-            Event::Start(Tag::Link { dest_url, .. }) => {
-                builder.link_target = Some(link_target_from_url(&dest_url));
-            }
-            Event::End(TagEnd::Link) => builder.link_target = None,
-            Event::SoftBreak | Event::HardBreak => builder.push_text(" ".to_string()),
-            _ => {}
+        if matches!(&event, Event::End(tag) if *tag == end_tag) {
+            break;
         }
+        apply_inline_event(&mut builder, event);
     }
     builder.runs
+}
+
+fn image_source_from_url(url: &str) -> ImageSource {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        ImageSource::External(url.to_string())
+    } else {
+        ImageSource::Embedded(std::path::PathBuf::from(url))
+    }
 }
 
 fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
@@ -86,8 +103,36 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                 blocks.push(BlockNode::Heading { level: heading_level_u8(level), id, content });
             }
             Event::Start(Tag::Paragraph) => {
-                let content = lower_inline_events(parser, TagEnd::Paragraph, DEFAULT_BODY_SIZE);
-                blocks.push(BlockNode::Paragraph { content });
+                // Images are inline events nested inside a Paragraph in pulldown-cmark's model,
+                // but this AST treats a paragraph containing *only* an image as a block-level
+                // Image node. Peek the first inline event to tell the two cases apart.
+                match parser.next() {
+                    Some(Event::Start(Tag::Image { dest_url, title, .. })) => {
+                        let alt = collect_plain_text_until(parser, TagEnd::Image);
+                        for event in parser.by_ref() {
+                            if matches!(event, Event::End(TagEnd::Paragraph)) {
+                                break;
+                            }
+                        }
+                        let source = image_source_from_url(&dest_url);
+                        let title = if title.is_empty() { None } else { Some(title.into_string()) };
+                        blocks.push(BlockNode::Image { alt, title, source });
+                    }
+                    Some(first_event) => {
+                        let mut builder = InlineBuilder::new(DEFAULT_BODY_SIZE);
+                        if !matches!(&first_event, Event::End(tag) if *tag == TagEnd::Paragraph) {
+                            apply_inline_event(&mut builder, first_event);
+                            for event in parser.by_ref() {
+                                if matches!(&event, Event::End(tag) if *tag == TagEnd::Paragraph) {
+                                    break;
+                                }
+                                apply_inline_event(&mut builder, event);
+                            }
+                        }
+                        blocks.push(BlockNode::Paragraph { content: builder.runs });
+                    }
+                    None => blocks.push(BlockNode::Paragraph { content: Vec::new() }),
+                }
             }
             Event::Start(Tag::CodeBlock(kind)) => {
                 let language = match kind {
@@ -126,10 +171,81 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                 }
                 blocks.push(BlockNode::List { ordered, items });
             }
+            Event::Start(Tag::Table(alignment_spec)) => {
+                let alignments = alignment_spec
+                    .iter()
+                    .map(|a| match a {
+                        Alignment::Left => ColumnAlignment::Left,
+                        Alignment::Center => ColumnAlignment::Center,
+                        Alignment::Right => ColumnAlignment::Right,
+                        Alignment::None => ColumnAlignment::None,
+                    })
+                    .collect();
+
+                let mut headers = Vec::new();
+                let mut rows = Vec::new();
+
+                while let Some(event) = parser.next() {
+                    match event {
+                        Event::Start(Tag::TableHead) => {
+                            headers = collect_table_cells(parser, TagEnd::TableHead);
+                        }
+                        Event::Start(Tag::TableRow) => {
+                            let mut row = Vec::new();
+                            while let Some(event) = parser.next() {
+                                match event {
+                                    Event::Start(Tag::TableCell) => {
+                                        row.extend(lower_inline_events(parser, TagEnd::TableCell, DEFAULT_BODY_SIZE));
+                                    }
+                                    Event::End(TagEnd::TableRow) => break,
+                                    _ => {}
+                                }
+                            }
+                            rows.push(row);
+                        }
+                        Event::End(TagEnd::Table) => break,
+                        _ => {}
+                    }
+                }
+
+                blocks.push(BlockNode::Table { headers, rows, alignments });
+            }
             _ => {}
         }
     }
     blocks
+}
+
+fn collect_table_cells<'a, I: Iterator<Item = Event<'a>>>(
+    parser: &mut I,
+    end_tag: TagEnd,
+) -> Vec<InlineNode> {
+    let mut cells = Vec::new();
+    while let Some(event) = parser.next() {
+        match event {
+            Event::Start(Tag::TableCell) => {
+                cells.extend(lower_inline_events(parser, TagEnd::TableCell, DEFAULT_BODY_SIZE));
+            }
+            Event::End(tag) if tag == end_tag => break,
+            _ => {}
+        }
+    }
+    cells
+}
+
+fn collect_plain_text_until<'a, I: Iterator<Item = Event<'a>>>(
+    parser: &mut I,
+    end_tag: TagEnd,
+) -> String {
+    let mut text = String::new();
+    for event in parser.by_ref() {
+        match event {
+            Event::Text(t) => text.push_str(&t),
+            Event::End(tag) if tag == end_tag => break,
+            _ => {}
+        }
+    }
+    text
 }
 
 pub fn parse(markdown: &str) -> Vec<BlockNode> {

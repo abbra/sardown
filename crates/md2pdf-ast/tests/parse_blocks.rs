@@ -1,4 +1,4 @@
-use md2pdf_ast::{parse, BlockNode, HighlightedToken, InlineNode, LinkTarget};
+use md2pdf_ast::{parse, BlockNode, ColumnAlignment, HighlightedToken, ImageSource, InlineNode, LinkTarget};
 
 #[test]
 fn parses_heading_and_paragraph_with_inline_styles_and_link() {
@@ -74,5 +74,38 @@ fn parses_nested_unordered_list() {
             assert!(items[1].iter().any(|b| matches!(b, BlockNode::List { .. })));
         }
         other => panic!("expected List, got {other:?}"),
+    }
+}
+
+#[test]
+fn parses_table_with_alignment() {
+    let md = "| A | B |\n|:--|--:|\n| 1 | 2 |\n";
+    let blocks = parse(md);
+    match &blocks[0] {
+        BlockNode::Table { headers, rows, alignments } => {
+            assert_eq!(headers.iter().map(|n| n.text.clone()).collect::<Vec<_>>(), vec!["A", "B"]);
+            assert_eq!(rows.len(), 1);
+            assert_eq!(alignments, &vec![ColumnAlignment::Left, ColumnAlignment::Right]);
+        }
+        other => panic!("expected Table, got {other:?}"),
+    }
+}
+
+#[test]
+fn parses_external_and_relative_images() {
+    let md = "![alt text](https://example.com/pic.png)\n\n![local](./pic.png)\n";
+    let blocks = parse(md);
+    match &blocks[0] {
+        BlockNode::Image { alt, source, .. } => {
+            assert_eq!(alt, "alt text");
+            assert_eq!(source, &ImageSource::External("https://example.com/pic.png".to_string()));
+        }
+        other => panic!("expected Image, got {other:?}"),
+    }
+    match &blocks[1] {
+        BlockNode::Image { source, .. } => {
+            assert_eq!(source, &ImageSource::Embedded(std::path::PathBuf::from("./pic.png")));
+        }
+        other => panic!("expected Image, got {other:?}"),
     }
 }
