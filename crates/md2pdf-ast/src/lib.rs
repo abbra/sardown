@@ -23,7 +23,7 @@ pub enum BlockNode {
     ThematicBreak,
     MermaidDiagram { id: String, source: String },
     Image { alt: String, title: Option<String>, source: ImageSource },
-    Table { headers: Vec<InlineNode>, rows: Vec<Vec<InlineNode>>, alignments: Vec<ColumnAlignment> },
+    Table { headers: Vec<Vec<InlineNode>>, rows: Vec<Vec<Vec<InlineNode>>>, alignments: Vec<ColumnAlignment> },
     List { ordered: bool, items: Vec<Vec<BlockNode>> },
 }
 

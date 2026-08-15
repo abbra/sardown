@@ -75,10 +75,11 @@ fn place_inline_content(
     cursor: &mut Cursor,
     margin_pt: f32,
     indent_pt: f32,
+    max_width_pt: f32,
     content: &[md2pdf_ast::InlineNode],
     font_system: &mut FontSystem,
 ) {
-    let shaped = shape_rich_paragraph(font_system, content, cursor.content_width_pt - indent_pt);
+    let shaped = shape_rich_paragraph(font_system, content, max_width_pt);
     let mut iter = shaped.into_iter().peekable();
 
     let mut content_start_y = cursor.y;
@@ -137,6 +138,44 @@ fn place_inline_content(
     }
 }
 
+/// Shapes every cell in `row` (without placing anything) to find how tall the row will actually
+/// render, so a page-break decision can be made *before* any of its cells are drawn. Deciding
+/// per-cell instead (as rendering itself does) risks a page break landing between two cells of
+/// the same row: every cell rendered after that point would reset to a `row_top_y` that belongs
+/// to the wrong page, scattering the row's remaining cells across an unrelated part of the next
+/// page (they'd land whatever the row's cursor-y offset was on the far side of the break).
+fn measure_row_height(
+    row: &[Vec<md2pdf_ast::InlineNode>],
+    widths: &[f32],
+    cell_padding_pt: f32,
+    min_cell_wrap_width_pt: f32,
+    min_row_height: f32,
+    font_system: &mut FontSystem,
+) -> f32 {
+    let mut max_height = min_row_height;
+    for (cell, width) in row.iter().zip(widths) {
+        if cell.is_empty() {
+            continue;
+        }
+        let cell_max_width_pt = (*width - cell_padding_pt).max(min_cell_wrap_width_pt);
+        let shaped = shape_rich_paragraph(font_system, cell, cell_max_width_pt);
+        let mut ys: Vec<f32> = shaped
+            .iter()
+            .map(|r| match &r.element {
+                PositionedElement::TextRun { y, .. } => *y,
+                _ => unreachable!("shape_rich_paragraph only produces TextRun elements"),
+            })
+            .collect();
+        ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        ys.dedup_by(|a, b| (*a - *b).abs() < 0.01);
+        if let (Some(&first), Some(&last)) = (ys.first(), ys.last()) {
+            let size = cell[0].style.size;
+            max_height = max_height.max((last - first) + estimate_line_height(size));
+        }
+    }
+    max_height
+}
+
 fn render_block(
     block: &BlockNode,
     cursor: &mut Cursor,
@@ -154,14 +193,16 @@ fn render_block(
                 cursor.break_page(margin_pt);
             }
             let anchor_y = cursor.y;
-            place_inline_content(cursor, margin_pt, indent_pt, content, font_system);
+            let max_width_pt = cursor.content_width_pt - indent_pt;
+            place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, font_system);
             cursor.anchors.insert(
                 id.clone(),
                 AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: anchor_y },
             );
         }
         BlockNode::Paragraph { content } => {
-            place_inline_content(cursor, margin_pt, indent_pt, content, font_system);
+            let max_width_pt = cursor.content_width_pt - indent_pt;
+            place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, font_system);
         }
         BlockNode::Blockquote { content } => {
             let start_y = cursor.y;
@@ -210,62 +251,170 @@ fn render_block(
             // "fn " and "main" as separate syntect tokens) flow together on one visual line,
             // each keeping its own color; line breaks come from the embedded `\n` characters
             // syntect leaves at the end of each source line's tokens.
-            place_inline_content(cursor, margin_pt, indent_pt + 8.0, &combined, font_system);
+            let code_indent_pt = indent_pt + 8.0;
+            let max_width_pt = cursor.content_width_pt - code_indent_pt;
+            place_inline_content(cursor, margin_pt, code_indent_pt, max_width_pt, &combined, font_system);
             let end_y = cursor.y;
-            let background = PositionedElement::Path {
+            let end_page = cursor.page_number;
+            let content_width_pt = cursor.content_width_pt;
+            let page_height_pt = cursor.page_height_pt;
+
+            // `PositionedElement::TextRun::y` is a *baseline*, not a glyph top: `start_y`/
+            // `margin_pt` (a page's first line) mark where a line's baseline sits, so a
+            // background meant to enclose the glyphs needs to reach up above that baseline by
+            // roughly the font's ascent, not by a small fixed nudge — a flat 4pt pad left the
+            // tops of ascenders (e.g. "P", "T") poking out above the gray box. 0.8x the code
+            // font's size approximates typical sans-serif ascent; the bottom gets a smaller pad
+            // for descenders.
+            const CODE_FONT_SIZE_PT: f32 = 10.0;
+            const TOP_PAD_PT: f32 = CODE_FONT_SIZE_PT * 0.8;
+            // Must stay under LINE_SPACING_PT (the gap the layout loop inserts after every
+            // block) or the box bleeds into whatever follows the code block.
+            const BOTTOM_PAD_PT: f32 = 2.0;
+
+            let background_rect = |top_y: f32, bottom_y: f32| PositionedElement::Path {
                 points: vec![
-                    PathCommand::MoveTo(margin_pt + indent_pt, start_y - 4.0),
-                    PathCommand::LineTo(margin_pt + cursor.content_width_pt, start_y - 4.0),
-                    PathCommand::LineTo(margin_pt + cursor.content_width_pt, end_y),
-                    PathCommand::LineTo(margin_pt + indent_pt, end_y),
+                    PathCommand::MoveTo(margin_pt + indent_pt, top_y),
+                    PathCommand::LineTo(margin_pt + content_width_pt, top_y),
+                    PathCommand::LineTo(margin_pt + content_width_pt, bottom_y),
+                    PathCommand::LineTo(margin_pt + indent_pt, bottom_y),
                     PathCommand::Close,
                 ],
                 fill: Some(CODE_BLOCK_BG),
                 stroke: None,
             };
-            if cursor.page_number == start_page {
+
+            if end_page == start_page {
                 // Inserted before the text elements just placed (rather than pushed after): the
                 // PDF renderer paints elements in array order, so an opaque background pushed
                 // *after* its own text would paint over that text instead of sitting behind it.
-                cursor.current.insert(background_insert_at, background);
+                cursor
+                    .current
+                    .insert(background_insert_at, background_rect(start_y - TOP_PAD_PT, end_y + BOTTOM_PAD_PT));
             } else {
-                // `place_inline_content` broke to a new page mid-block, which reset
-                // `cursor.current` (via `break_page`'s `mem::take`) — `background_insert_at` no
-                // longer indexes into it. Falling back to a trailing push here at least avoids a
-                // panic; it re-admits the paint-over-text bug, but only for this rare
-                // page-spanning case, not the common single-page one.
-                cursor.current.push(background);
+                // `place_inline_content` broke to one or more new pages mid-block: `start_y`/
+                // `end_y` are local to different pages' coordinate systems, so one rectangle
+                // spanning them would be meaningless (previously this drew a stray band on the
+                // continuation page at whatever y start_y happened to be, unrelated to any of the
+                // block's actual text). Draw one rectangle per page the block touches instead:
+                // start page from its own top down to the page's bottom margin, any fully-spanned
+                // middle pages the whole content height, and the final page from the top margin
+                // down to end_y. Every page's first line restarts at that page's own margin with
+                // the same baseline-vs-top-pad correction as the block's very first line.
+                cursor
+                    .pages[start_page]
+                    .elements
+                    .insert(background_insert_at, background_rect(start_y - TOP_PAD_PT, page_height_pt));
+                for page in (start_page + 1)..end_page {
+                    cursor.pages[page].elements.insert(0, background_rect(margin_pt - TOP_PAD_PT, page_height_pt));
+                }
+                cursor.current.insert(0, background_rect(margin_pt - TOP_PAD_PT, end_y + BOTTOM_PAD_PT));
             }
         }
         BlockNode::Table { headers, rows, .. } => {
             let widths = crate::table::column_widths(headers, rows, cursor.content_width_pt - indent_pt, font_system);
-            let top_y = cursor.y;
-            let row_height = 20.0;
+            // Floor, not a fixed height: a row must be as tall as its tallest cell.
+            // Real-world tables routinely have cells whose text wraps to multiple lines
+            // (e.g. a "Description" column), which used to overflow this constant and
+            // overlap the next row entirely.
+            const MIN_ROW_HEIGHT: f32 = 20.0;
+            const CELL_PADDING_PT: f32 = 8.0;
+            const MIN_CELL_WRAP_WIDTH_PT: f32 = 10.0;
+            // `PositionedElement::TextRun::y` is a baseline, and `cursor.y` after placing a row
+            // is the *next* row's baseline -- not a safe boundary to draw a grid line on. Used
+            // as-is, the header separator line landed exactly on row 1's baseline, cutting
+            // through the middle of its text instead of sitting in the empty gap between rows.
+            // `md2pdf-ast::parse` gives all table content the same fixed size (its
+            // `DEFAULT_BODY_SIZE`), so a single constant (rather than inspecting each cell's
+            // style) is enough here, matching the code block background's approach.
+            const TABLE_TEXT_SIZE_PT: f32 = 12.0;
+            const TABLE_TOP_PAD_PT: f32 = TABLE_TEXT_SIZE_PT * 0.8; // clears the first row's ascender
+            const TABLE_ROW_GAP_ADJUST_PT: f32 = TABLE_TEXT_SIZE_PT + 2.0; // baseline -> mid-gap-below-descender
 
+            // A row is never split mid-cell across a page break: each row's height is measured
+            // up front, and if it won't fit, the whole table breaks to a new page *before* any
+            // of that row's cells are drawn. Placing cells one at a time and letting
+            // `place_inline_content`'s own per-line break fire mid-row (the previous behavior)
+            // corrupted every cell rendered after the break, since each resets to a `row_top_y`
+            // belonging to the page the row started on.
+            let header_height =
+                measure_row_height(headers, &widths, CELL_PADDING_PT, MIN_CELL_WRAP_WIDTH_PT, MIN_ROW_HEIGHT, font_system);
+            if cursor.remaining_height() < header_height && !cursor.current.is_empty() {
+                cursor.break_page(margin_pt);
+            }
+
+            let table_top_y = cursor.y;
             let mut col_x = margin_pt + indent_pt;
+            let mut header_bottom_y = table_top_y + MIN_ROW_HEIGHT;
             for (header, width) in headers.iter().zip(&widths) {
                 // Reset before each cell: `place_inline_content` advances `cursor.y` as it lays
                 // out lines, so without this reset every cell after the first in a row would
                 // start below where the previous cell's text left off instead of at the row's top.
-                cursor.y = top_y;
-                place_inline_content(cursor, margin_pt, col_x - margin_pt, std::slice::from_ref(header), font_system);
+                cursor.y = table_top_y;
+                // Capped at this column's own width (minus a little breathing room before the
+                // grid line), not the page's remaining width: `place_inline_content`'s width
+                // parameter is normally "wrap at the right margin," which is wrong for a cell —
+                // it let long text bleed across into the next column's space instead of wrapping.
+                let cell_max_width_pt = (width - CELL_PADDING_PT).max(MIN_CELL_WRAP_WIDTH_PT);
+                place_inline_content(cursor, margin_pt, col_x - margin_pt, cell_max_width_pt, header, font_system);
+                header_bottom_y = header_bottom_y.max(cursor.y);
                 col_x += width;
             }
-            cursor.y = top_y + row_height;
-            let header_bottom_y = cursor.y;
+            cursor.y = header_bottom_y;
+
+            // A table can still span multiple pages (rows just never split mid-row), so grid
+            // lines are tracked and drawn one page segment at a time instead of as one path
+            // spanning coordinates from unrelated pages -- the same category of bug the code
+            // block background had. `header_bottom_y` is `Some` only for the segment that
+            // actually contains the header row.
+            struct Segment {
+                page: usize,
+                top_y: f32,
+                bottom_y: f32,
+                header_bottom_y: Option<f32>,
+            }
+            let mut segments = vec![Segment {
+                page: cursor.page_number,
+                top_y: table_top_y - TABLE_TOP_PAD_PT,
+                bottom_y: header_bottom_y - TABLE_ROW_GAP_ADJUST_PT,
+                header_bottom_y: Some(header_bottom_y - TABLE_ROW_GAP_ADJUST_PT),
+            }];
 
             for row in rows {
+                let row_height =
+                    measure_row_height(row, &widths, CELL_PADDING_PT, MIN_CELL_WRAP_WIDTH_PT, MIN_ROW_HEIGHT, font_system);
+                if cursor.remaining_height() < row_height && !cursor.current.is_empty() {
+                    cursor.break_page(margin_pt);
+                    segments.push(Segment {
+                        page: cursor.page_number,
+                        top_y: cursor.y - TABLE_TOP_PAD_PT,
+                        bottom_y: cursor.y,
+                        header_bottom_y: None,
+                    });
+                }
+
                 let row_top_y = cursor.y;
                 let mut col_x = margin_pt + indent_pt;
+                let mut row_bottom_y = row_top_y + MIN_ROW_HEIGHT;
                 for (cell, width) in row.iter().zip(&widths) {
                     cursor.y = row_top_y;
-                    place_inline_content(cursor, margin_pt, col_x - margin_pt, std::slice::from_ref(cell), font_system);
+                    let cell_max_width_pt = (width - CELL_PADDING_PT).max(MIN_CELL_WRAP_WIDTH_PT);
+                    place_inline_content(cursor, margin_pt, col_x - margin_pt, cell_max_width_pt, cell, font_system);
+                    row_bottom_y = row_bottom_y.max(cursor.y);
                     col_x += width;
                 }
-                cursor.y = row_top_y + row_height;
+                cursor.y = row_bottom_y;
+                segments.last_mut().unwrap().bottom_y = row_bottom_y - TABLE_ROW_GAP_ADJUST_PT;
             }
 
-            cursor.current.push(crate::table::grid_path(margin_pt + indent_pt, top_y, cursor.y, header_bottom_y, &widths));
+            for segment in segments {
+                let path = crate::table::grid_path(margin_pt + indent_pt, segment.top_y, segment.bottom_y, segment.header_bottom_y, &widths);
+                if segment.page == cursor.page_number {
+                    cursor.current.push(path);
+                } else {
+                    cursor.pages[segment.page].elements.push(path);
+                }
+            }
         }
         BlockNode::Image { source: md2pdf_ast::ImageSource::Embedded(path), .. } => {
             let key = path.to_string_lossy().to_string();

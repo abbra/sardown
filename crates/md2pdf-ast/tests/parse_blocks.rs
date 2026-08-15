@@ -83,9 +83,30 @@ fn parses_table_with_alignment() {
     let blocks = parse(md);
     match &blocks[0] {
         BlockNode::Table { headers, rows, alignments } => {
-            assert_eq!(headers.iter().map(|n| n.text.clone()).collect::<Vec<_>>(), vec!["A", "B"]);
+            assert_eq!(headers.iter().map(|cell| cell[0].text.clone()).collect::<Vec<_>>(), vec!["A", "B"]);
             assert_eq!(rows.len(), 1);
             assert_eq!(alignments, &vec![ColumnAlignment::Left, ColumnAlignment::Right]);
+        }
+        other => panic!("expected Table, got {other:?}"),
+    }
+}
+
+#[test]
+fn table_cell_with_mixed_inline_styling_keeps_all_its_text_in_one_cell() {
+    // Regression test: a cell mixing plain text with a styled span (here, inline code) produces
+    // more than one InlineNode. Flattening those into the row's flat list (instead of keeping
+    // them grouped per cell) shifted every later cell in the row into the wrong column and
+    // silently dropped whatever came after the last cell once `zip` ran out of columns.
+    let md = "| Layer | Bytes |\n|---|---|\n| Outer `SignedData` headers plus a signature | ~555 B |\n";
+    let blocks = parse(md);
+    match &blocks[0] {
+        BlockNode::Table { rows, .. } => {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].len(), 2, "expected exactly 2 cells in the row, got {}", rows[0].len());
+            let cell0_text: String = rows[0][0].iter().map(|n| n.text.as_str()).collect();
+            assert_eq!(cell0_text, "Outer SignedData headers plus a signature");
+            let cell1_text: String = rows[0][1].iter().map(|n| n.text.as_str()).collect();
+            assert_eq!(cell1_text, "~555 B");
         }
         other => panic!("expected Table, got {other:?}"),
     }

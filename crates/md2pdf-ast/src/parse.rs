@@ -199,7 +199,13 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                             while let Some(event) = parser.next() {
                                 match event {
                                     Event::Start(Tag::TableCell) => {
-                                        row.extend(lower_inline_events(parser, TagEnd::TableCell, DEFAULT_BODY_SIZE));
+                                        // One `Vec<InlineNode>` per cell, not flattened into the
+                                        // row: a cell mixing plain text with a styled span (e.g.
+                                        // inline code) produces more than one InlineNode, and
+                                        // flattening lost the cell boundary — corrupting which
+                                        // column every following run in the row landed in and
+                                        // silently truncating whatever came after via `zip`.
+                                        row.push(lower_inline_events(parser, TagEnd::TableCell, DEFAULT_BODY_SIZE));
                                     }
                                     Event::End(TagEnd::TableRow) => break,
                                     _ => {}
@@ -223,12 +229,12 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
 fn collect_table_cells<'a, I: Iterator<Item = Event<'a>>>(
     parser: &mut I,
     end_tag: TagEnd,
-) -> Vec<InlineNode> {
+) -> Vec<Vec<InlineNode>> {
     let mut cells = Vec::new();
     while let Some(event) = parser.next() {
         match event {
             Event::Start(Tag::TableCell) => {
-                cells.extend(lower_inline_events(parser, TagEnd::TableCell, DEFAULT_BODY_SIZE));
+                cells.push(lower_inline_events(parser, TagEnd::TableCell, DEFAULT_BODY_SIZE));
             }
             Event::End(tag) if tag == end_tag => break,
             _ => {}

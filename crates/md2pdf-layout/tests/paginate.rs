@@ -112,6 +112,239 @@ fn code_block_produces_a_background_path_and_highlighted_text_runs() {
     assert!(colored_runs.contains(&[255, 0, 0]) && colored_runs.contains(&[0, 0, 255]));
 }
 
+fn path_y_bounds(points: &[md2pdf_layout::PathCommand]) -> (f32, f32) {
+    let ys: Vec<f32> = points
+        .iter()
+        .filter_map(|p| match *p {
+            md2pdf_layout::PathCommand::MoveTo(_, y) | md2pdf_layout::PathCommand::LineTo(_, y) => Some(y),
+            _ => None,
+        })
+        .collect();
+    (ys.iter().cloned().fold(f32::MAX, f32::min), ys.iter().cloned().fold(f32::MIN, f32::max))
+}
+
+#[test]
+fn code_block_background_fully_encloses_the_first_lines_ascender() {
+    // `TextRun::y` is a baseline, not a glyph top, so a background sized as `baseline_y..end_y`
+    // (a small flat pad instead of one accounting for ascent) leaves the tops of ascenders (e.g.
+    // "T", "P") poking out above the box — this pins the padding so it can't regress back to that.
+    let ast = vec![BlockNode::CodeBlock { language: None, tokens: vec![HighlightedToken { text: "Test\n".to_string(), color: [0, 0, 0] }] }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+
+    let first_line_baseline_y = pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { y, .. } => Some(*y),
+            _ => None,
+        })
+        .expect("expected at least one text run");
+    let (bg_top, _) = pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::Path { points, fill: Some(_), .. } => Some(path_y_bounds(points)),
+            _ => None,
+        })
+        .expect("expected a background path");
+
+    assert!(
+        first_line_baseline_y - bg_top >= 6.0,
+        "background top ({bg_top}) is not far enough above the first line's baseline ({first_line_baseline_y}) \
+         to cover its ascender"
+    );
+}
+
+#[test]
+fn code_block_spanning_pages_draws_a_background_on_each_page_it_touches() {
+    // Enough lines that the block cannot fit on one page, forcing `place_inline_content` to
+    // break mid-block. Regression test for a bug where the background rectangle used `start_y`
+    // from the first page and `end_y` from the last page in one rect, drawing a stray band on
+    // the continuation page unrelated to any of the block's actual text.
+    let long_code: String = (0..80).map(|i| format!("line {i}\n")).collect();
+    let ast = vec![BlockNode::CodeBlock { language: None, tokens: vec![HighlightedToken { text: long_code, color: [0, 0, 0] }] }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+    assert!(pages.len() >= 2, "expected the code block to span at least 2 pages, got {}", pages.len());
+
+    for page in &pages {
+        let backgrounds: Vec<_> = page
+            .elements
+            .iter()
+            .filter_map(|e| match e {
+                PositionedElement::Path { points, fill: Some(_), .. } => Some(path_y_bounds(points)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(backgrounds.len(), 1, "expected exactly one code-block background on each page it touches");
+
+        let text_ys: Vec<f32> = page
+            .elements
+            .iter()
+            .filter_map(|e| match e {
+                PositionedElement::TextRun { y, .. } => Some(*y),
+                _ => None,
+            })
+            .collect();
+        assert!(!text_ys.is_empty(), "expected text runs on every page the code block touches");
+        let min_text_y = text_ys.iter().cloned().fold(f32::MAX, f32::min);
+        let max_text_y = text_ys.iter().cloned().fold(f32::MIN, f32::max);
+        let (bg_top, bg_bottom) = backgrounds[0];
+
+        // The background must bracket THIS page's own text, not a stale range left over from a
+        // different page (the bug this test guards against).
+        assert!(bg_top <= min_text_y, "background top ({bg_top}) does not cover this page's topmost text ({min_text_y})");
+        assert!(bg_bottom >= max_text_y - 1.0, "background bottom ({bg_bottom}) does not cover this page's bottommost text ({max_text_y})");
+    }
+}
+
+use md2pdf_ast::ColumnAlignment;
+
+fn cell(text: &str) -> Vec<InlineNode> {
+    vec![plain_inline(text)]
+}
+
+#[test]
+fn table_row_grows_to_fit_a_wrapped_multiline_cell() {
+    // Regression test: row height used to be a fixed 20pt regardless of content, so a cell whose
+    // text wrapped to multiple lines (common with real-world "Description"-style columns)
+    // overlapped the row below it instead of pushing it down.
+    // Column A's own content is a single short word in every row: against a hugely disparate
+    // column B (one long, wrapping cell), `column_widths`'s proportional distribution squeezes
+    // column A down toward its floor width — multi-word column-A content (even "Column Alpha")
+    // could itself wrap there, which is correct behavior for cosmic-text (`LayoutRun::text` is
+    // documented as the pre-wrap source line, so a wrapped multi-word cell legitimately produces
+    // more than one line) but is a separate concern from what this test isolates: single-word
+    // cells never wrap regardless of how narrow the floor width gets.
+    let headers = vec![cell("A"), cell("Col B")];
+    let rows = vec![
+        vec![
+            cell("x"),
+            // Long enough to wrap onto at least 5 lines: 2 lines' worth of intra-cell spacing
+            // (16.8pt each) alone would exceed the old fixed 20pt row height, so this reliably
+            // reproduces the original overlap bug if the row-height fix regresses.
+            cell(&"a very long word ".repeat(12)),
+        ],
+        vec![cell("x"), cell("y")],
+    ];
+    let ast = vec![BlockNode::Table { headers, rows, alignments: vec![ColumnAlignment::None; 2] }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+
+    let mut text_ys: Vec<f32> = pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            PositionedElement::TextRun { y, .. } => Some(*y),
+            _ => None,
+        })
+        .collect();
+    text_ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    text_ys.dedup_by(|a, b| (*a - *b).abs() < 0.01);
+    // header line + several wrapped lines for row 1 + one line for row 2: definitely more than
+    // the 3 lines a fixed-20pt-row layout would have produced.
+    assert!(text_ys.len() > 3, "expected multiple distinct line positions from wrapping, got {}", text_ys.len());
+
+    // Gaps are NOT expected to be uniform: cosmic-text spaces wrapped continuation lines within
+    // one `place_inline_content` call using its own tighter internal line-height (`size * 1.4`),
+    // while separate calls (row-to-row, header-to-row) are spaced using this crate's own
+    // `estimate_line_height` (`size * 1.4 + LINE_SPACING_PT`, larger). What actually matters —
+    // and what the fixed-20pt-row bug broke — is that every line strictly follows the previous
+    // one; a bug that let row 2 start inside row 1's wrapped content would show up as a
+    // zero-or-negative gap here.
+    let gaps: Vec<f32> = text_ys.windows(2).map(|w| w[1] - w[0]).collect();
+    assert!(gaps.iter().all(|&g| g > 0.0), "expected every line to be strictly below the previous one, gaps: {gaps:?}");
+}
+
+#[test]
+fn table_cell_wraps_within_its_own_column_not_the_remaining_page_width() {
+    // Regression test: cell wrapping used to be capped at "remaining width to the right margin"
+    // instead of the cell's own column width, letting long text in one column visually run into
+    // the next column's space before ever wrapping.
+    let headers = vec![cell("A"), cell("B")];
+    let rows = vec![vec![cell("x"), cell("a very long cell value that must wrap across several lines given a narrow column width")]];
+    let ast = vec![BlockNode::Table { headers, rows, alignments: vec![ColumnAlignment::None; 2] }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+
+    let text_runs: Vec<_> = pages[0].elements.iter().filter(|e| matches!(e, PositionedElement::TextRun { .. })).collect();
+    let wrapped_lines_for_long_cell = text_runs.iter().filter(|e| matches!(e, PositionedElement::TextRun { y, .. } if *y > 20.0)).count();
+    assert!(wrapped_lines_for_long_cell > 1, "expected the long cell's text to wrap onto multiple lines within its own column");
+}
+
+#[test]
+fn table_row_never_splits_across_a_page_break() {
+    // Regression test: tables used to have no page-break awareness at all, so a row starting
+    // near the bottom of a page could have some of its cells land on the next page while others
+    // stayed behind -- each cell resets to a `row_top_y` captured on whichever page it happened
+    // to render on, scattering the row's remaining cells across an unrelated part of the wrong
+    // page instead of keeping the whole row together.
+    let headers = vec![cell("A"), cell("B")];
+    let rows: Vec<Vec<Vec<InlineNode>>> = (0..40).map(|i| vec![cell(&format!("row{i}-left")), cell(&format!("row{i}-right"))]).collect();
+    let ast = vec![BlockNode::Table { headers, rows, alignments: vec![ColumnAlignment::None; 2] }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+    assert!(pages.len() >= 2, "expected the table to span at least 2 pages, got {}", pages.len());
+
+    for i in 0..40 {
+        let left_marker = format!("row{i}-left");
+        let right_marker = format!("row{i}-right");
+        let page_of = |marker: &str| {
+            pages
+                .iter()
+                .position(|page| page.elements.iter().any(|e| matches!(e, PositionedElement::TextRun { text, .. } if text == marker)))
+                .unwrap_or_else(|| panic!("marker {marker:?} not found on any page"))
+        };
+        assert_eq!(page_of(&left_marker), page_of(&right_marker), "row {i}'s two cells landed on different pages");
+    }
+}
+
+#[test]
+fn table_header_separator_line_sits_between_rows_not_through_row_ones_text() {
+    // Regression test: the header/row-1 separator line used to be positioned at row 1's own
+    // baseline (`cursor.y` after placing a row is the *next* row's baseline, not a safe gap
+    // boundary), drawing it straight through the middle of row 1's text instead of in the empty
+    // gap between the header and row 1.
+    let headers = vec![cell("Layer"), cell("Bytes")];
+    let rows = vec![vec![cell("Outer SignedData"), cell("~555 B")]];
+    let ast = vec![BlockNode::Table { headers, rows, alignments: vec![ColumnAlignment::None; 2] }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+
+    let row1_baseline_y = pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { text, y, .. } if text == "Outer SignedData" => Some(*y),
+            _ => None,
+        })
+        .expect("expected row 1's text run");
+
+    // Approximate row 1's visual glyph extent as [baseline - ascent, baseline + descent].
+    let row1_top = row1_baseline_y - 12.0 * 0.8;
+    let row1_bottom = row1_baseline_y + 12.0 * 0.2;
+
+    let grid = pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::Path { points, fill: None, .. } => Some(points),
+            _ => None,
+        })
+        .expect("expected a grid Path");
+
+    // A horizontal segment is a MoveTo/LineTo pair sharing the same y; none should fall inside
+    // row 1's visual text extent.
+    for window in grid.windows(2) {
+        if let (md2pdf_layout::PathCommand::MoveTo(_, y1), md2pdf_layout::PathCommand::LineTo(_, y2)) = (&window[0], &window[1]) {
+            if (y1 - y2).abs() < 0.01 {
+                assert!(*y1 < row1_top || *y1 > row1_bottom, "a horizontal grid line at y={y1} falls inside row 1's text extent [{row1_top}, {row1_bottom}]");
+            }
+        }
+    }
+}
+
 use md2pdf_enrich::{CompiledDiagram, DiagramTable};
 
 #[test]

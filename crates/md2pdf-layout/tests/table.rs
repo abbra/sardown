@@ -8,8 +8,8 @@ fn test_font_system() -> FontSystem {
     FontSystem::new_with_locale_and_db("en-US".to_string(), db)
 }
 
-fn cell(text: &str) -> InlineNode {
-    InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size: 12.0, color: [0, 0, 0] }, link_target: None }
+fn cell(text: &str) -> Vec<InlineNode> {
+    vec![InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size: 12.0, color: [0, 0, 0] }, link_target: None }]
 }
 
 #[test]
