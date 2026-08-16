@@ -74,3 +74,22 @@ fn loading_a_nonexistent_file_is_an_error() {
     let _ = std::fs::remove_file(&path);
     assert!(Stylesheet::load(&path).is_err());
 }
+
+#[test]
+fn rejects_an_unknown_header_placeholder() {
+    let path = write_temp_toml("[header]\nenabled = true\n[header.uniform]\nleft = \"{bogus}\"\n");
+    let err = Stylesheet::load(&path).unwrap_err();
+    assert!(format!("{err:?}").contains("bogus"), "expected the bad placeholder name in the error, got: {err:?}");
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn accepts_a_valid_header_and_footer_configuration() {
+    let toml_text = "[header]\nenabled = true\n[header.uniform]\ncenter = \"{h1}\"\n\n[footer]\nenabled = true\n[footer.uniform]\ncenter = \"Page {page} of {total_pages}\"\n";
+    let path = write_temp_toml(toml_text);
+    let sheet = Stylesheet::load(&path).unwrap();
+    assert!(sheet.header.enabled);
+    assert_eq!(sheet.header.uniform.center, "{h1}");
+    assert!(sheet.footer.enabled);
+    std::fs::remove_file(&path).unwrap();
+}

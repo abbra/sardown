@@ -60,7 +60,10 @@ impl Stylesheet {
         match (self.page.width_mm, self.page.height_mm) {
             (Some(_), None) => anyhow::bail!("[page] sets width_mm but not height_mm -- set both or neither"),
             (None, Some(_)) => anyhow::bail!("[page] sets height_mm but not width_mm -- set both or neither"),
-            _ => Ok(()),
+            _ => {}
         }
+        self.header.validate("header")?;
+        self.footer.validate("footer")?;
+        Ok(())
     }
 }

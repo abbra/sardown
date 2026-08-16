@@ -71,3 +71,32 @@ fn deserializes_odd_and_even_zone_content_for_two_sided_mode() {
     assert_eq!(style.odd.left, "{h1}");
     assert_eq!(style.even.left, "Page {page}");
 }
+
+#[test]
+fn validate_accepts_a_style_with_only_known_placeholders() {
+    let toml_text = "enabled = true\n[uniform]\nleft = \"{h1}\"\ncenter = \"static text\"\nright = \"Page {page} of {total_pages}\"\n";
+    let style: HeaderFooterStyle = toml::from_str(toml_text).unwrap();
+    assert!(style.validate("header").is_ok());
+}
+
+#[test]
+fn validate_rejects_an_unknown_placeholder() {
+    let toml_text = "enabled = true\n[uniform]\nleft = \"{bogus}\"\n";
+    let style: HeaderFooterStyle = toml::from_str(toml_text).unwrap();
+    let err = style.validate("header").unwrap_err();
+    assert!(format!("{err:?}").contains("bogus"), "expected the bad placeholder name in the error, got: {err:?}");
+}
+
+#[test]
+fn validate_rejects_an_unterminated_brace() {
+    let toml_text = "enabled = true\n[uniform]\nleft = \"{h1\"\n";
+    let style: HeaderFooterStyle = toml::from_str(toml_text).unwrap();
+    assert!(style.validate("header").is_err());
+}
+
+#[test]
+fn validate_checks_odd_and_even_zones_too() {
+    let toml_text = "enabled = true\nmode = \"two_sided\"\n[even]\nright = \"{nonsense}\"\n";
+    let style: HeaderFooterStyle = toml::from_str(toml_text).unwrap();
+    assert!(style.validate("footer").is_err());
+}

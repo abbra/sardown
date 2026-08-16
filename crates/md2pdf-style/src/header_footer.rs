@@ -45,3 +45,37 @@ impl Default for HeaderFooterStyle {
         }
     }
 }
+
+const VALID_PLACEHOLDERS: [&str; 4] = ["h1", "h2", "page", "total_pages"];
+
+/// Checks every `{...}` token in `template` against `VALID_PLACEHOLDERS`, so a typo'd placeholder
+/// name is a load-time error naming the bad token rather than silently rendering as literal text
+/// (or an unterminated `{` silently swallowing the rest of the template) at render time.
+fn validate_template(template: &str, field_name: &str) -> anyhow::Result<()> {
+    let mut rest = template;
+    while let Some(start) = rest.find('{') {
+        let after_open = &rest[start + 1..];
+        let Some(end) = after_open.find('}') else {
+            anyhow::bail!("{field_name} has an unterminated '{{' in template {template:?}");
+        };
+        let name = &after_open[..end];
+        if !VALID_PLACEHOLDERS.contains(&name) {
+            anyhow::bail!(
+                "{field_name} uses unknown placeholder {{{name}}} in template {template:?} -- valid placeholders are {{h1}}, {{h2}}, {{page}}, {{total_pages}}"
+            );
+        }
+        rest = &after_open[end + 1..];
+    }
+    Ok(())
+}
+
+impl HeaderFooterStyle {
+    pub fn validate(&self, section_name: &str) -> anyhow::Result<()> {
+        for (zone_set_name, zones) in [("uniform", &self.uniform), ("odd", &self.odd), ("even", &self.even)] {
+            validate_template(&zones.left, &format!("[{section_name}.{zone_set_name}] left"))?;
+            validate_template(&zones.center, &format!("[{section_name}.{zone_set_name}] center"))?;
+            validate_template(&zones.right, &format!("[{section_name}.{zone_set_name}] right"))?;
+        }
+        Ok(())
+    }
+}
