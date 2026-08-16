@@ -63,3 +63,10 @@ fn a_toml_document_touching_one_section_leaves_every_other_section_default() {
     assert_eq!(sheet.typography.body_size_pt, 12.0);
     assert_eq!(sheet.code_block.syntax_theme, "InspiredGitHub");
 }
+
+#[test]
+fn stylesheet_default_has_header_and_footer_disabled() {
+    let sheet = Stylesheet::default();
+    assert!(!sheet.header.enabled);
+    assert!(!sheet.footer.enabled);
+}

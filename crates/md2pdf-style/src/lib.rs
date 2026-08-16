@@ -12,7 +12,7 @@ mod typography;
 
 pub use code_block::{CodeBlockDefaultStyle, CodeBlockStyle, CodeLanguageStyle, LabelStyle, ResolvedCodeBlockStyle};
 pub use color::Color;
-pub use header_footer::{HeaderFooterMode, HeaderZones};
+pub use header_footer::{HeaderFooterMode, HeaderFooterStyle, HeaderZones};
 pub use heading::{HeadingLevelStyle, HeadingStyle, ResolvedHeadingStyle};
 pub use numbering::{NumberingFormat, PageNumbering};
 pub use page::{PageFormat, PageStyle};
@@ -31,6 +31,8 @@ pub struct Stylesheet {
     pub list: ListStyle,
     pub table: TableStyle,
     pub code_block: CodeBlockStyle,
+    pub header: HeaderFooterStyle,
+    pub footer: HeaderFooterStyle,
 }
 
 impl Stylesheet {

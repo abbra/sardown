@@ -1,4 +1,4 @@
-use md2pdf_style::{HeaderFooterMode, HeaderZones};
+use md2pdf_style::{Color, HeaderFooterMode, HeaderFooterStyle, HeaderZones};
 
 #[test]
 fn default_header_zones_are_all_empty() {
@@ -29,4 +29,45 @@ fn header_zones_deserializes_from_a_partial_toml_table() {
     assert_eq!(zones.left, "");
     assert_eq!(zones.center, "{h1}");
     assert_eq!(zones.right, "");
+}
+
+#[test]
+fn default_header_footer_style_is_disabled_with_sensible_defaults() {
+    let style = HeaderFooterStyle::default();
+    assert!(!style.enabled);
+    assert_eq!(style.font_family, "sans-serif");
+    assert_eq!(style.font_size_pt, 9.0);
+    assert_eq!(style.color, Color([102, 102, 102]));
+    assert_eq!(style.mode, HeaderFooterMode::Uniform);
+    assert!(style.suppress_on_chapter_start);
+    assert_eq!(style.uniform.center, "");
+    assert_eq!(style.odd.center, "");
+    assert_eq!(style.even.center, "");
+}
+
+#[test]
+fn a_partial_toml_overrides_only_the_fields_it_sets() {
+    let style: HeaderFooterStyle = toml::from_str("enabled = true\nfont_size_pt = 10.0").unwrap();
+    assert!(style.enabled);
+    assert_eq!(style.font_size_pt, 10.0);
+    assert_eq!(style.font_family, "sans-serif");
+    assert_eq!(style.color, Color([102, 102, 102]));
+}
+
+#[test]
+fn deserializes_uniform_zone_content() {
+    let toml_text = "enabled = true\n[uniform]\nleft = \"{h1}\"\nright = \"Page {page}\"\n";
+    let style: HeaderFooterStyle = toml::from_str(toml_text).unwrap();
+    assert_eq!(style.uniform.left, "{h1}");
+    assert_eq!(style.uniform.right, "Page {page}");
+    assert_eq!(style.uniform.center, "");
+}
+
+#[test]
+fn deserializes_odd_and_even_zone_content_for_two_sided_mode() {
+    let toml_text = "enabled = true\nmode = \"two_sided\"\n[odd]\nleft = \"{h1}\"\n[even]\nleft = \"Page {page}\"\n";
+    let style: HeaderFooterStyle = toml::from_str(toml_text).unwrap();
+    assert_eq!(style.mode, HeaderFooterMode::TwoSided);
+    assert_eq!(style.odd.left, "{h1}");
+    assert_eq!(style.even.left, "Page {page}");
 }
