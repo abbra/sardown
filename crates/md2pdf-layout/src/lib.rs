@@ -5,7 +5,7 @@ mod shape;
 mod table;
 pub use header_footer::{format_page_number, layout_with_header_footer, render_headers_footers, resolve_template};
 pub use image::{decode_images, DecodedImage, ImageTable};
-pub use paginate::{layout, LayoutOutput};
+pub use paginate::{layout, layout_impl, LayoutOutput};
 pub use shape::{shape_paragraph, shape_rich_paragraph, ShapedRun};
 
 #[doc(hidden)]

@@ -176,10 +176,6 @@ fn two_sided_mode_uses_even_zones_on_the_second_physical_page() {
     assert!(text_of(&pages[1]).contains(&"EVEN".to_string()));
 }
 
-fn letter_geometry() -> PageGeometry {
-    geometry()
-}
-
 fn fixtures_dir() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
@@ -206,7 +202,7 @@ fn layout_with_header_footer_renders_end_to_end_across_a_forced_page_break() {
                                                     // observable from the header's suppression
     sheet.footer.uniform.center = "Page {page} of {total_pages}".to_string();
     let mut fs = test_font_system();
-    let output = layout_with_header_footer(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &sheet);
+    let output = layout_with_header_footer(&ast, &mut fs, &fixtures_dir(), &DiagramTable::new(), &sheet);
 
     assert_eq!(output.pages.len(), 2);
     // Both pages open with their own chapter's H1, so the header (suppressed on chapter openers

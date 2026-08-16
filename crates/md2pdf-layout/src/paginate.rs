@@ -11,10 +11,6 @@ const LINE_SPACING_PT: f32 = 4.0; // gap after each block
 const BLOCKQUOTE_INDENT_PT: f32 = 18.0;
 const LIST_INDENT_PT: f32 = 18.0;
 const CODE_BLOCK_BG: [u8; 3] = [245, 245, 245];
-// A heading needs more visual separation from whatever precedes it (a different, already-
-// finished section) than from its own following content, or it reads as the tail of the wrong
-// section. Scales with the heading's own size so bigger headings get proportionally more room.
-const SPACE_BEFORE_HEADING_FACTOR: f32 = 0.8;
 
 struct Cursor {
     y: f32,
@@ -28,10 +24,11 @@ struct Cursor {
     current_h2: Option<String>,
     chapter_opener_pending: bool,
     page_contexts: Vec<PageContext>,
+    space_before_factor: f32,
 }
 
 impl Cursor {
-    fn new(geometry: &PageGeometry) -> Self {
+    fn new(geometry: &PageGeometry, space_before_factor: f32) -> Self {
         let margin_pt = geometry.margin_mm * PT_PER_MM;
         Self {
             y: margin_pt,
@@ -45,6 +42,7 @@ impl Cursor {
             current_h2: None,
             chapter_opener_pending: false,
             page_contexts: Vec::new(),
+            space_before_factor,
         }
     }
 
@@ -231,7 +229,7 @@ fn render_block(
             // Skipped at the very top of a page/column, where extra leading whitespace isn't
             // wanted (e.g. a chapter's own title heading right after its PageBreak).
             if !cursor.current.is_empty() {
-                cursor.y += heading_size * SPACE_BEFORE_HEADING_FACTOR;
+                cursor.y += heading_size * cursor.space_before_factor;
             }
             let heading_h = estimate_line_height(heading_size);
             if cursor.remaining_height() < heading_h && !cursor.current.is_empty() {
@@ -597,9 +595,24 @@ pub fn layout(
     base_dir: &std::path::Path,
     diagrams: &DiagramTable,
 ) -> LayoutOutput {
+    layout_impl(ast, geometry, font_system, base_dir, diagrams, 0.8)
+}
+
+/// The real implementation behind `layout()`. Takes `space_before_factor` explicitly instead of
+/// a hardcoded constant so `layout_with_header_footer` can thread a real stylesheet's value
+/// through, while `layout()` itself keeps its exact original signature and default behavior for
+/// every existing caller.
+pub fn layout_impl(
+    ast: &[BlockNode],
+    geometry: &PageGeometry,
+    font_system: &mut FontSystem,
+    base_dir: &std::path::Path,
+    diagrams: &DiagramTable,
+    space_before_factor: f32,
+) -> LayoutOutput {
     let images = crate::image::decode_images(ast, base_dir);
     let margin_pt = geometry.margin_mm * PT_PER_MM;
-    let mut cursor = Cursor::new(geometry);
+    let mut cursor = Cursor::new(geometry, space_before_factor);
     for (i, block) in ast.iter().enumerate() {
         render_block(block, &mut cursor, margin_pt, 0.0, font_system, &images, diagrams, ast.get(i + 1));
         cursor.y += LINE_SPACING_PT;

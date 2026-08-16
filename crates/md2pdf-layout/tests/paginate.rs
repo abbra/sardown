@@ -697,3 +697,58 @@ fn linked_inline_run_produces_a_link_annotation_element() {
     assert!(annotations.contains(&LinkTarget::ExternalUrl("https://example.com".to_string())));
     assert!(annotations.contains(&LinkTarget::InternalAnchor("target".to_string())));
 }
+
+use md2pdf_layout::layout_impl;
+
+#[test]
+fn a_larger_space_before_factor_increases_the_gap_before_a_heading() {
+    let ast = vec![
+        BlockNode::Paragraph { content: vec![plain_inline("End of section one.")] },
+        BlockNode::Heading { level: 2, id: "two".to_string(), content: vec![sized_inline("Section Two", 22.0)] },
+        BlockNode::Paragraph { content: vec![plain_inline("Start of section two.")] },
+    ];
+    let y_of = |pages: &[md2pdf_layout::PositionedPage], text: &str| {
+        pages[0]
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                PositionedElement::TextRun { y, text: t, .. } if t == text => Some(*y),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing text run {text:?}"))
+    };
+
+    let mut fs_small = test_font_system();
+    let small_output = layout_impl(&ast, &letter_geometry(), &mut fs_small, &fixtures_dir(), &DiagramTable::new(), 0.2);
+    let small_gap = y_of(&small_output.pages, "Section Two") - y_of(&small_output.pages, "End of section one.");
+
+    let mut fs_large = test_font_system();
+    let large_output = layout_impl(&ast, &letter_geometry(), &mut fs_large, &fixtures_dir(), &DiagramTable::new(), 1.5);
+    let large_gap = y_of(&large_output.pages, "Section Two") - y_of(&large_output.pages, "End of section one.");
+
+    assert!(large_gap > small_gap, "expected a larger space_before_factor to produce a bigger gap ({small_gap} vs {large_gap})");
+}
+
+#[test]
+fn layout_still_matches_layout_impl_with_the_default_factor() {
+    let ast = vec![
+        BlockNode::Paragraph { content: vec![plain_inline("End of section one.")] },
+        BlockNode::Heading { level: 2, id: "two".to_string(), content: vec![sized_inline("Section Two", 22.0)] },
+    ];
+    let mut fs_a = test_font_system();
+    let via_layout = layout(&ast, &letter_geometry(), &mut fs_a, &fixtures_dir(), &DiagramTable::new());
+    let mut fs_b = test_font_system();
+    let via_impl = layout_impl(&ast, &letter_geometry(), &mut fs_b, &fixtures_dir(), &DiagramTable::new(), 0.8);
+
+    let y = |pages: &[md2pdf_layout::PositionedPage]| {
+        pages[0]
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                PositionedElement::TextRun { y, text, .. } if text == "Section Two" => Some(*y),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_eq!(y(&via_layout.pages), y(&via_impl.pages));
+}

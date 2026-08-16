@@ -202,13 +202,14 @@ pub fn render_headers_footers(
 
 pub fn layout_with_header_footer(
     ast: &[md2pdf_ast::BlockNode],
-    geometry: &PageGeometry,
     font_system: &mut FontSystem,
     base_dir: &std::path::Path,
     diagrams: &md2pdf_enrich::DiagramTable,
     stylesheet: &Stylesheet,
 ) -> crate::LayoutOutput {
-    let mut output = crate::layout(ast, geometry, font_system, base_dir, diagrams);
-    render_headers_footers(&mut output.pages, &output.page_contexts, stylesheet, geometry, font_system);
+    let (width_mm, height_mm) = stylesheet.page.dimensions_mm();
+    let geometry = PageGeometry { page_width_mm: width_mm, page_height_mm: height_mm, margin_mm: stylesheet.page.margin_mm };
+    let mut output = crate::layout_impl(ast, &geometry, font_system, base_dir, diagrams, stylesheet.heading.space_before_factor);
+    render_headers_footers(&mut output.pages, &output.page_contexts, stylesheet, &geometry, font_system);
     output
 }
