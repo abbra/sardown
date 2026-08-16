@@ -110,3 +110,27 @@ fn render_book_loads_images_from_a_book_root_outside_the_current_directory() {
         doc.objects.values().any(|obj| obj.as_stream().ok().and_then(|s| s.dict.get(b"Subtype").ok()).and_then(|s| s.as_name().ok()) == Some(b"Image"));
     assert!(has_image_xobject, "expected the chapter's image to be embedded in the output PDF");
 }
+
+#[test]
+fn diagram_parse_error_reports_the_offending_line_inside_the_diagram_not_just_the_fence() {
+    // Regression test: a failed-diagram warning previously only ever named the opening
+    // ```mermaid fence's own location -- useless for finding the actual bad line in anything
+    // but a one-line diagram. merman's parse errors carry a byte span pointing at the real
+    // offending token; "bad syntax here" below is deliberately invalid on the diagram's own
+    // 4th line (immediately after the 3-line fence + heading + blank line above it, so the
+    // absolute file line is 3 + 4 = 7), and the warning should say so, not "line 3" (the fence).
+    let md_path = std::env::temp_dir().join("md2pdf-test-diagram-location.md");
+    std::fs::write(&md_path, "# Test\n\n```mermaid\nsequenceDiagram\n    participant A\n    participant B\n    A->>B bad syntax here\n    B-->>A: ok\n```\n")
+        .unwrap();
+    let out_path = std::env::temp_dir().join("md2pdf-test-diagram-location.pdf");
+    let _ = std::fs::remove_file(&out_path);
+
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(&md_path).arg("-o").arg(&out_path);
+    let output = cmd.output().expect("failed to run md2pdf");
+    assert!(output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let expected = format!("{}:7:11", md_path.display());
+    assert!(stderr.contains(&expected), "expected stderr to contain {expected:?}, got:\n{stderr}");
+}
