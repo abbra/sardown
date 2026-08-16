@@ -4,7 +4,7 @@ use md2pdf_style::{CodeBlockStyle, Color, LabelStyle};
 fn default_code_block_style_matches_todays_hardcoded_background_and_font() {
     let code_block = CodeBlockStyle::default();
     assert_eq!(code_block.syntax_theme, "InspiredGitHub");
-    assert_eq!(code_block.label_style, LabelStyle::Corner);
+    assert_eq!(code_block.label_style, LabelStyle::None);
     assert_eq!(code_block.default_label, "text");
     assert_eq!(code_block.default.background, Color([245, 245, 245]));
     assert_eq!(code_block.default.font_family, "monospace");
@@ -51,4 +51,16 @@ fn resolve_title_cases_the_token_when_the_language_section_exists_but_sets_no_la
     let resolved = code_block.resolve(Some("rust"));
     assert_eq!(resolved.label, "Rust");
     assert_eq!(resolved.background, Color([253, 246, 227]));
+}
+
+#[test]
+fn deserializes_each_named_label_style() {
+    #[derive(serde::Deserialize)]
+    struct Wrapper {
+        label_style: LabelStyle,
+    }
+    assert_eq!(toml::from_str::<Wrapper>(r#"label_style = "none""#).unwrap().label_style, LabelStyle::None);
+    assert_eq!(toml::from_str::<Wrapper>(r#"label_style = "corner""#).unwrap().label_style, LabelStyle::Corner);
+    assert_eq!(toml::from_str::<Wrapper>(r#"label_style = "header_bar""#).unwrap().label_style, LabelStyle::HeaderBar);
+    assert_eq!(toml::from_str::<Wrapper>(r#"label_style = "inline""#).unwrap().label_style, LabelStyle::Inline);
 }

@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 #[serde(rename_all = "snake_case")]
 pub enum LabelStyle {
     #[default]
+    None,
     Corner,
     HeaderBar,
     Inline,
@@ -57,7 +58,7 @@ impl Default for CodeBlockStyle {
     fn default() -> Self {
         CodeBlockStyle {
             syntax_theme: "InspiredGitHub".to_string(),
-            label_style: LabelStyle::Corner,
+            label_style: LabelStyle::None,
             default_label: "text".to_string(),
             default: CodeBlockDefaultStyle::default(),
             languages: BTreeMap::new(),

@@ -36,7 +36,7 @@ fn default_stylesheet_matches_every_currently_hardcoded_value() {
     assert_eq!(sheet.table.min_row_height_pt, 20.0);
 
     assert_eq!(sheet.code_block.syntax_theme, "InspiredGitHub");
-    assert_eq!(sheet.code_block.label_style, LabelStyle::Corner);
+    assert_eq!(sheet.code_block.label_style, LabelStyle::None);
     assert_eq!(sheet.code_block.default_label, "text");
     assert_eq!(sheet.code_block.default.background, Color([245, 245, 245]));
     assert_eq!(sheet.code_block.default.font_family, "monospace");
