@@ -1,3 +1,4 @@
+mod code_block;
 mod color;
 mod heading;
 mod page;
@@ -5,6 +6,7 @@ mod structural;
 mod table;
 mod typography;
 
+pub use code_block::{CodeBlockDefaultStyle, CodeBlockStyle, CodeLanguageStyle, LabelStyle, ResolvedCodeBlockStyle};
 pub use color::Color;
 pub use heading::{HeadingLevelStyle, HeadingStyle, ResolvedHeadingStyle};
 pub use page::{PageFormat, PageStyle};
