@@ -1,0 +1,5 @@
+# US Legal, with the same 1-inch (25.4mm) margin convention as US Letter.
+
+[page]
+format = "legal"
+margin_mm = 25.4

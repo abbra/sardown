@@ -1,0 +1,9 @@
+# US Letter, with the standard 1-inch (25.4mm) margin used by US business and academic
+# documents (e.g. the default in Microsoft Word and most US style guides).
+#
+# This matches md2pdf's own built-in defaults exactly -- listed here as an explicit, named
+# reference rather than because it changes anything.
+
+[page]
+format = "letter"
+margin_mm = 25.4

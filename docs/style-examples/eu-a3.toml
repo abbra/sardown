@@ -1,0 +1,6 @@
+# A3 (ISO 216), for larger-format documents such as diagrams, posters, or wide technical
+# references. Uses the same 20mm margin convention as the A4 example.
+
+[page]
+format = "a3"
+margin_mm = 20.0

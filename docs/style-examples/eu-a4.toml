@@ -1,0 +1,7 @@
+# A4 (ISO 216, the standard paper size across the EU and most of the world outside North
+# America), with a 20mm margin -- a common convention for European business and technical
+# documents on A4.
+
+[page]
+format = "a4"
+margin_mm = 20.0

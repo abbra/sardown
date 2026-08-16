@@ -1,0 +1,6 @@
+# A5 (ISO 216), for booklet-style documents. Margin is scaled down from A4's 20mm to 15mm to
+# suit the smaller page.
+
+[page]
+format = "a5"
+margin_mm = 15.0
