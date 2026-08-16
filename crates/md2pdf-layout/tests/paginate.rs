@@ -853,3 +853,66 @@ fn list_indent_uses_the_configured_value() {
 
     assert!(x_of(&wide_output.pages) > x_of(&narrow_output.pages));
 }
+
+#[test]
+fn table_cell_padding_uses_the_configured_value() {
+    let mut narrow = Stylesheet::default();
+    narrow.table.cell_padding_pt = 2.0;
+    let mut wide = Stylesheet::default();
+    wide.table.cell_padding_pt = 60.0;
+
+    let headers = vec![vec![plain_inline("H")]];
+    let rows = vec![vec![vec![plain_inline("Cell")]]];
+    let ast = vec![BlockNode::Table { headers, rows, alignments: vec![md2pdf_ast::ColumnAlignment::None] }];
+
+    let x_of = |pages: &[md2pdf_layout::PositionedPage]| {
+        pages[0]
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                PositionedElement::TextRun { x, text, .. } if text == "Cell" => Some(*x),
+                _ => None,
+            })
+            .unwrap()
+    };
+
+    let mut fs_a = test_font_system();
+    let narrow_output = layout_impl(&ast, &letter_geometry(), &mut fs_a, &fixtures_dir(), &DiagramTable::new(), &narrow);
+    let mut fs_b = test_font_system();
+    let wide_output = layout_impl(&ast, &letter_geometry(), &mut fs_b, &fixtures_dir(), &DiagramTable::new(), &wide);
+
+    assert!(x_of(&wide_output.pages) > x_of(&narrow_output.pages));
+}
+
+#[test]
+fn table_min_row_height_uses_the_configured_value() {
+    let mut short = Stylesheet::default();
+    short.table.min_row_height_pt = 15.0;
+    let mut tall = Stylesheet::default();
+    tall.table.min_row_height_pt = 100.0;
+
+    let headers = vec![vec![plain_inline("H")]];
+    let rows = vec![vec![vec![plain_inline("Cell")]], vec![vec![plain_inline("Cell2")]]];
+    let ast = vec![BlockNode::Table { headers, rows, alignments: vec![md2pdf_ast::ColumnAlignment::None] }];
+
+    let y_of = |pages: &[md2pdf_layout::PositionedPage], text: &str| {
+        pages[0]
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                PositionedElement::TextRun { y, text: t, .. } if t == text => Some(*y),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing text run {text:?}"))
+    };
+
+    let mut fs_a = test_font_system();
+    let short_output = layout_impl(&ast, &letter_geometry(), &mut fs_a, &fixtures_dir(), &DiagramTable::new(), &short);
+    let short_gap = y_of(&short_output.pages, "Cell2") - y_of(&short_output.pages, "Cell");
+
+    let mut fs_b = test_font_system();
+    let tall_output = layout_impl(&ast, &letter_geometry(), &mut fs_b, &fixtures_dir(), &DiagramTable::new(), &tall);
+    let tall_gap = y_of(&tall_output.pages, "Cell2") - y_of(&tall_output.pages, "Cell");
+
+    assert!(tall_gap > short_gap, "expected a taller min_row_height_pt to produce a bigger row-to-row gap ({short_gap} vs {tall_gap})");
+}

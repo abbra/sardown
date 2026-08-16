@@ -427,24 +427,25 @@ fn render_block(
             // Real-world tables routinely have cells whose text wraps to multiple lines
             // (e.g. a "Description" column), which used to overflow this constant and
             // overlap the next row entirely.
-            const MIN_ROW_HEIGHT: f32 = 20.0;
+            let min_row_height = cursor.style.table.min_row_height_pt;
             // Total horizontal padding reserved for a cell, split evenly left and right. Without
             // this, cell text started exactly at the column's left grid line -- flush against the
             // vertical divider, with no breathing room on either side.
-            const CELL_PADDING_PT: f32 = 12.0;
-            const CELL_PADDING_X_PT: f32 = CELL_PADDING_PT / 2.0;
+            let cell_padding_pt = cursor.style.table.cell_padding_pt;
+            let cell_padding_x_pt = cell_padding_pt / 2.0;
+            // Not stylesheet-configurable -- an internal safety floor preventing a cell from
+            // collapsing to zero width, not a visual style choice.
             const MIN_CELL_WRAP_WIDTH_PT: f32 = 10.0;
             // `PositionedElement::TextRun::y` is a baseline, and `cursor.y` after placing a row
             // is the *next* row's baseline -- not a safe boundary to draw a grid line on. Used
             // as-is, the header separator line landed exactly on row 1's baseline, cutting
             // through the middle of its text instead of sitting in the empty gap between rows.
-            // `md2pdf-ast::parse` gives all table content the same fixed size (its
-            // `TABLE_CELL_SIZE`), so a single constant (rather than inspecting each cell's style)
-            // is enough here, matching the code block background's approach. Must stay in sync
-            // with md2pdf-ast's `TABLE_CELL_SIZE`.
-            const TABLE_TEXT_SIZE_PT: f32 = 10.5;
-            const TABLE_TOP_PAD_PT: f32 = TABLE_TEXT_SIZE_PT * 0.8; // clears the first row's ascender
-            const TABLE_ROW_GAP_ADJUST_PT: f32 = TABLE_TEXT_SIZE_PT + 2.0; // baseline -> mid-gap-below-descender
+            // Derived from the same `Stylesheet.table.text_size_pt` that `md2pdf-ast` gives every
+            // table cell's own text -- previously two separate hardcoded constants kept in sync
+            // only by a comment; now one real, enforced source of truth.
+            let table_text_size_pt = cursor.style.table.text_size_pt;
+            let table_top_pad_pt = table_text_size_pt * 0.8; // clears the first row's ascender
+            let table_row_gap_adjust_pt = table_text_size_pt + 2.0; // baseline -> mid-gap-below-descender
 
             // A row is never split mid-cell across a page break: each row's height is measured
             // up front, and if it won't fit, the whole table breaks to a new page *before* any
@@ -452,15 +453,14 @@ fn render_block(
             // `place_inline_content`'s own per-line break fire mid-row (the previous behavior)
             // corrupted every cell rendered after the break, since each resets to a `row_top_y`
             // belonging to the page the row started on.
-            let header_height =
-                measure_row_height(headers, &widths, CELL_PADDING_PT, MIN_CELL_WRAP_WIDTH_PT, MIN_ROW_HEIGHT, font_system);
+            let header_height = measure_row_height(headers, &widths, cell_padding_pt, MIN_CELL_WRAP_WIDTH_PT, min_row_height, font_system);
             if cursor.remaining_height() < header_height && !cursor.current.is_empty() {
                 cursor.break_page(margin_pt);
             }
 
             let table_top_y = cursor.y;
             let mut col_x = margin_pt + indent_pt;
-            let mut header_bottom_y = table_top_y + MIN_ROW_HEIGHT;
+            let mut header_bottom_y = table_top_y + min_row_height;
             for (header, width) in headers.iter().zip(&widths) {
                 // Reset before each cell: `place_inline_content` advances `cursor.y` as it lays
                 // out lines, so without this reset every cell after the first in a row would
@@ -470,8 +470,8 @@ fn render_block(
                 // grid line), not the page's remaining width: `place_inline_content`'s width
                 // parameter is normally "wrap at the right margin," which is wrong for a cell —
                 // it let long text bleed across into the next column's space instead of wrapping.
-                let cell_max_width_pt = (width - CELL_PADDING_PT).max(MIN_CELL_WRAP_WIDTH_PT);
-                place_inline_content(cursor, margin_pt, col_x - margin_pt + CELL_PADDING_X_PT, cell_max_width_pt, header, font_system);
+                let cell_max_width_pt = (width - cell_padding_pt).max(MIN_CELL_WRAP_WIDTH_PT);
+                place_inline_content(cursor, margin_pt, col_x - margin_pt + cell_padding_x_pt, cell_max_width_pt, header, font_system);
                 header_bottom_y = header_bottom_y.max(cursor.y);
                 col_x += width;
             }
@@ -490,36 +490,30 @@ fn render_block(
             }
             let mut segments = vec![Segment {
                 page: cursor.page_number,
-                top_y: table_top_y - TABLE_TOP_PAD_PT,
-                bottom_y: header_bottom_y - TABLE_ROW_GAP_ADJUST_PT,
-                header_bottom_y: Some(header_bottom_y - TABLE_ROW_GAP_ADJUST_PT),
+                top_y: table_top_y - table_top_pad_pt,
+                bottom_y: header_bottom_y - table_row_gap_adjust_pt,
+                header_bottom_y: Some(header_bottom_y - table_row_gap_adjust_pt),
             }];
 
             for row in rows {
-                let row_height =
-                    measure_row_height(row, &widths, CELL_PADDING_PT, MIN_CELL_WRAP_WIDTH_PT, MIN_ROW_HEIGHT, font_system);
+                let row_height = measure_row_height(row, &widths, cell_padding_pt, MIN_CELL_WRAP_WIDTH_PT, min_row_height, font_system);
                 if cursor.remaining_height() < row_height && !cursor.current.is_empty() {
                     cursor.break_page(margin_pt);
-                    segments.push(Segment {
-                        page: cursor.page_number,
-                        top_y: cursor.y - TABLE_TOP_PAD_PT,
-                        bottom_y: cursor.y,
-                        header_bottom_y: None,
-                    });
+                    segments.push(Segment { page: cursor.page_number, top_y: cursor.y - table_top_pad_pt, bottom_y: cursor.y, header_bottom_y: None });
                 }
 
                 let row_top_y = cursor.y;
                 let mut col_x = margin_pt + indent_pt;
-                let mut row_bottom_y = row_top_y + MIN_ROW_HEIGHT;
+                let mut row_bottom_y = row_top_y + min_row_height;
                 for (cell, width) in row.iter().zip(&widths) {
                     cursor.y = row_top_y;
-                    let cell_max_width_pt = (width - CELL_PADDING_PT).max(MIN_CELL_WRAP_WIDTH_PT);
-                    place_inline_content(cursor, margin_pt, col_x - margin_pt + CELL_PADDING_X_PT, cell_max_width_pt, cell, font_system);
+                    let cell_max_width_pt = (width - cell_padding_pt).max(MIN_CELL_WRAP_WIDTH_PT);
+                    place_inline_content(cursor, margin_pt, col_x - margin_pt + cell_padding_x_pt, cell_max_width_pt, cell, font_system);
                     row_bottom_y = row_bottom_y.max(cursor.y);
                     col_x += width;
                 }
                 cursor.y = row_bottom_y;
-                segments.last_mut().unwrap().bottom_y = row_bottom_y - TABLE_ROW_GAP_ADJUST_PT;
+                segments.last_mut().unwrap().bottom_y = row_bottom_y - table_row_gap_adjust_pt;
             }
 
             for segment in segments {
