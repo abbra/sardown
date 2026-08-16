@@ -1,6 +1,28 @@
-# A3 (ISO 216), for larger-format documents such as diagrams, posters, or wide technical
-# references. Uses the same 20mm margin convention as the A4 example.
+# A3, for larger-format documents (diagrams, posters) -- the ISO 216 tradition's answer to
+# needing a bigger sheet without leaving the A-series paper family. Uses the same EU/
+# international styling as eu-a4.toml, with a larger body size appropriate to a bigger page
+# typically viewed from further away.
+#
+# font_family is recorded as intended styling but not yet rendered -- see us-letter.toml's
+# comment for details.
 
 [page]
 format = "a3"
 margin_mm = 20.0
+
+[typography]
+font_family = "Helvetica"
+body_size_pt = 13.0
+
+[heading]
+font_family = "Helvetica"
+color = "#2c3e50"
+
+[footer]
+enabled = true
+font_family = "Helvetica"
+font_size_pt = 10.0
+suppress_on_chapter_start = false
+
+[footer.uniform]
+right = "{page} / {total_pages}"

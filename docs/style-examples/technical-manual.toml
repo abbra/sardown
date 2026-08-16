@@ -1,0 +1,43 @@
+# A technical reference-manual preset (the style of a printed API/reference manual): tighter
+# 20mm margins to fit more content per page, a sans-serif body at 10.5pt, dark-blue headings,
+# and code blocks with a labeled header bar (showing the language, e.g. "Rust") using the
+# Solarized Light syntax theme -- its background color is mirrored in
+# [code_block.default].background so the drawn code-block rectangle matches the theme's own
+# backdrop instead of this tool's plain default gray. The footer names the current top-level
+# chapter on the left and the page number on the right, the classic printed-manual
+# running-footer layout; suppress_on_chapter_start is left at its default (true), matching how
+# printed manuals leave the footer off a chapter's own opening page.
+#
+# font_family is recorded as intended styling but not yet rendered -- see
+# docs/style-examples/us-letter.toml's comment for details.
+
+[page]
+format = "letter"
+margin_mm = 20.0
+
+[typography]
+font_family = "Helvetica"
+body_size_pt = 10.5
+body_color = "#1a1a1a"
+
+[heading]
+font_family = "Helvetica"
+color = "#0b3d66"
+
+[code_block]
+syntax_theme = "Solarized (light)"
+label_style = "header_bar"
+default_label = "Code"
+
+[code_block.default]
+background = "#fdf6e3"
+font_family = "monospace"
+
+[footer]
+enabled = true
+font_family = "Helvetica"
+font_size_pt = 9.0
+
+[footer.uniform]
+left = "{h1}"
+right = "{page}"

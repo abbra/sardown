@@ -1642,6 +1642,7 @@ dependencies = [
 name = "md2pdf-ast"
 version = "0.1.0"
 dependencies = [
+ "md2pdf-style",
  "pulldown-cmark",
 ]
 
@@ -1651,6 +1652,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "md2pdf-ast",
+ "md2pdf-style",
  "toml",
 ]
 
@@ -1671,6 +1673,7 @@ dependencies = [
  "md2pdf-enrich",
  "md2pdf-layout",
  "md2pdf-pdf",
+ "md2pdf-style",
  "pdfium-render",
  "proptest",
 ]
@@ -1680,6 +1683,7 @@ name = "md2pdf-enrich"
 version = "0.1.0"
 dependencies = [
  "md2pdf-ast",
+ "md2pdf-style",
  "merman",
  "syntect",
  "usvg 0.48.1",
@@ -1694,6 +1698,7 @@ dependencies = [
  "image",
  "md2pdf-ast",
  "md2pdf-enrich",
+ "md2pdf-style",
 ]
 
 [[package]]

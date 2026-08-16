@@ -1,0 +1,47 @@
+# A friendlier technical-guide/tutorial preset (the style of a modern docs site or blog
+# tutorial exported to PDF): generous margins and heading spacing, a teal accent color, and
+# code blocks using the dark base16-ocean.dark syntax theme with an inline label showing the
+# language name.
+#
+# Important pairing rule demonstrated here: this renderer only takes *foreground* text colors
+# from the syntect theme -- the code block's own background rectangle always comes from the
+# separate [code_block.default].background value. Pairing a dark theme (whose foreground
+# colors are calibrated for a dark backdrop) with this tool's default *light* background would
+# make the highlighted text nearly unreadable. base16-ocean.dark's own background is #2b303b
+# (confirmed directly against syntect's bundled ThemeSet), so that exact value is used below,
+# with light label colors to match.
+#
+# font_family is recorded as intended styling but not yet rendered -- see
+# docs/style-examples/us-letter.toml's comment for details.
+
+[page]
+format = "letter"
+margin_mm = 25.4
+
+[typography]
+font_family = "Helvetica"
+body_size_pt = 11.5
+
+[heading]
+font_family = "Helvetica"
+color = "#0e8a6d"
+space_before_factor = 1.2
+
+[code_block]
+syntax_theme = "base16-ocean.dark"
+label_style = "inline"
+default_label = "Code"
+
+[code_block.default]
+background = "#2b303b"
+font_family = "monospace"
+label_color = "#c0c5ce"
+label_background = "#3b4252"
+
+[footer]
+enabled = true
+font_family = "Helvetica"
+font_size_pt = 9.0
+
+[footer.uniform]
+center = "{page}"

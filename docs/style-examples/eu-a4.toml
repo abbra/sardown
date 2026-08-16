@@ -1,7 +1,31 @@
 # A4 (ISO 216, the standard paper size across the EU and most of the world outside North
-# America), with a 20mm margin -- a common convention for European business and technical
-# documents on A4.
+# America), with a 20mm margin, styled with conventions common to European business and
+# technical documents: a sans-serif body face, 11pt text (a point size smaller than the US
+# 12pt norm), a slate heading color, and a bottom-right "page / total" footer -- the common
+# EU/DIN convention, as opposed to the plain centered page number used in the US tradition
+# (see us-letter.toml). Shown on every page including the first, for the same reason as
+# us-letter.toml.
+#
+# font_family is recorded as intended styling but not yet rendered -- see us-letter.toml's
+# comment for details.
 
 [page]
 format = "a4"
 margin_mm = 20.0
+
+[typography]
+font_family = "Helvetica"
+body_size_pt = 11.0
+
+[heading]
+font_family = "Helvetica"
+color = "#2c3e50"
+
+[footer]
+enabled = true
+font_family = "Helvetica"
+font_size_pt = 9.0
+suppress_on_chapter_start = false
+
+[footer.uniform]
+right = "{page} / {total_pages}"

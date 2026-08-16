@@ -1,6 +1,28 @@
-# A5 (ISO 216), for booklet-style documents. Margin is scaled down from A4's 20mm to 15mm to
-# suit the smaller page.
+# A5, for booklet-style documents -- half an A4 sheet, a common European convention for
+# pamphlets and small booklets. Uses the same EU/international styling as eu-a4.toml, with a
+# smaller body size appropriate to the smaller page, alongside the already-tighter 15mm
+# margin.
+#
+# font_family is recorded as intended styling but not yet rendered -- see us-letter.toml's
+# comment for details.
 
 [page]
 format = "a5"
 margin_mm = 15.0
+
+[typography]
+font_family = "Helvetica"
+body_size_pt = 10.0
+
+[heading]
+font_family = "Helvetica"
+color = "#2c3e50"
+
+[footer]
+enabled = true
+font_family = "Helvetica"
+font_size_pt = 8.0
+suppress_on_chapter_start = false
+
+[footer.uniform]
+right = "{page} / {total_pages}"

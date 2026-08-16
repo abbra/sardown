@@ -1,0 +1,32 @@
+# A university/academic paper preset modeled on APA/MLA conventions: Letter page, 1-inch
+# margins, a serif body face at the traditional 12pt, and a simple running page number in the
+# top-right header (no footer) -- APA's 7th-edition student-paper format, which shows the page
+# number on every page including the first (suppress_on_chapter_start is turned off below for
+# that reason). Block quotes get the APA/MLA 0.5-inch (36pt) indent rather than this tool's
+# default indent.
+#
+# font_family is recorded as intended styling but not yet rendered -- see
+# docs/style-examples/us-letter.toml's comment for details.
+
+[page]
+format = "letter"
+margin_mm = 25.4
+
+[typography]
+font_family = "Times New Roman"
+body_size_pt = 12.0
+
+[heading]
+font_family = "Times New Roman"
+
+[blockquote]
+indent_pt = 36.0
+
+[header]
+enabled = true
+font_family = "Times New Roman"
+font_size_pt = 12.0
+suppress_on_chapter_start = false
+
+[header.uniform]
+right = "{page}"

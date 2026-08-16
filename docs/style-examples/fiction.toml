@@ -1,0 +1,32 @@
+# A fiction/novel preset styled for a printed trade-paperback look: A5 trim (close to a
+# common paperback size) with a slightly wider 18mm margin for comfortable hand-held reading,
+# a serif body face, and a slightly larger 12.5pt body size for reading comfort. A plain
+# centered page number appears in the footer, with no running header -- novels are typically
+# printed without a chapter/author running head on every page. Chapter headings get a large
+# space-before factor, mimicking the convention of starting each chapter partway down the
+# page rather than flush against the top margin. suppress_on_chapter_start is left at its
+# default (true), matching how printed novels leave the page number off a chapter's own
+# opening page.
+#
+# font_family is recorded as intended styling but not yet rendered -- see
+# docs/style-examples/us-letter.toml's comment for details.
+
+[page]
+format = "a5"
+margin_mm = 18.0
+
+[typography]
+font_family = "Garamond"
+body_size_pt = 12.5
+
+[heading]
+font_family = "Garamond"
+space_before_factor = 2.5
+
+[footer]
+enabled = true
+font_family = "Garamond"
+font_size_pt = 10.0
+
+[footer.uniform]
+center = "{page}"

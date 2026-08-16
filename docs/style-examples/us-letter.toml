@@ -1,9 +1,30 @@
 # US Letter, with the standard 1-inch (25.4mm) margin used by US business and academic
-# documents (e.g. the default in Microsoft Word and most US style guides).
+# documents (e.g. the default in Microsoft Word and most US style guides), styled with the
+# typographic conventions common to US academic and business writing: a serif body face,
+# 12pt text, and a plain page number centered in the footer of every page (including the
+# first -- suppress_on_chapter_start is turned off below since a single business/academic
+# document isn't structured into book-style chapters with their own opening-page convention).
 #
-# This matches md2pdf's own built-in defaults exactly -- listed here as an explicit, named
-# reference rather than because it changes anything.
+# font_family values are recorded here as the intended look for this tradition, but aren't
+# rendered yet -- font selection isn't wired into layout in this phase (see the design spec's
+# "Font Resolution" section). Every other field below does take effect today.
 
 [page]
 format = "letter"
 margin_mm = 25.4
+
+[typography]
+font_family = "Times New Roman"
+body_size_pt = 12.0
+
+[heading]
+font_family = "Times New Roman"
+
+[footer]
+enabled = true
+font_family = "Times New Roman"
+font_size_pt = 9.0
+suppress_on_chapter_start = false
+
+[footer.uniform]
+center = "{page}"
