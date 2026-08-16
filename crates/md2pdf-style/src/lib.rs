@@ -1,3 +1,5 @@
+use anyhow::Context;
+
 mod code_block;
 mod color;
 mod heading;
@@ -28,6 +30,13 @@ pub struct Stylesheet {
 }
 
 impl Stylesheet {
+    pub fn load(path: &std::path::Path) -> anyhow::Result<Stylesheet> {
+        let text = std::fs::read_to_string(path).with_context(|| format!("failed to read stylesheet {}", path.display()))?;
+        let sheet: Stylesheet = toml::from_str(&text).with_context(|| format!("failed to parse stylesheet {}", path.display()))?;
+        sheet.validate().with_context(|| format!("invalid stylesheet {}", path.display()))?;
+        Ok(sheet)
+    }
+
     fn validate(&self) -> anyhow::Result<()> {
         match (self.page.width_mm, self.page.height_mm) {
             (Some(_), None) => anyhow::bail!("[page] sets width_mm but not height_mm -- set both or neither"),
