@@ -232,11 +232,13 @@ fn render_block(
         }
         BlockNode::Blockquote { content } => {
             let start_y = cursor.y;
+            let start_page = cursor.page_number;
             for (i, child) in content.iter().enumerate() {
                 let child_next = content.get(i + 1).or(next_block);
                 render_block(child, cursor, margin_pt, indent_pt + BLOCKQUOTE_INDENT_PT, font_system, images, diagrams, child_next);
             }
             let end_y = cursor.y;
+            let end_page = cursor.page_number;
             // `start_y`/`end_y` are cursor bookkeeping, not visual extents: `start_y` is the
             // first child's first line's *baseline* (its ascender reaches above that), and
             // `end_y` is the cursor position *after* the last line's full line height -- which
@@ -244,14 +246,29 @@ fn render_block(
             // the border started visibly too low and ran down into the following block's own
             // text, same root cause as the CodeBlock background's ascender/gap padding.
             let pad = estimate_next_block_ascent_pt(content.first());
-            cursor.current.push(PositionedElement::Path {
-                points: vec![
-                    PathCommand::MoveTo(margin_pt + indent_pt + 4.0, start_y - pad),
-                    PathCommand::LineTo(margin_pt + indent_pt + 4.0, end_y - pad - LINE_SPACING_PT),
-                ],
+            let border_x = margin_pt + indent_pt + 4.0;
+            let border_segment = |top_y: f32, bottom_y: f32| PositionedElement::Path {
+                points: vec![PathCommand::MoveTo(border_x, top_y), PathCommand::LineTo(border_x, bottom_y)],
                 fill: None,
                 stroke: Some(StrokeStyle { color: [180, 180, 180], width: 2.0 }),
-            });
+            };
+
+            if end_page == start_page {
+                cursor.current.push(border_segment(start_y - pad, end_y - pad - LINE_SPACING_PT));
+            } else {
+                // The blockquote's own content crossed one or more page breaks mid-render:
+                // start_y/end_y are local to different pages' coordinate systems, so one line
+                // spanning them would be meaningless (previously this drew a single huge,
+                // nonsensical vertical line on the continuation page, cutting through whatever
+                // unrelated content came after the blockquote). Draw one segment per page the
+                // blockquote touches instead, matching the code block background's and table
+                // grid's own handling of page-spanning content.
+                cursor.pages[start_page].elements.push(border_segment(start_y - pad, cursor.page_height_pt));
+                for page in (start_page + 1)..end_page {
+                    cursor.pages[page].elements.push(border_segment(margin_pt - pad, cursor.page_height_pt));
+                }
+                cursor.current.push(border_segment(margin_pt - pad, end_y - pad - LINE_SPACING_PT));
+            }
         }
         BlockNode::ThematicBreak => {
             let y = cursor.y + 6.0;

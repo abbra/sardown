@@ -158,6 +158,51 @@ fn blockquote_border_does_not_overrun_into_the_following_blocks_ascender() {
 }
 
 #[test]
+fn blockquote_border_spanning_pages_draws_a_segment_on_each_page_it_touches() {
+    // Regression test: a blockquote long enough to spill onto a second page had its border drawn
+    // as ONE path using start_y (captured on the first page) and end_y (captured on the second
+    // page) -- two different pages' coordinate systems combined into a single line, pushed onto
+    // whichever page happened to be current at the end. On a real document this produced a huge,
+    // meaningless vertical line spanning almost the entire continuation page, cutting through
+    // unrelated headings and paragraphs that came after the blockquote -- same category of bug
+    // the code block background and table grid already had to handle for page-spanning content.
+    let long_text: String = "word ".repeat(2000); // long enough to force a page break mid-paragraph
+    let ast = vec![
+        BlockNode::Blockquote { content: vec![BlockNode::Paragraph { content: vec![plain_inline(&long_text)] }] },
+        BlockNode::Heading { level: 2, id: "after".to_string(), content: vec![sized_inline("After", 22.0)] },
+    ];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+    assert!(pages.len() >= 2, "expected the blockquote to span at least 2 pages, got {}", pages.len());
+
+    // A single page's usable content height (page height minus top+bottom margins, plus some
+    // slack for the ascent padding subtracted from the top) at 1in margins on US Letter -- no
+    // border segment should ever exceed this by much, since that would mean it incorrectly
+    // combined y-coordinates from two different pages (which would overshoot by hundreds of
+    // points, not a handful).
+    const MAX_PAGE_CONTENT_HEIGHT_PT: f32 = 700.0;
+
+    let mut total_segments = 0;
+    for page in &pages {
+        for element in &page.elements {
+            if let PositionedElement::Path { points, stroke: Some(_), .. } = element {
+                if let [md2pdf_layout::PathCommand::MoveTo(_, y0), md2pdf_layout::PathCommand::LineTo(_, y1)] = points.as_slice() {
+                    total_segments += 1;
+                    let span = (y1 - y0).abs();
+                    assert!(
+                        span <= MAX_PAGE_CONTENT_HEIGHT_PT,
+                        "border segment on page {} spans {span}pt, more than a single page's content height -- \
+                         it likely combined coordinates from two different pages",
+                        page.page_number
+                    );
+                }
+            }
+        }
+    }
+    assert!(total_segments >= 2, "expected at least one border segment per page the blockquote touches, got {total_segments}");
+}
+
+#[test]
 fn thematic_break_produces_a_horizontal_line_path() {
     let ast = vec![BlockNode::ThematicBreak];
     let mut fs = test_font_system();
