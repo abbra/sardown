@@ -41,6 +41,7 @@ pub struct TextStyle {
     pub italic: bool,
     pub size: f32,
     pub color: [u8; 3],
+    pub font_family: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]

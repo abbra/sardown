@@ -7,12 +7,12 @@ const DEFAULT_COLOR: [u8; 3] = [0, 0, 0];
 /// Bundles the per-parse typography choices that need to reach deep into the recursive block/
 /// inline lowering functions -- passed by reference alongside the existing `slugs`/
 /// `next_diagram_id` state rather than as a `Stylesheet` directly, so this module only depends
-/// on the exact pieces it uses (code-block styling is explicitly out of scope for this phase and
-/// stays on its own hardcoded constants).
+/// on the exact pieces it uses.
 struct Typography<'a> {
     heading: &'a md2pdf_style::HeadingStyle,
     body_size: f32,
     body_color: [u8; 3],
+    body_font_family: String,
     table_cell_size: f32,
 }
 
@@ -23,11 +23,12 @@ struct InlineBuilder {
     link_target: Option<LinkTarget>,
     base_size: f32,
     base_color: [u8; 3],
+    base_font_family: String,
 }
 
 impl InlineBuilder {
-    fn new(base_size: f32, base_color: [u8; 3]) -> Self {
-        Self { runs: Vec::new(), bold_depth: 0, italic_depth: 0, link_target: None, base_size, base_color }
+    fn new(base_size: f32, base_color: [u8; 3], base_font_family: String) -> Self {
+        Self { runs: Vec::new(), bold_depth: 0, italic_depth: 0, link_target: None, base_size, base_color, base_font_family }
     }
 
     fn push_text(&mut self, text: String) {
@@ -41,6 +42,7 @@ impl InlineBuilder {
                 italic: self.italic_depth > 0,
                 size: self.base_size,
                 color: self.base_color,
+                font_family: self.base_font_family.clone(),
             },
             link_target: self.link_target.clone(),
         });
@@ -80,8 +82,9 @@ fn lower_inline_events<'a, I: Iterator<Item = Event<'a>>>(
     end_tag: TagEnd,
     base_size: f32,
     base_color: [u8; 3],
+    base_font_family: String,
 ) -> Vec<InlineNode> {
-    let mut builder = InlineBuilder::new(base_size, base_color);
+    let mut builder = InlineBuilder::new(base_size, base_color, base_font_family);
     for event in events.by_ref() {
         if matches!(&event, Event::End(tag) if *tag == end_tag) {
             break;
@@ -127,7 +130,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
             | Event::Start(Tag::Strong)
             | Event::Start(Tag::Emphasis)
             | Event::Start(Tag::Link { .. }) => {
-                let mut builder = InlineBuilder::new(typo.body_size, typo.body_color);
+                let mut builder = InlineBuilder::new(typo.body_size, typo.body_color, typo.body_font_family.clone());
                 apply_inline_event(&mut builder, event);
                 loop {
                     match parser.peek() {
@@ -144,7 +147,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
             Event::Start(Tag::Heading { level, .. }) => {
                 let level_u8 = heading_level_u8(level);
                 let resolved = typo.heading.resolve(level_u8);
-                let content = lower_inline_events(parser, TagEnd::Heading(level), resolved.size_pt, resolved.color.0);
+                let content = lower_inline_events(parser, TagEnd::Heading(level), resolved.size_pt, resolved.color.0, resolved.font_family.clone());
                 let text: String = content.iter().map(|n| n.text.as_str()).collect::<Vec<_>>().join("");
                 let id = slugs.generate(&text);
                 blocks.push(BlockNode::Heading { level: level_u8, id, content });
@@ -166,7 +169,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                         blocks.push(BlockNode::Image { alt, title, source });
                     }
                     Some(first_event) => {
-                        let mut builder = InlineBuilder::new(typo.body_size, typo.body_color);
+                        let mut builder = InlineBuilder::new(typo.body_size, typo.body_color, typo.body_font_family.clone());
                         if !matches!(&first_event, Event::End(tag) if *tag == TagEnd::Paragraph) {
                             apply_inline_event(&mut builder, first_event);
                             for event in parser.by_ref() {
@@ -242,7 +245,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                 while let Some(event) = parser.next() {
                     match event {
                         Event::Start(Tag::TableHead) => {
-                            headers = collect_table_cells(parser, TagEnd::TableHead, typo.table_cell_size);
+                            headers = collect_table_cells(parser, TagEnd::TableHead, typo.table_cell_size, &typo.body_font_family);
                         }
                         Event::Start(Tag::TableRow) => {
                             let mut row = Vec::new();
@@ -255,7 +258,13 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                                         // flattening lost the cell boundary — corrupting which
                                         // column every following run in the row landed in and
                                         // silently truncating whatever came after via `zip`.
-                                        row.push(lower_inline_events(parser, TagEnd::TableCell, typo.table_cell_size, DEFAULT_COLOR));
+                                        row.push(lower_inline_events(
+                                            parser,
+                                            TagEnd::TableCell,
+                                            typo.table_cell_size,
+                                            DEFAULT_COLOR,
+                                            typo.body_font_family.clone(),
+                                        ));
                                     }
                                     Event::End(TagEnd::TableRow) => break,
                                     _ => {}
@@ -280,12 +289,13 @@ fn collect_table_cells<'a, I: Iterator<Item = Event<'a>>>(
     parser: &mut std::iter::Peekable<I>,
     end_tag: TagEnd,
     table_cell_size: f32,
+    table_cell_font_family: &str,
 ) -> Vec<Vec<InlineNode>> {
     let mut cells = Vec::new();
     while let Some(event) = parser.next() {
         match event {
             Event::Start(Tag::TableCell) => {
-                cells.push(lower_inline_events(parser, TagEnd::TableCell, table_cell_size, DEFAULT_COLOR));
+                cells.push(lower_inline_events(parser, TagEnd::TableCell, table_cell_size, DEFAULT_COLOR, table_cell_font_family.to_string()));
             }
             Event::End(tag) if tag == end_tag => break,
             _ => {}
@@ -320,14 +330,8 @@ pub fn parse_with_slugs(markdown: &str, slugs: &mut SlugGenerator, next_diagram_
 }
 
 /// Like `parse_with_slugs`, but takes a `Stylesheet` controlling heading and body typography
-/// (size and color -- font family and table-cell typography remain out of scope for this phase,
-/// see the implementation plan's Global Constraints).
-pub fn parse_with_style(
-    markdown: &str,
-    slugs: &mut SlugGenerator,
-    next_diagram_id: &mut usize,
-    style: &md2pdf_style::Stylesheet,
-) -> Vec<BlockNode> {
+/// (size, color, and font family) and table-cell text size.
+pub fn parse_with_style(markdown: &str, slugs: &mut SlugGenerator, next_diagram_id: &mut usize, style: &md2pdf_style::Stylesheet) -> Vec<BlockNode> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
@@ -338,6 +342,7 @@ pub fn parse_with_style(
         heading: &style.heading,
         body_size: style.typography.body_size_pt,
         body_color: style.typography.body_color.0,
+        body_font_family: style.typography.font_family.clone(),
         table_cell_size: style.table.text_size_pt,
     };
     // TagEnd::Item is never opened at the top level, so it never matches; used only as a
@@ -403,7 +408,7 @@ pub fn tag_diagram_origins(blocks: &mut [BlockNode], file: &std::path::Path) {
 /// `HEADING_SIZES`.
 pub fn heading_style_for_level(level: u8) -> TextStyle {
     let size = HEADING_SIZES[(level.clamp(1, 6) - 1) as usize];
-    TextStyle { bold: false, italic: false, size, color: DEFAULT_COLOR }
+    TextStyle { bold: false, italic: false, size, color: DEFAULT_COLOR, font_family: md2pdf_style::HeadingStyle::default().font_family }
 }
 
 fn heading_level_u8(level: HeadingLevel) -> u8 {
