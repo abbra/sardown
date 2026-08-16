@@ -31,6 +31,17 @@ fn us_letter() -> PageGeometry {
     PageGeometry { page_width_mm: 215.9, page_height_mm: 279.4, margin_mm: 25.4 }
 }
 
+fn build_font_system(typography: &md2pdf_style::TypographyStyle) -> cosmic_text::FontSystem {
+    let mut font_db = fontdb::Database::new();
+    if typography.use_system_fonts {
+        font_db.load_system_fonts();
+    }
+    for dir in &typography.font_dirs {
+        font_db.load_fonts_dir(dir);
+    }
+    cosmic_text::FontSystem::new_with_locale_and_db("en-US".to_string(), font_db)
+}
+
 /// Prints `label`, runs `f`, then reports how long it took -- on stderr, so it never mixes with
 /// piped/redirected output. A large book's render has no other feedback for several seconds at a
 /// time otherwise, which reads as a hang rather than progress.
@@ -56,9 +67,8 @@ fn main() -> anyhow::Result<()> {
 
             let base_dir = input.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
 
-            let mut font_db = fontdb::Database::new();
-            timed_stage("Loading fonts", || font_db.load_system_fonts());
-            let mut font_system = cosmic_text::FontSystem::new_with_locale_and_db("en-US".to_string(), font_db);
+            let mut font_system =
+                timed_stage("Loading fonts", || build_font_system(&md2pdf_style::Stylesheet::default().typography));
 
             let output_layout =
                 timed_stage("Laying out pages", || layout(&ast, &us_letter(), &mut font_system, &base_dir, &diagrams));
@@ -76,9 +86,8 @@ fn main() -> anyhow::Result<()> {
             let ast = timed_stage("Highlighting code blocks", || highlighter.highlight(ast));
             let diagrams = timed_stage("Compiling diagrams", || md2pdf_enrich::compile_diagrams(&ast));
 
-            let mut font_db = fontdb::Database::new();
-            timed_stage("Loading fonts", || font_db.load_system_fonts());
-            let mut font_system = cosmic_text::FontSystem::new_with_locale_and_db("en-US".to_string(), font_db);
+            let mut font_system =
+                timed_stage("Loading fonts", || build_font_system(&md2pdf_style::Stylesheet::default().typography));
 
             // Every embedded image path was already rewritten to absolute during load_book (each
             // chapter can live in a different subdirectory), so base_dir is never actually

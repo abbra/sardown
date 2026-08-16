@@ -23,6 +23,19 @@ fn renders_basic_markdown_to_a_valid_single_page_pdf() {
 }
 
 #[test]
+fn renders_successfully_after_the_font_loading_refactor() {
+    let out_path = std::env::temp_dir().join("md2pdf-test-font-loading-regression.pdf");
+    let _ = std::fs::remove_file(&out_path);
+
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/basic.md")).arg("-o").arg(&out_path);
+    cmd.assert().success();
+
+    let bytes = std::fs::read(&out_path).expect("output PDF was not written");
+    assert!(bytes.starts_with(b"%PDF-"));
+}
+
+#[test]
 fn renders_all_phase_2_block_kinds_to_a_valid_pdf() {
     let out_path = std::env::temp_dir().join("md2pdf-test-formatting.pdf");
     let _ = std::fs::remove_file(&out_path);
