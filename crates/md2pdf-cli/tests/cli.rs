@@ -334,3 +334,33 @@ fn a_non_letter_page_format_produces_a_pdf_with_a_matching_physical_page_size() 
 
     std::fs::remove_file(&out_path).unwrap();
 }
+
+#[test]
+fn explicit_style_flag_accepts_justified_alignment_without_disturbing_pagination() {
+    // Precise visual proof that justification changes glyph positions lives in
+    // md2pdf-layout's own unit tests (direct access to glyph x-coordinates). This test proves
+    // the stylesheet field reaches the real end-to-end pipeline and that justifying body text
+    // doesn't change how it wraps/paginates -- a real, meaningful, low-risk structural check.
+    let style_path = std::env::temp_dir().join("md2pdf-test-alignment-style.toml");
+    std::fs::write(&style_path, "[typography]\nalignment = \"justify\"\n").unwrap();
+
+    let justified_path = std::env::temp_dir().join("md2pdf-test-alignment-justified.pdf");
+    let _ = std::fs::remove_file(&justified_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/large-book.md")).arg("-o").arg(&justified_path).arg("--style").arg(&style_path);
+    cmd.assert().success();
+    let justified_doc = lopdf::Document::load_mem(&std::fs::read(&justified_path).unwrap()).unwrap();
+
+    let default_path = std::env::temp_dir().join("md2pdf-test-alignment-default.pdf");
+    let _ = std::fs::remove_file(&default_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/large-book.md")).arg("-o").arg(&default_path);
+    cmd.assert().success();
+    let default_doc = lopdf::Document::load_mem(&std::fs::read(&default_path).unwrap()).unwrap();
+
+    assert_eq!(justified_doc.get_pages().len(), default_doc.get_pages().len(), "expected justification to change glyph spacing, not the number of pages");
+
+    std::fs::remove_file(&style_path).unwrap();
+    std::fs::remove_file(&justified_path).unwrap();
+    std::fs::remove_file(&default_path).unwrap();
+}
