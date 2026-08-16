@@ -1,3 +1,4 @@
+use crate::PageContext;
 use md2pdf_style::NumberingFormat;
 
 const ROMAN_NUMERALS: [(u32, &str); 13] = [
@@ -51,4 +52,31 @@ pub fn format_page_number(n: u32, format: NumberingFormat) -> String {
             }
         }
     }
+}
+
+/// Substitutes `{h1}`, `{h2}`, `{page}`, and `{total_pages}` in `template`. Assumes `template`
+/// was already validated by `md2pdf_style::Stylesheet::validate` (built in this feature's Phase
+/// 1) -- an unknown placeholder or unterminated `{` here indicates a caller bypassed that
+/// validation, so this panics rather than silently producing wrong output or duplicating
+/// validation logic that already lives in `md2pdf-style`.
+pub fn resolve_template(template: &str, ctx: &PageContext, page_display: &str, total_pages_display: &str) -> String {
+    let mut result = String::new();
+    let mut rest = template;
+    while let Some(start) = rest.find('{') {
+        result.push_str(&rest[..start]);
+        let after_open = &rest[start + 1..];
+        let end = after_open.find('}').expect("template placeholders are validated before reaching resolve_template");
+        let name = &after_open[..end];
+        let value = match name {
+            "h1" => ctx.current_h1.as_deref().unwrap_or(""),
+            "h2" => ctx.current_h2.as_deref().unwrap_or(""),
+            "page" => page_display,
+            "total_pages" => total_pages_display,
+            other => panic!("unknown placeholder {{{other}}} should have been rejected by Stylesheet::validate"),
+        };
+        result.push_str(value);
+        rest = &after_open[end + 1..];
+    }
+    result.push_str(rest);
+    result
 }

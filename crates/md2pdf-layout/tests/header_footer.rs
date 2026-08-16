@@ -1,5 +1,9 @@
-use md2pdf_layout::format_page_number;
+use md2pdf_layout::{format_page_number, resolve_template, PageContext};
 use md2pdf_style::NumberingFormat;
+
+fn ctx(h1: Option<&str>, h2: Option<&str>) -> PageContext {
+    PageContext { current_h1: h1.map(String::from), current_h2: h2.map(String::from), is_chapter_opener: false }
+}
 
 #[test]
 fn arabic_format_is_the_plain_number() {
@@ -28,4 +32,34 @@ fn roman_format_falls_back_to_arabic_beyond_conventional_range() {
 #[test]
 fn roman_format_of_zero_falls_back_to_arabic() {
     assert_eq!(format_page_number(0, NumberingFormat::RomanUpper), "0");
+}
+
+#[test]
+fn substitutes_h1_and_h2() {
+    let context = ctx(Some("Chapter One"), Some("Section A"));
+    assert_eq!(resolve_template("{h1} / {h2}", &context, "3", "10"), "Chapter One / Section A");
+}
+
+#[test]
+fn missing_h1_or_h2_resolves_to_an_empty_string() {
+    let context = ctx(None, None);
+    assert_eq!(resolve_template("[{h1}]", &context, "3", "10"), "[]");
+}
+
+#[test]
+fn substitutes_page_and_total_pages() {
+    let context = ctx(None, None);
+    assert_eq!(resolve_template("Page {page} of {total_pages}", &context, "3", "10"), "Page 3 of 10");
+}
+
+#[test]
+fn a_template_with_no_placeholders_is_returned_unchanged() {
+    let context = ctx(None, None);
+    assert_eq!(resolve_template("My Book", &context, "3", "10"), "My Book");
+}
+
+#[test]
+fn mixes_literal_text_and_placeholders_in_one_template() {
+    let context = ctx(Some("Intro"), None);
+    assert_eq!(resolve_template("-- {h1} --", &context, "1", "1"), "-- Intro --");
 }
