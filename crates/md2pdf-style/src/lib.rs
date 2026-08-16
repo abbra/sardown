@@ -18,7 +18,7 @@ pub use numbering::{NumberingFormat, PageNumbering};
 pub use page::{PageFormat, PageStyle};
 pub use structural::{BlockquoteStyle, ListStyle, ThematicBreakStyle};
 pub use table::TableStyle;
-pub use typography::TypographyStyle;
+pub use typography::{TextAlignment, TypographyStyle};
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 #[serde(default)]

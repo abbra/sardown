@@ -1,4 +1,4 @@
-use md2pdf_style::{Color, TypographyStyle};
+use md2pdf_style::{Color, TextAlignment, TypographyStyle};
 
 #[test]
 fn default_typography_matches_todays_hardcoded_body_text() {
@@ -22,4 +22,15 @@ fn a_partial_toml_overrides_only_the_fields_it_sets() {
 fn font_dirs_deserializes_a_list_of_paths() {
     let typography: TypographyStyle = toml::from_str(r#"font_dirs = ["/opt/fonts", "vendor/fonts"]"#).unwrap();
     assert_eq!(typography.font_dirs, vec![std::path::PathBuf::from("/opt/fonts"), std::path::PathBuf::from("vendor/fonts")]);
+}
+
+#[test]
+fn default_typography_uses_left_alignment() {
+    assert_eq!(TypographyStyle::default().alignment, TextAlignment::Left);
+}
+
+#[test]
+fn a_toml_document_can_request_justified_alignment() {
+    let typography: TypographyStyle = toml::from_str(r#"alignment = "justify""#).unwrap();
+    assert_eq!(typography.alignment, TextAlignment::Justify);
 }
