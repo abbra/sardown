@@ -127,7 +127,7 @@ fn render_band(
         }
         let node = InlineNode {
             text: resolved,
-            style: TextStyle { bold: false, italic: false, size: style.font_size_pt, color: style.color.0 },
+            style: TextStyle { bold: false, italic: false, size: style.font_size_pt, color: style.color.0, font_family: style.font_family.clone() },
             link_target: None,
         };
         // Only the first shaped line is ever used: header/footer zones are expected to be short

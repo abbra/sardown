@@ -55,11 +55,11 @@ fn heading_at_bottom_of_page_moves_with_its_first_line_of_body_text() {
 use md2pdf_ast::{HighlightedToken, InlineNode, TextStyle};
 
 fn plain_inline(text: &str) -> InlineNode {
-    InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size: 12.0, color: [0, 0, 0] }, link_target: None }
+    InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size: 12.0, color: [0, 0, 0], font_family: "sans-serif".to_string() }, link_target: None }
 }
 
 fn sized_inline(text: &str, size: f32) -> InlineNode {
-    InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size, color: [0, 0, 0] }, link_target: None }
+    InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size, color: [0, 0, 0], font_family: "sans-serif".to_string() }, link_target: None }
 }
 
 #[test]
@@ -604,7 +604,7 @@ fn heading_after_mermaid_diagram_does_not_overlap_the_diagrams_bottom_edge() {
     let heading_size = 22.0;
     let heading_content = InlineNode {
         text: "Next".to_string(),
-        style: TextStyle { bold: false, italic: false, size: heading_size, color: [0, 0, 0] },
+        style: TextStyle { bold: false, italic: false, size: heading_size, color: [0, 0, 0], font_family: "sans-serif".to_string() },
         link_target: None,
     };
     let ast = vec![

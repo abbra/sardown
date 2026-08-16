@@ -24,13 +24,13 @@ fn font_system_with_fallback() -> FontSystem {
 fn plain_run(text: &str) -> InlineNode {
     InlineNode {
         text: text.to_string(),
-        style: TextStyle { bold: false, italic: false, size: 12.0, color: [0, 0, 0] },
+        style: TextStyle { bold: false, italic: false, size: 12.0, color: [0, 0, 0], font_family: "sans-serif".to_string() },
         link_target: None,
     }
 }
 
 fn colored_run(text: &str, color: [u8; 3]) -> InlineNode {
-    InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size: 12.0, color }, link_target: None }
+    InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size: 12.0, color, font_family: "sans-serif".to_string() }, link_target: None }
 }
 
 #[test]

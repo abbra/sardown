@@ -358,7 +358,7 @@ fn render_block(
                 });
                 let label_node = md2pdf_ast::InlineNode {
                     text: resolved.label.clone(),
-                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt, color: resolved.label_color.0 },
+                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt, color: resolved.label_color.0, font_family: resolved.font_family.clone() },
                     link_target: None,
                 };
                 let mut label_elements = shape_paragraph(font_system, std::slice::from_ref(&label_node), cursor.content_width_pt);
@@ -379,13 +379,13 @@ fn render_block(
             if cursor.style.code_block.label_style == md2pdf_style::LabelStyle::Inline {
                 combined.push(md2pdf_ast::InlineNode {
                     text: format!("{}\n", resolved.label),
-                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt, color: resolved.label_color.0 },
+                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt, color: resolved.label_color.0, font_family: resolved.font_family.clone() },
                     link_target: None,
                 });
             }
             combined.extend(tokens.iter().map(|t| md2pdf_ast::InlineNode {
                 text: t.text.clone(),
-                style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt, color: t.color },
+                style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt, color: t.color, font_family: resolved.font_family.clone() },
                 link_target: None,
             }));
             // One rich-shaping call over all tokens so tokens on the same source line (e.g.
@@ -466,7 +466,7 @@ fn render_block(
             if label_style == md2pdf_style::LabelStyle::Corner {
                 let badge_node = md2pdf_ast::InlineNode {
                     text: resolved.label.clone(),
-                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt * 0.8, color: resolved.label_color.0 },
+                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt * 0.8, color: resolved.label_color.0, font_family: resolved.font_family.clone() },
                     link_target: None,
                 };
                 let badge_elements = shape_paragraph(font_system, std::slice::from_ref(&badge_node), content_width_pt);
