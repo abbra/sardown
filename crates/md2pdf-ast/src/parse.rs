@@ -3,20 +3,17 @@ use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Par
 
 const HEADING_SIZES: [f32; 6] = [28.0, 22.0, 18.0, 16.0, 14.0, 12.0];
 const DEFAULT_COLOR: [u8; 3] = [0, 0, 0];
-// Slightly smaller than body text: table cells are narrow and full body size reads as cramped
-// once the cell has proper padding on both sides. Kept in sync with md2pdf-layout's
-// TABLE_TEXT_SIZE_PT, which derives the table's own vertical padding from this same size.
-const TABLE_CELL_SIZE: f32 = 10.5;
 
 /// Bundles the per-parse typography choices that need to reach deep into the recursive block/
 /// inline lowering functions -- passed by reference alongside the existing `slugs`/
 /// `next_diagram_id` state rather than as a `Stylesheet` directly, so this module only depends
-/// on the exact pieces it uses (table-cell and code-block styling are explicitly out of scope
-/// for this phase and stay on their own hardcoded constants).
+/// on the exact pieces it uses (code-block styling is explicitly out of scope for this phase and
+/// stays on its own hardcoded constants).
 struct Typography<'a> {
     heading: &'a md2pdf_style::HeadingStyle,
     body_size: f32,
     body_color: [u8; 3],
+    table_cell_size: f32,
 }
 
 struct InlineBuilder {
@@ -245,7 +242,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                 while let Some(event) = parser.next() {
                     match event {
                         Event::Start(Tag::TableHead) => {
-                            headers = collect_table_cells(parser, TagEnd::TableHead);
+                            headers = collect_table_cells(parser, TagEnd::TableHead, typo.table_cell_size);
                         }
                         Event::Start(Tag::TableRow) => {
                             let mut row = Vec::new();
@@ -258,7 +255,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                                         // flattening lost the cell boundary — corrupting which
                                         // column every following run in the row landed in and
                                         // silently truncating whatever came after via `zip`.
-                                        row.push(lower_inline_events(parser, TagEnd::TableCell, TABLE_CELL_SIZE, DEFAULT_COLOR));
+                                        row.push(lower_inline_events(parser, TagEnd::TableCell, typo.table_cell_size, DEFAULT_COLOR));
                                     }
                                     Event::End(TagEnd::TableRow) => break,
                                     _ => {}
@@ -282,12 +279,13 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
 fn collect_table_cells<'a, I: Iterator<Item = Event<'a>>>(
     parser: &mut std::iter::Peekable<I>,
     end_tag: TagEnd,
+    table_cell_size: f32,
 ) -> Vec<Vec<InlineNode>> {
     let mut cells = Vec::new();
     while let Some(event) = parser.next() {
         match event {
             Event::Start(Tag::TableCell) => {
-                cells.push(lower_inline_events(parser, TagEnd::TableCell, TABLE_CELL_SIZE, DEFAULT_COLOR));
+                cells.push(lower_inline_events(parser, TagEnd::TableCell, table_cell_size, DEFAULT_COLOR));
             }
             Event::End(tag) if tag == end_tag => break,
             _ => {}
@@ -340,6 +338,7 @@ pub fn parse_with_style(
         heading: &style.heading,
         body_size: style.typography.body_size_pt,
         body_color: style.typography.body_color.0,
+        table_cell_size: style.table.text_size_pt,
     };
     // TagEnd::Item is never opened at the top level, so it never matches; used only as a
     // sentinel that can't legitimately occur, meaning we consume until the iterator is exhausted.

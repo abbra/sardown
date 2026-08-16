@@ -63,3 +63,16 @@ fn parse_with_slugs_matches_parse_with_style_using_stylesheet_defaults() {
 
     assert_eq!(via_style, via_slugs);
 }
+
+#[test]
+fn table_cell_uses_the_configured_table_text_size() {
+    let mut style = Stylesheet::default();
+    style.table.text_size_pt = 8.0;
+    let mut slugs = SlugGenerator::new();
+    let mut next_id = 0;
+    let md = "| A |\n|---|\n| one |\n";
+    let blocks = parse_with_style(md, &mut slugs, &mut next_id, &style);
+    let BlockNode::Table { headers, rows, .. } = &blocks[0] else { panic!("expected a table, got {:?}", blocks[0]) };
+    assert_eq!(headers[0][0].style.size, 8.0);
+    assert_eq!(rows[0][0][0].style.size, 8.0);
+}
