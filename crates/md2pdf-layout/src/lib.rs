@@ -43,6 +43,13 @@ pub struct AnchorPosition {
 }
 pub type AnchorTable = std::collections::HashMap<String, AnchorPosition>;
 
+#[derive(Debug, Clone)]
+pub struct PageContext {
+    pub current_h1: Option<String>,
+    pub current_h2: Option<String>,
+    pub is_chapter_opener: bool,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Rect {
     pub x: f32,

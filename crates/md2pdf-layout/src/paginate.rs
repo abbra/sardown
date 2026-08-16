@@ -1,6 +1,6 @@
 use crate::{
-    shape_rich_paragraph, AnchorPosition, AnchorTable, ImageTable, PageGeometry, PathCommand,
-    PositionedElement, PositionedPage, Rect, StrokeStyle,
+    shape_rich_paragraph, AnchorPosition, AnchorTable, ImageTable, PageContext, PageGeometry,
+    PathCommand, PositionedElement, PositionedPage, Rect, StrokeStyle,
 };
 use cosmic_text::FontSystem;
 use md2pdf_ast::BlockNode;
@@ -24,6 +24,10 @@ struct Cursor {
     current: Vec<PositionedElement>,
     page_number: usize,
     anchors: AnchorTable,
+    current_h1: Option<String>,
+    current_h2: Option<String>,
+    chapter_opener_pending: bool,
+    page_contexts: Vec<PageContext>,
 }
 
 impl Cursor {
@@ -37,6 +41,10 @@ impl Cursor {
             current: Vec::new(),
             page_number: 0,
             anchors: AnchorTable::new(),
+            current_h1: None,
+            current_h2: None,
+            chapter_opener_pending: false,
+            page_contexts: Vec::new(),
         }
     }
 
@@ -44,18 +52,29 @@ impl Cursor {
         self.page_height_pt - self.y
     }
 
+    fn snapshot_page_context(&mut self) {
+        self.page_contexts.push(PageContext {
+            current_h1: self.current_h1.clone(),
+            current_h2: self.current_h2.clone(),
+            is_chapter_opener: std::mem::take(&mut self.chapter_opener_pending),
+        });
+    }
+
     fn break_page(&mut self, margin_pt: f32) {
         let elements = std::mem::take(&mut self.current);
         self.pages.push(PositionedPage { page_number: self.page_number, elements });
+        self.snapshot_page_context();
         self.page_number += 1;
         self.y = margin_pt;
     }
 
-    fn finish(mut self) -> (Vec<PositionedPage>, AnchorTable) {
+    fn finish(mut self) -> (Vec<PositionedPage>, AnchorTable, Vec<PageContext>) {
         if !self.current.is_empty() || self.pages.is_empty() {
-            self.pages.push(PositionedPage { page_number: self.page_number, elements: self.current });
+            let elements = std::mem::take(&mut self.current);
+            self.pages.push(PositionedPage { page_number: self.page_number, elements });
+            self.snapshot_page_context();
         }
-        (self.pages, self.anchors)
+        (self.pages, self.anchors, self.page_contexts)
     }
 }
 
@@ -207,7 +226,7 @@ fn render_block(
     next_block: Option<&BlockNode>,
 ) {
     match block {
-        BlockNode::Heading { content, id, .. } => {
+        BlockNode::Heading { level, content, id } => {
             let heading_size = content.first().map(|c| c.style.size).unwrap_or(12.0);
             // Skipped at the very top of a page/column, where extra leading whitespace isn't
             // wanted (e.g. a chapter's own title heading right after its PageBreak).
@@ -217,6 +236,19 @@ fn render_block(
             let heading_h = estimate_line_height(heading_size);
             if cursor.remaining_height() < heading_h && !cursor.current.is_empty() {
                 cursor.break_page(margin_pt);
+            }
+            // A level-1 heading landing as the very first thing on a page -- whether because it
+            // naturally opens there or because it just got pushed there by the fit check above --
+            // marks that page as a "chapter opener" for header/footer suppression purposes.
+            if cursor.current.is_empty() && *level == 1 {
+                cursor.chapter_opener_pending = true;
+            }
+            let heading_text: String = content.iter().map(|n| n.text.as_str()).collect();
+            if *level == 1 {
+                cursor.current_h1 = Some(heading_text);
+                cursor.current_h2 = None;
+            } else if *level == 2 {
+                cursor.current_h2 = Some(heading_text);
             }
             let anchor_y = cursor.y;
             let max_width_pt = cursor.content_width_pt - indent_pt;
@@ -555,6 +587,7 @@ pub struct LayoutOutput {
     pub pages: Vec<PositionedPage>,
     pub images: ImageTable,
     pub anchors: AnchorTable,
+    pub page_contexts: Vec<PageContext>,
 }
 
 pub fn layout(
@@ -571,6 +604,6 @@ pub fn layout(
         render_block(block, &mut cursor, margin_pt, 0.0, font_system, &images, diagrams, ast.get(i + 1));
         cursor.y += LINE_SPACING_PT;
     }
-    let (pages, anchors) = cursor.finish();
-    LayoutOutput { pages, images, anchors }
+    let (pages, anchors, page_contexts) = cursor.finish();
+    LayoutOutput { pages, images, anchors, page_contexts }
 }
