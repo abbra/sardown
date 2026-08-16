@@ -30,6 +30,23 @@ pub struct Stylesheet {
 }
 
 impl Stylesheet {
+    /// `explicit_path` (a `--style` CLI flag) wins if given. Otherwise, if `book_root` is
+    /// `Some`, look for `<book_root>/style.toml`. Otherwise fall back to `Stylesheet::default()`.
+    /// A missing stylesheet is never an error -- only one that exists but fails to parse or
+    /// validate is.
+    pub fn resolve(explicit_path: Option<&std::path::Path>, book_root: Option<&std::path::Path>) -> anyhow::Result<Stylesheet> {
+        if let Some(path) = explicit_path {
+            return Stylesheet::load(path);
+        }
+        if let Some(root) = book_root {
+            let candidate = root.join("style.toml");
+            if candidate.is_file() {
+                return Stylesheet::load(&candidate);
+            }
+        }
+        Ok(Stylesheet::default())
+    }
+
     pub fn load(path: &std::path::Path) -> anyhow::Result<Stylesheet> {
         let text = std::fs::read_to_string(path).with_context(|| format!("failed to read stylesheet {}", path.display()))?;
         let sheet: Stylesheet = toml::from_str(&text).with_context(|| format!("failed to parse stylesheet {}", path.display()))?;
