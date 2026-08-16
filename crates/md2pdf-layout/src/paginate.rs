@@ -11,6 +11,10 @@ const LINE_SPACING_PT: f32 = 4.0; // gap after each block
 const BLOCKQUOTE_INDENT_PT: f32 = 18.0;
 const LIST_INDENT_PT: f32 = 18.0;
 const CODE_BLOCK_BG: [u8; 3] = [245, 245, 245];
+// A heading needs more visual separation from whatever precedes it (a different, already-
+// finished section) than from its own following content, or it reads as the tail of the wrong
+// section. Scales with the heading's own size so bigger headings get proportionally more room.
+const SPACE_BEFORE_HEADING_FACTOR: f32 = 0.8;
 
 struct Cursor {
     y: f32,
@@ -205,6 +209,11 @@ fn render_block(
     match block {
         BlockNode::Heading { content, id, .. } => {
             let heading_size = content.first().map(|c| c.style.size).unwrap_or(12.0);
+            // Skipped at the very top of a page/column, where extra leading whitespace isn't
+            // wanted (e.g. a chapter's own title heading right after its PageBreak).
+            if !cursor.current.is_empty() {
+                cursor.y += heading_size * SPACE_BEFORE_HEADING_FACTOR;
+            }
             let heading_h = estimate_line_height(heading_size);
             if cursor.remaining_height() < heading_h && !cursor.current.is_empty() {
                 cursor.break_page(margin_pt);
@@ -228,10 +237,17 @@ fn render_block(
                 render_block(child, cursor, margin_pt, indent_pt + BLOCKQUOTE_INDENT_PT, font_system, images, diagrams, child_next);
             }
             let end_y = cursor.y;
+            // `start_y`/`end_y` are cursor bookkeeping, not visual extents: `start_y` is the
+            // first child's first line's *baseline* (its ascender reaches above that), and
+            // `end_y` is the cursor position *after* the last line's full line height -- which
+            // already includes the gap reserved for whatever block comes next. Left uncorrected
+            // the border started visibly too low and ran down into the following block's own
+            // text, same root cause as the CodeBlock background's ascender/gap padding.
+            let pad = estimate_next_block_ascent_pt(content.first());
             cursor.current.push(PositionedElement::Path {
                 points: vec![
-                    PathCommand::MoveTo(margin_pt + indent_pt + 4.0, start_y),
-                    PathCommand::LineTo(margin_pt + indent_pt + 4.0, end_y),
+                    PathCommand::MoveTo(margin_pt + indent_pt + 4.0, start_y - pad),
+                    PathCommand::LineTo(margin_pt + indent_pt + 4.0, end_y - pad - LINE_SPACING_PT),
                 ],
                 fill: None,
                 stroke: Some(StrokeStyle { color: [180, 180, 180], width: 2.0 }),

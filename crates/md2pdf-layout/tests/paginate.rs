@@ -58,6 +58,45 @@ fn plain_inline(text: &str) -> InlineNode {
     InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size: 12.0, color: [0, 0, 0] }, link_target: None }
 }
 
+fn sized_inline(text: &str, size: f32) -> InlineNode {
+    InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size, color: [0, 0, 0] }, link_target: None }
+}
+
+#[test]
+fn heading_has_more_space_before_it_than_after_it() {
+    // Regression test: with no extra "space before a heading," a new section's title sat right
+    // up against the *previous* section's last line while the gap to its OWN following content
+    // stayed the same small inter-block spacing -- backwards from normal document typography,
+    // making the heading read as the tail of the wrong section.
+    let ast = vec![
+        BlockNode::Paragraph { content: vec![plain_inline("End of section one.")] },
+        BlockNode::Heading { level: 2, id: "two".to_string(), content: vec![sized_inline("Section Two", 22.0)] },
+        BlockNode::Paragraph { content: vec![plain_inline("Start of section two.")] },
+    ];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+
+    let y_of = |text: &str| {
+        pages[0]
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                PositionedElement::TextRun { y, text: t, .. } if t == text => Some(*y),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing text run {text:?}"))
+    };
+
+    let end_of_p1 = y_of("End of section one.");
+    let heading_y = y_of("Section Two");
+    let start_of_p2 = y_of("Start of section two.");
+
+    let gap_before_heading = heading_y - end_of_p1;
+    let gap_after_heading = start_of_p2 - heading_y;
+
+    assert!(gap_before_heading > gap_after_heading, "expected more space before a heading ({gap_before_heading}) than after it ({gap_after_heading})");
+}
+
 #[test]
 fn blockquote_produces_a_side_border_path_plus_nested_text() {
     let ast = vec![BlockNode::Blockquote { content: vec![BlockNode::Paragraph { content: vec![plain_inline("Quoted")] }] }];
@@ -66,6 +105,56 @@ fn blockquote_produces_a_side_border_path_plus_nested_text() {
     let has_path = pages[0].elements.iter().any(|e| matches!(e, PositionedElement::Path { .. }));
     let has_text = pages[0].elements.iter().any(|e| matches!(e, PositionedElement::TextRun { .. }));
     assert!(has_path && has_text);
+}
+
+#[test]
+fn blockquote_border_does_not_overrun_into_the_following_blocks_ascender() {
+    // Regression test: the border's start_y was the first line's *baseline* (missing its
+    // ascender entirely), and its end_y was the cursor position *after* the last line's full
+    // line height -- which already includes the gap reserved for whatever block comes next. On
+    // real documents this made the border start visibly too low and run down into the following
+    // paragraph's own text.
+    let ast = vec![
+        BlockNode::Blockquote { content: vec![BlockNode::Paragraph { content: vec![plain_inline("Quoted")] }] },
+        BlockNode::Paragraph { content: vec![plain_inline("Following")] },
+    ];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+
+    let quoted_baseline = pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { y, text, .. } if text == "Quoted" => Some(*y),
+            _ => None,
+        })
+        .expect("expected the quoted text run");
+    let following_baseline = pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { y, text, .. } if text == "Following" => Some(*y),
+            _ => None,
+        })
+        .expect("expected the following text run");
+    let (border_top, border_bottom) = pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::Path { points, stroke: Some(_), .. } => match points.as_slice() {
+                [md2pdf_layout::PathCommand::MoveTo(_, y0), md2pdf_layout::PathCommand::LineTo(_, y1)] => Some((*y0, *y1)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("expected the blockquote border path");
+
+    // 12pt body text's ascent is ~9.6pt (size*0.8, matching estimate_next_block_ascent_pt) -- the
+    // border's top must reach up to at least the quoted text's visual top, not sit at its baseline.
+    assert!(border_top <= quoted_baseline - 8.0, "border top ({border_top}) doesn't reach the quoted text's ascender (baseline={quoted_baseline})");
+    // The border's bottom must stay clear of the following paragraph's own ascender (~9.6pt above
+    // its baseline), not run down into it.
+    assert!(border_bottom <= following_baseline - 8.0, "border bottom ({border_bottom}) overruns into the following paragraph (baseline={following_baseline})");
 }
 
 #[test]
