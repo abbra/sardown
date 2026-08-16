@@ -147,3 +147,94 @@ fn diagram_parse_error_reports_the_offending_line_inside_the_diagram_not_just_th
     let expected = format!("{}:7:11", md_path.display());
     assert!(stderr.contains(&expected), "expected stderr to contain {expected:?}, got:\n{stderr}");
 }
+
+#[test]
+fn explicit_style_flag_changes_rendered_output() {
+    // A drastically larger body font is a simple, unambiguous, easily-observed signal that the
+    // stylesheet actually took effect through the full parse_with_style -> layout_with_header_footer
+    // pipeline: the same source text overflows onto more pages at 60pt than at the default 12pt.
+    // Uses large-book.md rather than basic.md -- basic.md is only one short sentence, too little
+    // text to overflow onto extra pages at any body size (confirmed empirically: both renders
+    // came out to exactly 1 page, so the two counts were never going to differ).
+    let style_path = std::env::temp_dir().join("md2pdf-test-explicit-style.toml");
+    std::fs::write(&style_path, "[typography]\nbody_size_pt = 60.0\n").unwrap();
+
+    let styled_path = std::env::temp_dir().join("md2pdf-test-explicit-style-output.pdf");
+    let _ = std::fs::remove_file(&styled_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/large-book.md")).arg("-o").arg(&styled_path).arg("--style").arg(&style_path);
+    cmd.assert().success();
+    let styled_doc = lopdf::Document::load_mem(&std::fs::read(&styled_path).unwrap()).unwrap();
+
+    let default_path = std::env::temp_dir().join("md2pdf-test-explicit-style-default.pdf");
+    let _ = std::fs::remove_file(&default_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/large-book.md")).arg("-o").arg(&default_path);
+    cmd.assert().success();
+    let default_doc = lopdf::Document::load_mem(&std::fs::read(&default_path).unwrap()).unwrap();
+
+    assert!(styled_doc.get_pages().len() > default_doc.get_pages().len(), "expected the 60pt body style to overflow onto more pages than the default");
+
+    std::fs::remove_file(&style_path).unwrap();
+    std::fs::remove_file(&styled_path).unwrap();
+    std::fs::remove_file(&default_path).unwrap();
+}
+
+#[test]
+fn explicit_style_flag_exercises_code_block_label_rendering() {
+    let style_path = std::env::temp_dir().join("md2pdf-test-code-label-style.toml");
+    std::fs::write(&style_path, "[code_block]\nlabel_style = \"inline\"\n").unwrap();
+
+    let out_path = std::env::temp_dir().join("md2pdf-test-code-label-output.pdf");
+    let _ = std::fs::remove_file(&out_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/formatting.md")).arg("-o").arg(&out_path).arg("--style").arg(&style_path);
+    cmd.assert().success();
+
+    let bytes = std::fs::read(&out_path).unwrap();
+    let doc = lopdf::Document::load_mem(&bytes).unwrap();
+    let text = doc.extract_text(&[1]).unwrap_or_default();
+    assert!(text.contains("Rust"), "expected the auto-generated \"Rust\" code block label in the rendered output: {text}");
+
+    std::fs::remove_file(&style_path).unwrap();
+    std::fs::remove_file(&out_path).unwrap();
+}
+
+#[test]
+fn render_book_auto_discovers_a_style_toml_in_the_book_root() {
+    let book_root = std::env::temp_dir().join("md2pdf-test-style-auto-discovery-book");
+    let _ = std::fs::remove_dir_all(&book_root);
+    std::fs::create_dir_all(book_root.join("src")).unwrap();
+    std::fs::write(book_root.join("src/SUMMARY.md"), "# Summary\n\n- [Intro](intro.md)\n").unwrap();
+    // A single short sentence never overflows at any body size (confirmed empirically); repeat
+    // one sentence enough times that inflating body_size_pt to 60pt visibly adds pages.
+    let body = "This is a line of body text used to fill up space on the page. ".repeat(60);
+    std::fs::write(book_root.join("src/intro.md"), format!("# Intro\n\n{body}\n")).unwrap();
+    std::fs::write(book_root.join("style.toml"), "[typography]\nbody_size_pt = 60.0\n").unwrap();
+
+    let styled_path = std::env::temp_dir().join("md2pdf-test-style-auto-discovery-output.pdf");
+    let _ = std::fs::remove_file(&styled_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render-book").arg(&book_root).arg("-o").arg(&styled_path);
+    cmd.assert().success();
+    let styled_doc = lopdf::Document::load_mem(&std::fs::read(&styled_path).unwrap()).unwrap();
+
+    // Same book, but with style.toml removed -- should fall back to defaults and fit on fewer
+    // pages (a single short chapter easily fits on one page at the default 12pt body size).
+    std::fs::remove_file(book_root.join("style.toml")).unwrap();
+    let default_path = std::env::temp_dir().join("md2pdf-test-style-auto-discovery-default.pdf");
+    let _ = std::fs::remove_file(&default_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render-book").arg(&book_root).arg("-o").arg(&default_path);
+    cmd.assert().success();
+    let default_doc = lopdf::Document::load_mem(&std::fs::read(&default_path).unwrap()).unwrap();
+
+    assert!(
+        styled_doc.get_pages().len() > default_doc.get_pages().len(),
+        "expected the auto-discovered style.toml's 60pt body size to overflow onto more pages than the default"
+    );
+
+    std::fs::remove_dir_all(&book_root).unwrap();
+    std::fs::remove_file(&styled_path).unwrap();
+    std::fs::remove_file(&default_path).unwrap();
+}
