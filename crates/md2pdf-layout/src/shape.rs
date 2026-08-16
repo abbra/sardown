@@ -4,11 +4,34 @@ use md2pdf_ast::InlineNode;
 
 const PT_TO_PX_SCALE: f32 = 1.0; // 1pt == 1px at our fixed 96/72... kept 1:1 for Phase 1 simplicity
 
-pub fn shape_paragraph(
-    font_system: &mut FontSystem,
-    content: &[InlineNode],
-    max_width_pt: f32,
-) -> Vec<PositionedElement> {
+/// Maps a stylesheet's `font_family` string to a cosmic-text `Family`. The five values this
+/// project's schema documents as generic keywords map to fontdb's own matching generic-family
+/// variants. Anything else is treated as a literal family name -- checked against `db`'s loaded
+/// faces first, since an unresolvable name doesn't fail in cosmic-text/fontdb, it silently
+/// degrades to whatever font an internal scoring heuristic picks across every loaded face
+/// (confirmed against fontdb 0.23's `get_font_matches`/`query` source) -- not a predictable
+/// fallback worth depending on. A resolvable check-then-use here makes the fallback explicit and
+/// warned instead.
+fn resolve_family<'a>(db: &fontdb::Database, requested: &'a str) -> Family<'a> {
+    match requested {
+        "serif" => Family::Serif,
+        "sans-serif" | "sans serif" => Family::SansSerif,
+        "monospace" => Family::Monospace,
+        "cursive" => Family::Cursive,
+        "fantasy" => Family::Fantasy,
+        name => {
+            let known = db.faces().any(|face| face.families.iter().any(|(family_name, _)| family_name.eq_ignore_ascii_case(name)));
+            if known {
+                Family::Name(name)
+            } else {
+                eprintln!("warning: unknown font family {name:?}; falling back to a sans-serif font");
+                Family::SansSerif
+            }
+        }
+    }
+}
+
+pub fn shape_paragraph(font_system: &mut FontSystem, content: &[InlineNode], max_width_pt: f32) -> Vec<PositionedElement> {
     if content.is_empty() {
         return Vec::new();
     }
@@ -23,7 +46,7 @@ pub fn shape_paragraph(
 
     let full_text: String = content.iter().map(|n| n.text.as_str()).collect::<Vec<_>>().join("");
     let attrs = Attrs::new()
-        .family(Family::SansSerif)
+        .family(resolve_family(font_system.db(), &content[0].style.font_family))
         .weight(if content[0].style.bold { Weight::BOLD } else { Weight::NORMAL })
         .style(if content[0].style.italic { Style::Italic } else { Style::Normal });
     buffer.set_text(&full_text, &attrs, Shaping::Advanced, None);
@@ -97,7 +120,7 @@ pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode]
     let mut offset = 0usize;
     for node in content {
         let attrs = Attrs::new()
-            .family(Family::SansSerif)
+            .family(resolve_family(font_system.db(), &node.style.font_family))
             .weight(if node.style.bold { Weight::BOLD } else { Weight::NORMAL })
             .style(if node.style.italic { Style::Italic } else { Style::Normal });
         rich_text_spans.push((node.text.as_str(), attrs));
