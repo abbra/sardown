@@ -35,6 +35,31 @@ pub fn shape_paragraph(
         let mut glyphs = Vec::with_capacity(run.glyphs.len());
         let mut font_id = None;
         for glyph in run.glyphs {
+            if glyph.glyph_id == 0 {
+                // Glyph ID 0 is always ".notdef" (the "tofu box") by OpenType convention --
+                // cosmic-text's fallback when NO loaded font covers this character. PDF/A
+                // strictly forbids emitting it, and krilla refuses to serialize a document that
+                // contains one at all, which would otherwise abort the *entire* render over one
+                // unsupported character. Drop it and keep going, matching this project's
+                // established convention of skipping the one broken piece of content instead of
+                // failing the whole document (dangling links, unsupported diagrams, missing
+                // images).
+                // cosmic-text's cluster start/end don't always land on a UTF-8 char boundary in
+                // `full_text` for characters outside the Basic Multilingual Plane -- when that
+                // happens, report the drop without guessing at (and potentially misreporting) an
+                // unrelated character.
+                match full_text.get(glyph.start..glyph.end) {
+                    Some(ch) => eprintln!(
+                        "warning: character {ch:?} is not supported by any available font; dropping it \
+                         from the output (PDF/A forbids the resulting .notdef glyph)"
+                    ),
+                    None => eprintln!(
+                        "warning: a character is not supported by any available font; dropping it \
+                         from the output (PDF/A forbids the resulting .notdef glyph)"
+                    ),
+                }
+                continue;
+            }
             font_id.get_or_insert(glyph.font_id);
             glyphs.push(PositionedGlyph { glyph_id: glyph.glyph_id, x: glyph.x, y: glyph.y, x_advance: glyph.w, cluster: glyph.start..glyph.end });
         }
@@ -115,6 +140,27 @@ pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode]
 
         for glyph in run.glyphs {
             let span_index = span_index_for(glyph.start);
+            if glyph.glyph_id == 0 {
+                // See shape_paragraph's identical check for why .notdef glyphs are dropped
+                // rather than rendered: PDF/A forbids them, and krilla refuses to serialize a
+                // document containing one at all.
+                let span = &spans[span_index];
+                let local_start = glyph.start.saturating_sub(span.range.start);
+                let local_end = glyph.end.saturating_sub(span.range.start);
+                // See shape_paragraph's identical fallback for why a missing char boundary isn't
+                // guessed at here.
+                match content[span_index].text.get(local_start..local_end) {
+                    Some(ch) => eprintln!(
+                        "warning: character {ch:?} is not supported by any available font; dropping it \
+                         from the output (PDF/A forbids the resulting .notdef glyph)"
+                    ),
+                    None => eprintln!(
+                        "warning: a character is not supported by any available font; dropping it \
+                         from the output (PDF/A forbids the resulting .notdef glyph)"
+                    ),
+                }
+                continue;
+            }
             let span_changed = current_span.is_some() && current_span != Some(span_index);
             let font_changed = current_font_id.is_some() && current_font_id != Some(glyph.font_id);
             if span_changed || font_changed {

@@ -81,3 +81,46 @@ fn splits_a_run_at_a_font_fallback_boundary_within_one_span() {
         assert_eq!(*glyph_count, 1, "expected exactly one glyph per single-character run");
     }
 }
+
+#[test]
+fn shape_rich_paragraph_drops_characters_with_no_font_coverage_instead_of_notdef() {
+    // Regression test: cosmic-text falls back to glyph ID 0 (".notdef", the "tofu box") when NO
+    // loaded font covers a character. PDF/A strictly forbids emitting that glyph -- krilla's own
+    // conformance validation refuses to serialize a document containing one, which previously
+    // aborted the ENTIRE render (potentially hundreds of pages of otherwise-fine content) over a
+    // single unsupported character somewhere in the source. Dropping just that glyph instead --
+    // matching this project's established "skip the one broken piece, don't abort the whole
+    // document" convention for images/diagrams/links -- keeps the render succeeding.
+    let mut font_system = font_system_with_fallback(); // neither loaded font covers this character
+    let content = vec![plain_run("a\u{1D11E}b")]; // U+1D11E MUSICAL SYMBOL G CLEF
+    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0);
+
+    let all_glyph_ids: Vec<_> = runs
+        .iter()
+        .flat_map(|r| match &r.element {
+            PositionedElement::TextRun { glyphs, .. } => glyphs.iter().map(|g| g.glyph_id).collect::<Vec<_>>(),
+            other => panic!("expected TextRun, got {other:?}"),
+        })
+        .collect();
+
+    assert!(!all_glyph_ids.contains(&0), "expected no .notdef (glyph id 0) in the output, got {all_glyph_ids:?}");
+    assert_eq!(all_glyph_ids.len(), 2, "expected 'a' and 'b' to still shape normally, got {all_glyph_ids:?}");
+}
+
+#[test]
+fn shape_paragraph_drops_characters_with_no_font_coverage_instead_of_notdef() {
+    let mut font_system = font_system_with_fallback();
+    let content = vec![plain_run("a\u{1D11E}b")];
+    let elements = shape_paragraph(&mut font_system, &content, 400.0);
+
+    let all_glyph_ids: Vec<_> = elements
+        .iter()
+        .flat_map(|e| match e {
+            PositionedElement::TextRun { glyphs, .. } => glyphs.iter().map(|g| g.glyph_id).collect::<Vec<_>>(),
+            other => panic!("expected TextRun, got {other:?}"),
+        })
+        .collect();
+
+    assert!(!all_glyph_ids.contains(&0), "expected no .notdef (glyph id 0) in the output, got {all_glyph_ids:?}");
+    assert_eq!(all_glyph_ids.len(), 2, "expected 'a' and 'b' to still shape normally, got {all_glyph_ids:?}");
+}
