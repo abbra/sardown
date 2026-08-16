@@ -299,3 +299,38 @@ fn explicit_style_flag_changes_the_embedded_font() {
     std::fs::remove_file(&default_path).unwrap();
 }
 
+#[test]
+fn a_non_letter_page_format_produces_a_pdf_with_a_matching_physical_page_size() {
+    // Regression test: md2pdf-pdf::render_pdf used to emit a hardcoded US-Letter-sized
+    // /MediaBox on every page, regardless of what page format the stylesheet actually laid the
+    // content out for. Content positioned relative to a taller/wider virtual page (e.g. A4, at
+    // 842pt tall vs Letter's 792pt) than the physical page actually emitted got silently clipped
+    // -- most visibly, a footer positioned near the bottom of an assumed-A4 page fell completely
+    // outside the real, shorter Letter-sized page and never appeared, despite being present in
+    // the PDF's own content stream.
+    let out_path = std::env::temp_dir().join("md2pdf-test-a4-mediabox.pdf");
+    let _ = std::fs::remove_file(&out_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render")
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/basic.md"))
+        .arg("-o")
+        .arg(&out_path)
+        .arg("--style")
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/style-examples/eu-a4.toml"));
+    cmd.assert().success();
+
+    let doc = lopdf::Document::load_mem(&std::fs::read(&out_path).unwrap()).unwrap();
+    let &page_id = doc.get_pages().values().next().unwrap();
+    let media_box = doc.get_dictionary(page_id).unwrap().get(b"MediaBox").unwrap().as_array().unwrap();
+    let width_pt = media_box[2].as_float().unwrap();
+    let height_pt = media_box[3].as_float().unwrap();
+
+    // A4 is 210mm x 297mm; 1mm == 72/25.4 pt.
+    const PT_PER_MM: f32 = 72.0 / 25.4;
+    let expected_width_pt = 210.0 * PT_PER_MM;
+    let expected_height_pt = 297.0 * PT_PER_MM;
+    assert!((width_pt - expected_width_pt).abs() < 1.0, "expected an A4-width MediaBox (~{expected_width_pt}pt), got {width_pt}pt");
+    assert!((height_pt - expected_height_pt).abs() < 1.0, "expected an A4-height MediaBox (~{expected_height_pt}pt), got {height_pt}pt");
+
+    std::fs::remove_file(&out_path).unwrap();
+}

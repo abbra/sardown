@@ -678,6 +678,8 @@ pub struct LayoutOutput {
     pub images: ImageTable,
     pub anchors: AnchorTable,
     pub page_contexts: Vec<PageContext>,
+    pub page_width_pt: f32,
+    pub page_height_pt: f32,
 }
 
 pub fn layout(ast: &[BlockNode], geometry: &PageGeometry, font_system: &mut FontSystem, base_dir: &std::path::Path, diagrams: &DiagramTable) -> LayoutOutput {
@@ -704,5 +706,12 @@ pub fn layout_impl(
         cursor.y += LINE_SPACING_PT;
     }
     let (pages, anchors, page_contexts) = cursor.finish();
-    LayoutOutput { pages, images, anchors, page_contexts }
+    LayoutOutput {
+        pages,
+        images,
+        anchors,
+        page_contexts,
+        page_width_pt: geometry.page_width_mm * PT_PER_MM,
+        page_height_pt: geometry.page_height_mm * PT_PER_MM,
+    }
 }

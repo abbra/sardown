@@ -16,26 +16,25 @@ use md2pdf_enrich::DiagramTable;
 use md2pdf_layout::{AnchorTable, ImageTable, PositionedElement, PositionedPage};
 use std::collections::HashMap;
 
-const PAGE_WIDTH_PT: f32 = 612.0; // US Letter, matches Phase 1's single fixed page size
-const PAGE_HEIGHT_PT: f32 = 792.0;
-
 fn pdf_a2b_configuration() -> anyhow::Result<Configuration> {
     ConfigurationBuilder::new().with_archival_validator(Archival::A2_B).finish().map_err(|e| anyhow::anyhow!("invalid krilla configuration: {e:?}"))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_pdf(
     pages: &[PositionedPage],
     font_data: &fontdb::Database,
     images: &ImageTable,
     diagrams: &DiagramTable,
     anchors: &AnchorTable,
+    page_width_pt: f32,
+    page_height_pt: f32,
 ) -> anyhow::Result<Vec<u8>> {
     let configuration = pdf_a2b_configuration()?;
     let settings = SerializeSettings { configuration, ..Default::default() };
     let mut document = Document::new_with(settings);
 
-    let page_size = Size::from_wh(PAGE_WIDTH_PT, PAGE_HEIGHT_PT)
-        .context("invalid fixed page size constants")?;
+    let page_size = Size::from_wh(page_width_pt, page_height_pt).context("invalid page size")?;
 
     // Cache one krilla::text::Font per fontdb::ID so repeated glyphs on the same page
     // don't reload/re-register the font.

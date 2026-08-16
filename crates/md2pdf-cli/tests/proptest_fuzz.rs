@@ -51,7 +51,8 @@ proptest! {
             page_width_mm: 215.9, page_height_mm: 279.4, margin_mm: 25.4,
         }, &mut font_system, std::path::Path::new("."), &diagrams);
 
-        let pdf_bytes = md2pdf_pdf::render_pdf(&output.pages, font_system.db(), &output.images, &diagrams, &output.anchors);
+        let pdf_bytes =
+            md2pdf_pdf::render_pdf(&output.pages, font_system.db(), &output.images, &diagrams, &output.anchors, output.page_width_pt, output.page_height_pt);
         prop_assert!(pdf_bytes.is_ok(), "render_pdf returned an error instead of panicking, which is fine, but got: {:?}", pdf_bytes.err());
     }
 }
