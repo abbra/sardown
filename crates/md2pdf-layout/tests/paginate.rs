@@ -291,6 +291,47 @@ fn code_block_background_fully_encloses_the_first_lines_ascender() {
 }
 
 #[test]
+fn code_block_background_does_not_overshoot_past_the_last_line_by_a_whole_extra_line() {
+    // Regression test: `cursor.y` after placing the code block's content is the position where a
+    // *next* line would start (baseline + full line height, which already includes the trailing
+    // inter-block gap) -- not the last line's own visual bottom. Using it directly (plus a small
+    // fixed pad) made the background extend a whole extra code line's height past the actual
+    // last line, bleeding into whatever content came after.
+    let ast = vec![BlockNode::CodeBlock { language: None, tokens: vec![HighlightedToken { text: "one\ntwo\n".to_string(), color: [0, 0, 0] }] }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+
+    let mut baselines: Vec<f32> = pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            PositionedElement::TextRun { y, .. } => Some(*y),
+            _ => None,
+        })
+        .collect();
+    baselines.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let last_line_baseline = *baselines.last().expect("expected at least one text run");
+
+    let (_, bg_bottom) = pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::Path { points, fill: Some(_), .. } => Some(path_y_bounds(points)),
+            _ => None,
+        })
+        .expect("expected a background path");
+
+    // A code line's descender needs only a few points of clearance below its own baseline --
+    // nowhere near a whole extra line height (~18pt at this 10pt code font size).
+    assert!(
+        bg_bottom - last_line_baseline < 10.0,
+        "background bottom ({bg_bottom}) overshoots the last line's baseline ({last_line_baseline}) by \
+         {}pt -- looks like it included a whole extra line's height",
+        bg_bottom - last_line_baseline
+    );
+}
+
+#[test]
 fn code_block_spanning_pages_draws_a_background_on_each_page_it_touches() {
     // Enough lines that the block cannot fit on one page, forcing `place_inline_content` to
     // break mid-block. Regression test for a bug where the background rectangle used `start_y`

@@ -331,6 +331,12 @@ fn render_block(
             // Must stay under LINE_SPACING_PT (the gap the layout loop inserts after every
             // block) or the box bleeds into whatever follows the code block.
             const BOTTOM_PAD_PT: f32 = 2.0;
+            // `end_y` (== cursor.y right after placing the block) is where a *next* line would
+            // start -- baseline + this line height, which already bakes in the trailing
+            // inter-block gap -- not the last line's own visual bottom. Subtracting it back out
+            // before adding the small descender pad avoids the background swallowing a whole
+            // extra line's height below the actual last line.
+            let last_line_baseline = end_y - estimate_line_height(CODE_FONT_SIZE_PT);
 
             let background_rect = |top_y: f32, bottom_y: f32| PositionedElement::Path {
                 points: vec![
@@ -350,7 +356,7 @@ fn render_block(
                 // *after* its own text would paint over that text instead of sitting behind it.
                 cursor
                     .current
-                    .insert(background_insert_at, background_rect(start_y - TOP_PAD_PT, end_y + BOTTOM_PAD_PT));
+                    .insert(background_insert_at, background_rect(start_y - TOP_PAD_PT, last_line_baseline + BOTTOM_PAD_PT));
             } else {
                 // `place_inline_content` broke to one or more new pages mid-block: `start_y`/
                 // `end_y` are local to different pages' coordinate systems, so one rectangle
@@ -368,7 +374,7 @@ fn render_block(
                 for page in (start_page + 1)..end_page {
                     cursor.pages[page].elements.insert(0, background_rect(margin_pt - TOP_PAD_PT, page_height_pt));
                 }
-                cursor.current.insert(0, background_rect(margin_pt - TOP_PAD_PT, end_y + BOTTOM_PAD_PT));
+                cursor.current.insert(0, background_rect(margin_pt - TOP_PAD_PT, last_line_baseline + BOTTOM_PAD_PT));
             }
 
             // The layout loop always adds a flat `LINE_SPACING_PT` gap after every block,
