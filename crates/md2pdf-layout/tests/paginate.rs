@@ -916,3 +916,50 @@ fn table_min_row_height_uses_the_configured_value() {
 
     assert!(tall_gap > short_gap, "expected a taller min_row_height_pt to produce a bigger row-to-row gap ({short_gap} vs {tall_gap})");
 }
+
+#[test]
+fn code_block_background_uses_the_per_language_override() {
+    let mut style = Stylesheet::default();
+    style
+        .code_block
+        .languages
+        .insert("rust".to_string(), md2pdf_style::CodeLanguageStyle { background: Some(md2pdf_style::Color([1, 2, 3])), ..Default::default() });
+    let ast = vec![BlockNode::CodeBlock {
+        language: Some("rust".to_string()),
+        tokens: vec![md2pdf_ast::HighlightedToken { text: "fn main() {}\n".to_string(), color: [0, 0, 0] }],
+    }];
+    let mut fs = test_font_system();
+    let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    let fill = output.pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::Path { fill: Some(c), .. } => Some(*c),
+            _ => None,
+        })
+        .expect("expected the code block background path");
+    assert_eq!(fill, [1, 2, 3]);
+}
+
+#[test]
+fn code_block_font_size_uses_the_per_language_override() {
+    let mut style = Stylesheet::default();
+    style.code_block.languages.insert("rust".to_string(), md2pdf_style::CodeLanguageStyle { font_size_pt: Some(20.0), ..Default::default() });
+    let ast = vec![BlockNode::CodeBlock {
+        language: Some("rust".to_string()),
+        tokens: vec![md2pdf_ast::HighlightedToken { text: "fn main() {}\n".to_string(), color: [0, 0, 0] }],
+    }];
+    let mut fs = test_font_system();
+    let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    let size = output.pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { size, .. } => Some(*size),
+            _ => None,
+        })
+        .expect("expected a code text run");
+    assert_eq!(size, 20.0);
+}

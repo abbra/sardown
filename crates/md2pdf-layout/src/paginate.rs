@@ -8,7 +8,6 @@ use md2pdf_enrich::DiagramTable;
 
 const PT_PER_MM: f32 = 2.834645669;
 const LINE_SPACING_PT: f32 = 4.0; // gap after each block
-const CODE_BLOCK_BG: [u8; 3] = [245, 245, 245];
 
 struct Cursor<'a> {
     y: f32,
@@ -329,7 +328,10 @@ fn render_block(
                 }
             }
         }
-        BlockNode::CodeBlock { tokens, .. } => {
+        BlockNode::CodeBlock { language, tokens } => {
+            let resolved = cursor.style.code_block.resolve(language.as_deref());
+            let code_font_size_pt = resolved.font_size_pt;
+            let code_background = resolved.background.0;
             let start_y = cursor.y;
             let start_page = cursor.page_number;
             let background_insert_at = cursor.current.len();
@@ -337,7 +339,7 @@ fn render_block(
                 .iter()
                 .map(|t| md2pdf_ast::InlineNode {
                     text: t.text.clone(),
-                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: 10.0, color: t.color },
+                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt, color: t.color },
                     link_target: None,
                 })
                 .collect();
@@ -360,8 +362,7 @@ fn render_block(
             // tops of ascenders (e.g. "P", "T") poking out above the gray box. 0.8x the code
             // font's size approximates typical sans-serif ascent; the bottom gets a smaller pad
             // for descenders.
-            const CODE_FONT_SIZE_PT: f32 = 10.0;
-            const TOP_PAD_PT: f32 = CODE_FONT_SIZE_PT * 0.8;
+            let top_pad_pt = code_font_size_pt * 0.8;
             // Must stay under LINE_SPACING_PT (the gap the layout loop inserts after every
             // block) or the box bleeds into whatever follows the code block.
             const BOTTOM_PAD_PT: f32 = 2.0;
@@ -370,7 +371,7 @@ fn render_block(
             // inter-block gap -- not the last line's own visual bottom. Subtracting it back out
             // before adding the small descender pad avoids the background swallowing a whole
             // extra line's height below the actual last line.
-            let last_line_baseline = end_y - estimate_line_height(CODE_FONT_SIZE_PT);
+            let last_line_baseline = end_y - estimate_line_height(code_font_size_pt);
 
             let background_rect = |top_y: f32, bottom_y: f32| PositionedElement::Path {
                 points: vec![
@@ -380,7 +381,7 @@ fn render_block(
                     PathCommand::LineTo(margin_pt + indent_pt, bottom_y),
                     PathCommand::Close,
                 ],
-                fill: Some(CODE_BLOCK_BG),
+                fill: Some(code_background),
                 stroke: None,
             };
 
@@ -390,7 +391,7 @@ fn render_block(
                 // *after* its own text would paint over that text instead of sitting behind it.
                 cursor
                     .current
-                    .insert(background_insert_at, background_rect(start_y - TOP_PAD_PT, last_line_baseline + BOTTOM_PAD_PT));
+                    .insert(background_insert_at, background_rect(start_y - top_pad_pt, last_line_baseline + BOTTOM_PAD_PT));
             } else {
                 // `place_inline_content` broke to one or more new pages mid-block: `start_y`/
                 // `end_y` are local to different pages' coordinate systems, so one rectangle
@@ -404,11 +405,11 @@ fn render_block(
                 cursor
                     .pages[start_page]
                     .elements
-                    .insert(background_insert_at, background_rect(start_y - TOP_PAD_PT, page_height_pt));
+                    .insert(background_insert_at, background_rect(start_y - top_pad_pt, page_height_pt));
                 for page in (start_page + 1)..end_page {
-                    cursor.pages[page].elements.insert(0, background_rect(margin_pt - TOP_PAD_PT, page_height_pt));
+                    cursor.pages[page].elements.insert(0, background_rect(margin_pt - top_pad_pt, page_height_pt));
                 }
-                cursor.current.insert(0, background_rect(margin_pt - TOP_PAD_PT, last_line_baseline + BOTTOM_PAD_PT));
+                cursor.current.insert(0, background_rect(margin_pt - top_pad_pt, last_line_baseline + BOTTOM_PAD_PT));
             }
 
             // The layout loop always adds a flat `LINE_SPACING_PT` gap after every block,
