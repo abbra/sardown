@@ -1,4 +1,5 @@
 use md2pdf_ast::{BlockNode, ImageSource};
+use md2pdf_style::Stylesheet;
 
 fn fixture(name: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures")).join(name)
@@ -6,7 +7,7 @@ fn fixture(name: &str) -> std::path::PathBuf {
 
 #[test]
 fn combines_chapters_in_summary_order_with_page_breaks_and_synthesized_headings() {
-    let blocks = md2pdf_book::load_book(&fixture("minimal-book")).expect("load_book failed");
+    let blocks = md2pdf_book::load_book(&fixture("minimal-book"), &Stylesheet::default()).expect("load_book failed");
 
     let page_break_count = blocks.iter().filter(|b| matches!(b, BlockNode::PageBreak)).count();
     assert_eq!(page_break_count, 2, "expected one PageBreak per chapter, got blocks: {blocks:?}");
@@ -27,7 +28,7 @@ fn combines_chapters_in_summary_order_with_page_breaks_and_synthesized_headings(
 
 #[test]
 fn works_without_a_book_toml_and_with_nested_chapters() {
-    let blocks = md2pdf_book::load_book(&fixture("nested-book")).expect("load_book failed");
+    let blocks = md2pdf_book::load_book(&fixture("nested-book"), &Stylesheet::default()).expect("load_book failed");
     assert!(!blocks.is_empty(), "expected chapters to load even with no book.toml present");
     let heading_texts: Vec<_> = blocks
         .iter()
@@ -41,7 +42,7 @@ fn works_without_a_book_toml_and_with_nested_chapters() {
 
 #[test]
 fn resolves_each_chapters_images_relative_to_its_own_directory() {
-    let blocks = md2pdf_book::load_book(&fixture("nested-book")).expect("load_book failed");
+    let blocks = md2pdf_book::load_book(&fixture("nested-book"), &Stylesheet::default()).expect("load_book failed");
     let image_paths: Vec<_> = blocks
         .iter()
         .filter_map(|b| match b {
@@ -58,7 +59,7 @@ fn resolves_each_chapters_images_relative_to_its_own_directory() {
 
 #[test]
 fn missing_summary_md_is_an_error() {
-    let result = md2pdf_book::load_book(&fixture("does-not-exist"));
+    let result = md2pdf_book::load_book(&fixture("does-not-exist"), &Stylesheet::default());
     assert!(result.is_err(), "expected a missing book root/SUMMARY.md to be a real error, not silently empty output");
 }
 
@@ -67,7 +68,7 @@ fn mermaid_diagrams_are_tagged_with_their_chapters_summary_relative_path() {
     // So a "failed to render this diagram" warning can point the book's author at the actual
     // chapter file (using the same relative path SUMMARY.md itself names it by), not just an
     // opaque synthetic diagram id.
-    let blocks = md2pdf_book::load_book(&fixture("diagram-book")).expect("load_book failed");
+    let blocks = md2pdf_book::load_book(&fixture("diagram-book"), &Stylesheet::default()).expect("load_book failed");
     let diagram = blocks
         .iter()
         .find_map(|b| match b {

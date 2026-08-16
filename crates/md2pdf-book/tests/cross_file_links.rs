@@ -1,4 +1,5 @@
 use md2pdf_ast::{BlockNode, InlineNode, LinkTarget};
+use md2pdf_style::Stylesheet;
 
 fn fixture(name: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures")).join(name)
@@ -35,7 +36,7 @@ fn find_linked<'a>(nodes: &[&'a InlineNode], text: &str) -> &'a InlineNode {
 
 #[test]
 fn cross_file_link_with_fragment_resolves_through_the_post_merge_slug_map() {
-    let blocks = md2pdf_book::load_book(&fixture("linked-book")).expect("load_book failed");
+    let blocks = md2pdf_book::load_book(&fixture("linked-book"), &Stylesheet::default()).expect("load_book failed");
     let mut nodes = Vec::new();
     flatten_inline(&blocks, &mut nodes);
 
@@ -48,7 +49,7 @@ fn cross_file_link_with_fragment_resolves_through_the_post_merge_slug_map() {
 
 #[test]
 fn cross_file_link_without_fragment_resolves_to_chapter_start() {
-    let blocks = md2pdf_book::load_book(&fixture("linked-book")).expect("load_book failed");
+    let blocks = md2pdf_book::load_book(&fixture("linked-book"), &Stylesheet::default()).expect("load_book failed");
     let mut nodes = Vec::new();
     flatten_inline(&blocks, &mut nodes);
 
@@ -58,7 +59,7 @@ fn cross_file_link_without_fragment_resolves_to_chapter_start() {
 
 #[test]
 fn unresolvable_or_non_chapter_links_are_left_inert_or_unchanged() {
-    let blocks = md2pdf_book::load_book(&fixture("linked-book")).expect("load_book failed");
+    let blocks = md2pdf_book::load_book(&fixture("linked-book"), &Stylesheet::default()).expect("load_book failed");
     let mut nodes = Vec::new();
     flatten_inline(&blocks, &mut nodes);
 
