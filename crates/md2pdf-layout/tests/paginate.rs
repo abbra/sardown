@@ -805,3 +805,51 @@ fn blockquote_indent_uses_the_configured_value() {
 
     assert!(x_of(&wide_output.pages) > x_of(&narrow_output.pages));
 }
+
+#[test]
+fn thematic_break_uses_the_configured_color_and_width() {
+    let mut style = Stylesheet::default();
+    style.thematic_break.color = md2pdf_style::Color([7, 7, 7]);
+    style.thematic_break.width_pt = 3.0;
+    let ast = vec![BlockNode::ThematicBreak];
+    let mut fs = test_font_system();
+    let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    let (color, width) = output.pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::Path { stroke: Some(s), .. } => Some((s.color, s.width)),
+            _ => None,
+        })
+        .expect("expected the thematic break path");
+    assert_eq!(color, [7, 7, 7]);
+    assert_eq!(width, 3.0);
+}
+
+#[test]
+fn list_indent_uses_the_configured_value() {
+    let mut narrow = Stylesheet::default();
+    narrow.list.indent_pt = 5.0;
+    let mut wide = Stylesheet::default();
+    wide.list.indent_pt = 50.0;
+
+    let ast = vec![BlockNode::List { ordered: false, items: vec![vec![BlockNode::Paragraph { content: vec![plain_inline("Item")] }]] }];
+    let x_of = |pages: &[md2pdf_layout::PositionedPage]| {
+        pages[0]
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                PositionedElement::TextRun { x, text, .. } if text == "Item" => Some(*x),
+                _ => None,
+            })
+            .unwrap()
+    };
+
+    let mut fs_a = test_font_system();
+    let narrow_output = layout_impl(&ast, &letter_geometry(), &mut fs_a, &fixtures_dir(), &DiagramTable::new(), &narrow);
+    let mut fs_b = test_font_system();
+    let wide_output = layout_impl(&ast, &letter_geometry(), &mut fs_b, &fixtures_dir(), &DiagramTable::new(), &wide);
+
+    assert!(x_of(&wide_output.pages) > x_of(&narrow_output.pages));
+}

@@ -303,10 +303,12 @@ fn render_block(
         }
         BlockNode::ThematicBreak => {
             let y = cursor.y + 6.0;
+            let color = cursor.style.thematic_break.color.0;
+            let width = cursor.style.thematic_break.width_pt;
             cursor.current.push(PositionedElement::Path {
                 points: vec![PathCommand::MoveTo(margin_pt, y), PathCommand::LineTo(margin_pt + cursor.content_width_pt, y)],
                 fill: None,
-                stroke: Some(StrokeStyle { color: [200, 200, 200], width: 1.0 }),
+                stroke: Some(StrokeStyle { color, width }),
             });
             cursor.y += 12.0;
         }
