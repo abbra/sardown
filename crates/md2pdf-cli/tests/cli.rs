@@ -80,3 +80,33 @@ fn renders_diagrams_and_links_to_a_valid_pdf() {
     let has_link_annot = doc.get_pages().values().any(|&page_id| doc.get_dictionary(page_id).and_then(|d| d.get(b"Annots")).is_ok());
     assert!(has_link_annot, "expected at least one /Annots entry in the output PDF");
 }
+
+#[test]
+fn render_book_loads_images_from_a_book_root_outside_the_current_directory() {
+    // Regression test: render-book passed "." (the CLI process's current working directory) as
+    // decode_images' security base_dir, instead of the book's own root. Every embedded image
+    // path is already absolute by the time it reaches decode_images (md2pdf-book resolves each
+    // chapter's images relative to that chapter's own directory), and decode_images' containment
+    // check rejects any absolute path that isn't a descendant of base_dir -- so a book living
+    // anywhere other than under the CLI's own CWD had every one of its images silently dropped
+    // ("refusing to load image ...: path escapes base directory ...").
+    let book_root = std::env::temp_dir().join("md2pdf-test-image-book");
+    let _ = std::fs::remove_dir_all(&book_root);
+    std::fs::create_dir_all(book_root.join("src")).unwrap();
+    std::fs::write(book_root.join("src/SUMMARY.md"), "# Summary\n\n- [Intro](intro.md)\n").unwrap();
+    std::fs::write(book_root.join("src/intro.md"), "# Intro\n\n![pic](test-image.png)\n").unwrap();
+    std::fs::copy(concat!(env!("CARGO_MANIFEST_DIR"), "/../md2pdf-layout/tests/fixtures/test-image.png"), book_root.join("src/test-image.png")).unwrap();
+
+    let out_path = std::env::temp_dir().join("md2pdf-test-image-book.pdf");
+    let _ = std::fs::remove_file(&out_path);
+
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render-book").arg(&book_root).arg("-o").arg(&out_path);
+    cmd.assert().success();
+
+    let bytes = std::fs::read(&out_path).expect("output PDF was not written");
+    let doc = lopdf::Document::load_mem(&bytes).expect("output is not a valid PDF");
+    let has_image_xobject =
+        doc.objects.values().any(|obj| obj.as_stream().ok().and_then(|s| s.dict.get(b"Subtype").ok()).and_then(|s| s.as_name().ok()) == Some(b"Image"));
+    assert!(has_image_xobject, "expected the chapter's image to be embedded in the output PDF");
+}

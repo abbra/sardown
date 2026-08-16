@@ -71,9 +71,12 @@ fn main() -> anyhow::Result<()> {
             let mut font_system = cosmic_text::FontSystem::new_with_locale_and_db("en-US".to_string(), font_db);
 
             // Every embedded image path was already rewritten to absolute during load_book (each
-            // chapter can live in a different subdirectory), so the base_dir passed here is never
-            // actually joined onto anything -- "." is just a placeholder satisfying the signature.
-            let output_layout = layout(&ast, &us_letter(), &mut font_system, std::path::Path::new("."), &diagrams);
+            // chapter can live in a different subdirectory), so base_dir is never actually
+            // joined onto anything -- but decode_images also uses it as a security boundary,
+            // rejecting any absolute path that isn't one of its descendants. Passing "." there
+            // (the CLI process's own CWD) silently dropped every image in any book that didn't
+            // happen to live under the current directory; book_root is the real boundary.
+            let output_layout = layout(&ast, &us_letter(), &mut font_system, &book_root, &diagrams);
             let pdf_bytes = md2pdf_pdf::render_pdf(
                 &output_layout.pages,
                 font_system.db(),
