@@ -1,7 +1,9 @@
+mod header_footer;
 mod image;
 mod paginate;
 mod shape;
 mod table;
+pub use header_footer::format_page_number;
 pub use image::{decode_images, DecodedImage, ImageTable};
 pub use paginate::{layout, LayoutOutput};
 pub use shape::{shape_paragraph, shape_rich_paragraph, ShapedRun};
