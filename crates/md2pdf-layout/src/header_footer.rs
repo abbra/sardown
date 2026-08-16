@@ -209,7 +209,7 @@ pub fn layout_with_header_footer(
 ) -> crate::LayoutOutput {
     let (width_mm, height_mm) = stylesheet.page.dimensions_mm();
     let geometry = PageGeometry { page_width_mm: width_mm, page_height_mm: height_mm, margin_mm: stylesheet.page.margin_mm };
-    let mut output = crate::layout_impl(ast, &geometry, font_system, base_dir, diagrams, stylesheet.heading.space_before_factor);
+    let mut output = crate::layout_impl(ast, &geometry, font_system, base_dir, diagrams, stylesheet);
     render_headers_footers(&mut output.pages, &output.page_contexts, stylesheet, &geometry, font_system);
     output
 }

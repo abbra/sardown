@@ -8,11 +8,9 @@ use md2pdf_enrich::DiagramTable;
 
 const PT_PER_MM: f32 = 2.834645669;
 const LINE_SPACING_PT: f32 = 4.0; // gap after each block
-const BLOCKQUOTE_INDENT_PT: f32 = 18.0;
-const LIST_INDENT_PT: f32 = 18.0;
 const CODE_BLOCK_BG: [u8; 3] = [245, 245, 245];
 
-struct Cursor {
+struct Cursor<'a> {
     y: f32,
     page_height_pt: f32,
     content_width_pt: f32,
@@ -24,11 +22,11 @@ struct Cursor {
     current_h2: Option<String>,
     chapter_opener_pending: bool,
     page_contexts: Vec<PageContext>,
-    space_before_factor: f32,
+    style: &'a md2pdf_style::Stylesheet,
 }
 
-impl Cursor {
-    fn new(geometry: &PageGeometry, space_before_factor: f32) -> Self {
+impl<'a> Cursor<'a> {
+    fn new(geometry: &PageGeometry, style: &'a md2pdf_style::Stylesheet) -> Self {
         let margin_pt = geometry.margin_mm * PT_PER_MM;
         Self {
             y: margin_pt,
@@ -42,7 +40,7 @@ impl Cursor {
             current_h2: None,
             chapter_opener_pending: false,
             page_contexts: Vec::new(),
-            space_before_factor,
+            style,
         }
     }
 
@@ -229,7 +227,7 @@ fn render_block(
             // Skipped at the very top of a page/column, where extra leading whitespace isn't
             // wanted (e.g. a chapter's own title heading right after its PageBreak).
             if !cursor.current.is_empty() {
-                cursor.y += heading_size * cursor.space_before_factor;
+                cursor.y += heading_size * cursor.style.heading.space_before_factor;
             }
             let heading_h = estimate_line_height(heading_size);
             if cursor.remaining_height() < heading_h && !cursor.current.is_empty() {
@@ -263,9 +261,10 @@ fn render_block(
         BlockNode::Blockquote { content } => {
             let start_y = cursor.y;
             let start_page = cursor.page_number;
+            let child_indent_pt = indent_pt + cursor.style.blockquote.indent_pt;
             for (i, child) in content.iter().enumerate() {
                 let child_next = content.get(i + 1).or(next_block);
-                render_block(child, cursor, margin_pt, indent_pt + BLOCKQUOTE_INDENT_PT, font_system, images, diagrams, child_next);
+                render_block(child, cursor, margin_pt, child_indent_pt, font_system, images, diagrams, child_next);
             }
             let end_y = cursor.y;
             let end_page = cursor.page_number;
@@ -277,10 +276,12 @@ fn render_block(
             // text, same root cause as the CodeBlock background's ascender/gap padding.
             let pad = estimate_next_block_ascent_pt(content.first());
             let border_x = margin_pt + indent_pt + 4.0;
+            let border_color = cursor.style.blockquote.border_color.0;
+            let border_width = cursor.style.blockquote.border_width_pt;
             let border_segment = |top_y: f32, bottom_y: f32| PositionedElement::Path {
                 points: vec![PathCommand::MoveTo(border_x, top_y), PathCommand::LineTo(border_x, bottom_y)],
                 fill: None,
-                stroke: Some(StrokeStyle { color: [180, 180, 180], width: 2.0 }),
+                stroke: Some(StrokeStyle { color: border_color, width: border_width }),
             };
 
             if end_page == start_page {
@@ -315,13 +316,14 @@ fn render_block(
             }
         }
         BlockNode::List { items, .. } => {
+            let child_indent_pt = indent_pt + cursor.style.list.indent_pt;
             for (item_i, item) in items.iter().enumerate() {
                 for (child_i, child) in item.iter().enumerate() {
                     let child_next = item
                         .get(child_i + 1)
                         .or_else(|| items.get(item_i + 1).and_then(|next_item| next_item.first()))
                         .or(next_block);
-                    render_block(child, cursor, margin_pt, indent_pt + LIST_INDENT_PT, font_system, images, diagrams, child_next);
+                    render_block(child, cursor, margin_pt, child_indent_pt, font_system, images, diagrams, child_next);
                 }
             }
         }
@@ -588,18 +590,12 @@ pub struct LayoutOutput {
     pub page_contexts: Vec<PageContext>,
 }
 
-pub fn layout(
-    ast: &[BlockNode],
-    geometry: &PageGeometry,
-    font_system: &mut FontSystem,
-    base_dir: &std::path::Path,
-    diagrams: &DiagramTable,
-) -> LayoutOutput {
-    layout_impl(ast, geometry, font_system, base_dir, diagrams, 0.8)
+pub fn layout(ast: &[BlockNode], geometry: &PageGeometry, font_system: &mut FontSystem, base_dir: &std::path::Path, diagrams: &DiagramTable) -> LayoutOutput {
+    layout_impl(ast, geometry, font_system, base_dir, diagrams, &md2pdf_style::Stylesheet::default())
 }
 
-/// The real implementation behind `layout()`. Takes `space_before_factor` explicitly instead of
-/// a hardcoded constant so `layout_with_header_footer` can thread a real stylesheet's value
+/// The real implementation behind `layout()`. Takes the full `Stylesheet` explicitly instead of
+/// individual values so `layout_with_header_footer` can thread a real stylesheet's values
 /// through, while `layout()` itself keeps its exact original signature and default behavior for
 /// every existing caller.
 pub fn layout_impl(
@@ -608,11 +604,11 @@ pub fn layout_impl(
     font_system: &mut FontSystem,
     base_dir: &std::path::Path,
     diagrams: &DiagramTable,
-    space_before_factor: f32,
+    stylesheet: &md2pdf_style::Stylesheet,
 ) -> LayoutOutput {
     let images = crate::image::decode_images(ast, base_dir);
     let margin_pt = geometry.margin_mm * PT_PER_MM;
-    let mut cursor = Cursor::new(geometry, space_before_factor);
+    let mut cursor = Cursor::new(geometry, stylesheet);
     for (i, block) in ast.iter().enumerate() {
         render_block(block, &mut cursor, margin_pt, 0.0, font_system, &images, diagrams, ast.get(i + 1));
         cursor.y += LINE_SPACING_PT;

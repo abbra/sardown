@@ -699,6 +699,7 @@ fn linked_inline_run_produces_a_link_annotation_element() {
 }
 
 use md2pdf_layout::layout_impl;
+use md2pdf_style::Stylesheet;
 
 #[test]
 fn a_larger_space_before_factor_increases_the_gap_before_a_heading() {
@@ -718,12 +719,16 @@ fn a_larger_space_before_factor_increases_the_gap_before_a_heading() {
             .unwrap_or_else(|| panic!("missing text run {text:?}"))
     };
 
+    let mut small_style = Stylesheet::default();
+    small_style.heading.space_before_factor = 0.2;
     let mut fs_small = test_font_system();
-    let small_output = layout_impl(&ast, &letter_geometry(), &mut fs_small, &fixtures_dir(), &DiagramTable::new(), 0.2);
+    let small_output = layout_impl(&ast, &letter_geometry(), &mut fs_small, &fixtures_dir(), &DiagramTable::new(), &small_style);
     let small_gap = y_of(&small_output.pages, "Section Two") - y_of(&small_output.pages, "End of section one.");
 
+    let mut large_style = Stylesheet::default();
+    large_style.heading.space_before_factor = 1.5;
     let mut fs_large = test_font_system();
-    let large_output = layout_impl(&ast, &letter_geometry(), &mut fs_large, &fixtures_dir(), &DiagramTable::new(), 1.5);
+    let large_output = layout_impl(&ast, &letter_geometry(), &mut fs_large, &fixtures_dir(), &DiagramTable::new(), &large_style);
     let large_gap = y_of(&large_output.pages, "Section Two") - y_of(&large_output.pages, "End of section one.");
 
     assert!(large_gap > small_gap, "expected a larger space_before_factor to produce a bigger gap ({small_gap} vs {large_gap})");
@@ -738,7 +743,7 @@ fn layout_still_matches_layout_impl_with_the_default_factor() {
     let mut fs_a = test_font_system();
     let via_layout = layout(&ast, &letter_geometry(), &mut fs_a, &fixtures_dir(), &DiagramTable::new());
     let mut fs_b = test_font_system();
-    let via_impl = layout_impl(&ast, &letter_geometry(), &mut fs_b, &fixtures_dir(), &DiagramTable::new(), 0.8);
+    let via_impl = layout_impl(&ast, &letter_geometry(), &mut fs_b, &fixtures_dir(), &DiagramTable::new(), &Stylesheet::default());
 
     let y = |pages: &[md2pdf_layout::PositionedPage]| {
         pages[0]
@@ -751,4 +756,52 @@ fn layout_still_matches_layout_impl_with_the_default_factor() {
             .unwrap()
     };
     assert_eq!(y(&via_layout.pages), y(&via_impl.pages));
+}
+
+#[test]
+fn blockquote_border_uses_the_configured_color_and_width() {
+    let mut style = Stylesheet::default();
+    style.blockquote.border_color = md2pdf_style::Color([9, 9, 9]);
+    style.blockquote.border_width_pt = 5.0;
+    let ast = vec![BlockNode::Blockquote { content: vec![BlockNode::Paragraph { content: vec![plain_inline("Quoted")] }] }];
+    let mut fs = test_font_system();
+    let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    let (color, width) = output.pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::Path { stroke: Some(s), .. } => Some((s.color, s.width)),
+            _ => None,
+        })
+        .expect("expected the blockquote border path");
+    assert_eq!(color, [9, 9, 9]);
+    assert_eq!(width, 5.0);
+}
+
+#[test]
+fn blockquote_indent_uses_the_configured_value() {
+    let mut narrow = Stylesheet::default();
+    narrow.blockquote.indent_pt = 5.0;
+    let mut wide = Stylesheet::default();
+    wide.blockquote.indent_pt = 50.0;
+
+    let ast = vec![BlockNode::Blockquote { content: vec![BlockNode::Paragraph { content: vec![plain_inline("Quoted")] }] }];
+    let x_of = |pages: &[md2pdf_layout::PositionedPage]| {
+        pages[0]
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                PositionedElement::TextRun { x, text, .. } if text == "Quoted" => Some(*x),
+                _ => None,
+            })
+            .unwrap()
+    };
+
+    let mut fs_a = test_font_system();
+    let narrow_output = layout_impl(&ast, &letter_geometry(), &mut fs_a, &fixtures_dir(), &DiagramTable::new(), &narrow);
+    let mut fs_b = test_font_system();
+    let wide_output = layout_impl(&ast, &letter_geometry(), &mut fs_b, &fixtures_dir(), &DiagramTable::new(), &wide);
+
+    assert!(x_of(&wide_output.pages) > x_of(&narrow_output.pages));
 }
