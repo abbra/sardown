@@ -30,11 +30,18 @@ pub struct PageStyle {
     pub width_mm: Option<f32>,
     pub height_mm: Option<f32>,
     pub margin_mm: f32,
+    pub numbering: crate::PageNumbering,
 }
 
 impl Default for PageStyle {
     fn default() -> Self {
-        PageStyle { format: PageFormat::Letter, width_mm: None, height_mm: None, margin_mm: 25.4 }
+        PageStyle {
+            format: PageFormat::Letter,
+            width_mm: None,
+            height_mm: None,
+            margin_mm: 25.4,
+            numbering: crate::PageNumbering::default(),
+        }
     }
 }
 
