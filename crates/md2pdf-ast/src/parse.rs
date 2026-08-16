@@ -1,7 +1,6 @@
 use crate::{BlockNode, ColumnAlignment, HighlightedToken, ImageSource, InlineNode, LinkTarget, SlugGenerator, TextStyle};
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
-const DEFAULT_BODY_SIZE: f32 = 12.0;
 const HEADING_SIZES: [f32; 6] = [28.0, 22.0, 18.0, 16.0, 14.0, 12.0];
 const DEFAULT_COLOR: [u8; 3] = [0, 0, 0];
 // Slightly smaller than body text: table cells are narrow and full body size reads as cramped
@@ -9,17 +8,29 @@ const DEFAULT_COLOR: [u8; 3] = [0, 0, 0];
 // TABLE_TEXT_SIZE_PT, which derives the table's own vertical padding from this same size.
 const TABLE_CELL_SIZE: f32 = 10.5;
 
+/// Bundles the per-parse typography choices that need to reach deep into the recursive block/
+/// inline lowering functions -- passed by reference alongside the existing `slugs`/
+/// `next_diagram_id` state rather than as a `Stylesheet` directly, so this module only depends
+/// on the exact pieces it uses (table-cell and code-block styling are explicitly out of scope
+/// for this phase and stay on their own hardcoded constants).
+struct Typography<'a> {
+    heading: &'a md2pdf_style::HeadingStyle,
+    body_size: f32,
+    body_color: [u8; 3],
+}
+
 struct InlineBuilder {
     runs: Vec<InlineNode>,
     bold_depth: u32,
     italic_depth: u32,
     link_target: Option<LinkTarget>,
     base_size: f32,
+    base_color: [u8; 3],
 }
 
 impl InlineBuilder {
-    fn new(base_size: f32) -> Self {
-        Self { runs: Vec::new(), bold_depth: 0, italic_depth: 0, link_target: None, base_size }
+    fn new(base_size: f32, base_color: [u8; 3]) -> Self {
+        Self { runs: Vec::new(), bold_depth: 0, italic_depth: 0, link_target: None, base_size, base_color }
     }
 
     fn push_text(&mut self, text: String) {
@@ -32,7 +43,7 @@ impl InlineBuilder {
                 bold: self.bold_depth > 0,
                 italic: self.italic_depth > 0,
                 size: self.base_size,
-                color: DEFAULT_COLOR,
+                color: self.base_color,
             },
             link_target: self.link_target.clone(),
         });
@@ -71,8 +82,9 @@ fn lower_inline_events<'a, I: Iterator<Item = Event<'a>>>(
     events: &mut std::iter::Peekable<I>,
     end_tag: TagEnd,
     base_size: f32,
+    base_color: [u8; 3],
 ) -> Vec<InlineNode> {
-    let mut builder = InlineBuilder::new(base_size);
+    let mut builder = InlineBuilder::new(base_size, base_color);
     for event in events.by_ref() {
         if matches!(&event, Event::End(tag) if *tag == end_tag) {
             break;
@@ -96,6 +108,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
     slugs: &mut SlugGenerator,
     next_diagram_id: &mut usize,
     diagram_positions: &mut std::vec::IntoIter<(usize, usize)>,
+    typo: &Typography,
 ) -> Vec<BlockNode> {
     let mut blocks = Vec::new();
     while let Some(event) = parser.next() {
@@ -117,7 +130,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
             | Event::Start(Tag::Strong)
             | Event::Start(Tag::Emphasis)
             | Event::Start(Tag::Link { .. }) => {
-                let mut builder = InlineBuilder::new(DEFAULT_BODY_SIZE);
+                let mut builder = InlineBuilder::new(typo.body_size, typo.body_color);
                 apply_inline_event(&mut builder, event);
                 loop {
                     match parser.peek() {
@@ -132,11 +145,12 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                 blocks.push(BlockNode::Paragraph { content: builder.runs });
             }
             Event::Start(Tag::Heading { level, .. }) => {
-                let size = heading_size(level);
-                let content = lower_inline_events(parser, TagEnd::Heading(level), size);
+                let level_u8 = heading_level_u8(level);
+                let resolved = typo.heading.resolve(level_u8);
+                let content = lower_inline_events(parser, TagEnd::Heading(level), resolved.size_pt, resolved.color.0);
                 let text: String = content.iter().map(|n| n.text.as_str()).collect::<Vec<_>>().join("");
                 let id = slugs.generate(&text);
-                blocks.push(BlockNode::Heading { level: heading_level_u8(level), id, content });
+                blocks.push(BlockNode::Heading { level: level_u8, id, content });
             }
             Event::Start(Tag::Paragraph) => {
                 // Images are inline events nested inside a Paragraph in pulldown-cmark's model,
@@ -155,7 +169,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                         blocks.push(BlockNode::Image { alt, title, source });
                     }
                     Some(first_event) => {
-                        let mut builder = InlineBuilder::new(DEFAULT_BODY_SIZE);
+                        let mut builder = InlineBuilder::new(typo.body_size, typo.body_color);
                         if !matches!(&first_event, Event::End(tag) if *tag == TagEnd::Paragraph) {
                             apply_inline_event(&mut builder, first_event);
                             for event in parser.by_ref() {
@@ -196,7 +210,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                 }
             }
             Event::Start(Tag::BlockQuote(_)) => {
-                let content = lower_block_events(parser, TagEnd::BlockQuote(None), slugs, next_diagram_id, diagram_positions);
+                let content = lower_block_events(parser, TagEnd::BlockQuote(None), slugs, next_diagram_id, diagram_positions, typo);
                 blocks.push(BlockNode::Blockquote { content });
             }
             Event::Rule => blocks.push(BlockNode::ThematicBreak),
@@ -206,7 +220,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                 while let Some(event) = parser.next() {
                     match event {
                         Event::Start(Tag::Item) => {
-                            items.push(lower_block_events(parser, TagEnd::Item, slugs, next_diagram_id, diagram_positions));
+                            items.push(lower_block_events(parser, TagEnd::Item, slugs, next_diagram_id, diagram_positions, typo));
                         }
                         Event::End(TagEnd::List(_)) => break,
                         _ => {}
@@ -244,7 +258,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                                         // flattening lost the cell boundary — corrupting which
                                         // column every following run in the row landed in and
                                         // silently truncating whatever came after via `zip`.
-                                        row.push(lower_inline_events(parser, TagEnd::TableCell, TABLE_CELL_SIZE));
+                                        row.push(lower_inline_events(parser, TagEnd::TableCell, TABLE_CELL_SIZE, DEFAULT_COLOR));
                                     }
                                     Event::End(TagEnd::TableRow) => break,
                                     _ => {}
@@ -273,7 +287,7 @@ fn collect_table_cells<'a, I: Iterator<Item = Event<'a>>>(
     while let Some(event) = parser.next() {
         match event {
             Event::Start(Tag::TableCell) => {
-                cells.push(lower_inline_events(parser, TagEnd::TableCell, TABLE_CELL_SIZE));
+                cells.push(lower_inline_events(parser, TagEnd::TableCell, TABLE_CELL_SIZE, DEFAULT_COLOR));
             }
             Event::End(tag) if tag == end_tag => break,
             _ => {}
@@ -304,15 +318,32 @@ pub fn parse(markdown: &str) -> Vec<BlockNode> {
 /// state on every call. Used by md2pdf-book to parse multiple chapter files into one combined
 /// document without heading ids or diagram ids from different chapters colliding.
 pub fn parse_with_slugs(markdown: &str, slugs: &mut SlugGenerator, next_diagram_id: &mut usize) -> Vec<BlockNode> {
+    parse_with_style(markdown, slugs, next_diagram_id, &md2pdf_style::Stylesheet::default())
+}
+
+/// Like `parse_with_slugs`, but takes a `Stylesheet` controlling heading and body typography
+/// (size and color -- font family and table-cell typography remain out of scope for this phase,
+/// see the implementation plan's Global Constraints).
+pub fn parse_with_style(
+    markdown: &str,
+    slugs: &mut SlugGenerator,
+    next_diagram_id: &mut usize,
+    style: &md2pdf_style::Stylesheet,
+) -> Vec<BlockNode> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
 
     let mut diagram_positions = mermaid_diagram_positions(markdown).into_iter();
     let mut parser = Parser::new_ext(markdown, options).peekable();
+    let typo = Typography {
+        heading: &style.heading,
+        body_size: style.typography.body_size_pt,
+        body_color: style.typography.body_color.0,
+    };
     // TagEnd::Item is never opened at the top level, so it never matches; used only as a
     // sentinel that can't legitimately occur, meaning we consume until the iterator is exhausted.
-    lower_block_events(&mut parser, TagEnd::Item, slugs, next_diagram_id, &mut diagram_positions)
+    lower_block_events(&mut parser, TagEnd::Item, slugs, next_diagram_id, &mut diagram_positions, &typo)
 }
 
 /// 1-indexed (line, column) for a byte offset into `markdown`. Column counts characters (not
@@ -385,8 +416,4 @@ fn heading_level_u8(level: HeadingLevel) -> u8 {
         HeadingLevel::H5 => 5,
         HeadingLevel::H6 => 6,
     }
-}
-
-fn heading_size(level: HeadingLevel) -> f32 {
-    HEADING_SIZES[(heading_level_u8(level) - 1) as usize]
 }

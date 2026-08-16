@@ -1,6 +1,6 @@
 mod parse;
 mod slug;
-pub use parse::{heading_style_for_level, parse, parse_with_slugs, tag_diagram_origins};
+pub use parse::{heading_style_for_level, parse, parse_with_slugs, parse_with_style, tag_diagram_origins};
 pub use slug::{generate_heading_id, SlugGenerator};
 
 #[derive(Debug, Clone, PartialEq)]
