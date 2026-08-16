@@ -1,6 +1,6 @@
 use cosmic_text::FontSystem;
 use md2pdf_layout::{render_headers_footers, PageContext, PageGeometry, PositionedElement, PositionedPage};
-use md2pdf_style::Stylesheet;
+use md2pdf_style::{HeaderFooterMode, Stylesheet};
 
 fn test_font_system() -> FontSystem {
     let mut db = fontdb::Database::new();
@@ -119,4 +119,57 @@ fn right_zone_is_right_aligned_to_the_content_edge() {
         })
         .expect("expected a text run");
     assert!((x + glyphs_width - right_edge).abs() < 0.5, "expected right zone's end to align with the content edge ({right_edge}), got {}", x + glyphs_width);
+}
+
+#[test]
+fn header_is_suppressed_on_a_chapter_opener_page_by_default() {
+    let mut sheet = Stylesheet::default();
+    sheet.header.enabled = true;
+    sheet.header.uniform.center = "{h1}".to_string();
+    let mut pages = vec![empty_page(0)];
+    let contexts = vec![ctx(Some("Chapter One"), true)];
+    let mut fs = test_font_system();
+    render_headers_footers(&mut pages, &contexts, &sheet, &geometry(), &mut fs);
+    assert!(pages[0].elements.is_empty());
+}
+
+#[test]
+fn header_still_renders_on_a_chapter_opener_when_suppression_is_disabled() {
+    let mut sheet = Stylesheet::default();
+    sheet.header.enabled = true;
+    sheet.header.suppress_on_chapter_start = false;
+    sheet.header.uniform.center = "{h1}".to_string();
+    let mut pages = vec![empty_page(0)];
+    let contexts = vec![ctx(Some("Chapter One"), true)];
+    let mut fs = test_font_system();
+    render_headers_footers(&mut pages, &contexts, &sheet, &geometry(), &mut fs);
+    assert!(!pages[0].elements.is_empty());
+}
+
+#[test]
+fn two_sided_mode_uses_odd_zones_on_the_first_physical_page() {
+    let mut sheet = Stylesheet::default();
+    sheet.header.enabled = true;
+    sheet.header.mode = HeaderFooterMode::TwoSided;
+    sheet.header.odd.left = "ODD".to_string();
+    sheet.header.even.left = "EVEN".to_string();
+    let mut pages = vec![empty_page(0)];
+    let contexts = vec![ctx(None, false)];
+    let mut fs = test_font_system();
+    render_headers_footers(&mut pages, &contexts, &sheet, &geometry(), &mut fs);
+    assert!(text_of(&pages[0]).contains(&"ODD".to_string()));
+}
+
+#[test]
+fn two_sided_mode_uses_even_zones_on_the_second_physical_page() {
+    let mut sheet = Stylesheet::default();
+    sheet.header.enabled = true;
+    sheet.header.mode = HeaderFooterMode::TwoSided;
+    sheet.header.odd.left = "ODD".to_string();
+    sheet.header.even.left = "EVEN".to_string();
+    let mut pages = vec![empty_page(0), empty_page(1)];
+    let contexts = vec![ctx(None, false), ctx(None, false)];
+    let mut fs = test_font_system();
+    render_headers_footers(&mut pages, &contexts, &sheet, &geometry(), &mut fs);
+    assert!(text_of(&pages[1]).contains(&"EVEN".to_string()));
 }
