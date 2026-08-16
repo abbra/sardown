@@ -105,6 +105,25 @@ pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode]
         offset += node.text.len();
     }
 
+    // cosmic-text splits the text passed to `set_rich_text` into separate `BufferLine`s at each
+    // '\n' *before* shaping, and `LayoutGlyph::start`/`end` ("index of cluster in original line",
+    // per cosmic-text's own doc comment) are relative to that glyph's own BufferLine, resetting
+    // to 0 at the start of every line -- not a running offset into the whole rich-text sequence.
+    // A code block's tokens (many spans, several embedded newlines from syntect's own per-line
+    // tokenization) is exactly the combination that exposes this: `span_index_for` compared a
+    // line-relative offset against the globally-accumulated `spans` ranges, resolving to
+    // whichever span happened to occupy that same *relative* position on line 0 -- e.g. every
+    // BufferLine's first few characters wrongly inherited line 0's own span boundaries, coloring
+    // parts of unrelated words. `line_starts[line_i]` recovers each BufferLine's own global
+    // starting offset so it can be added back before every span lookup.
+    let full_text: String = content.iter().map(|n| n.text.as_str()).collect();
+    let mut line_starts = vec![0usize];
+    for (i, ch) in full_text.char_indices() {
+        if ch == '\n' {
+            line_starts.push(i + 1);
+        }
+    }
+
     let size = content[0].style.size; // buffer-wide metrics still need one size; per-run font
                                       // SIZE variation within one paragraph remains out of
                                       // scope (weight/style/color do not)
@@ -133,20 +152,26 @@ pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode]
         // font's glyph table -- ends up rendered against whichever font the *last* glyph in the
         // group happened to resolve to, showing an unrelated, effectively random glyph instead.
         let line_text = run.text.to_string();
+        let line_offset = line_starts.get(run.line_i).copied().unwrap_or(0);
         let mut current_span: Option<usize> = None;
         let mut current_font_id: Option<fontdb::ID> = None;
         let mut current_group_start_x: f32 = 0.0;
         let mut current_glyphs: Vec<PositionedGlyph> = Vec::new();
 
         for glyph in run.glyphs {
-            let span_index = span_index_for(glyph.start);
+            // Only for span lookup: `glyph.start`/`end` themselves stay line-relative below,
+            // matching `line_text` (== this TextRun's own `text` field), since krilla correlates
+            // `PositionedGlyph::cluster` against that same string for ToUnicode text extraction --
+            // not against this function's own internal global-offset bookkeeping.
+            let global_start = line_offset + glyph.start;
+            let span_index = span_index_for(global_start);
             if glyph.glyph_id == 0 {
                 // See shape_paragraph's identical check for why .notdef glyphs are dropped
                 // rather than rendered: PDF/A forbids them, and krilla refuses to serialize a
                 // document containing one at all.
                 let span = &spans[span_index];
-                let local_start = glyph.start.saturating_sub(span.range.start);
-                let local_end = glyph.end.saturating_sub(span.range.start);
+                let local_start = global_start.saturating_sub(span.range.start);
+                let local_end = (line_offset + glyph.end).saturating_sub(span.range.start);
                 // See shape_paragraph's identical fallback for why a missing char boundary isn't
                 // guessed at here.
                 match content[span_index].text.get(local_start..local_end) {

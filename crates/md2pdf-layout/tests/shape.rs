@@ -29,6 +29,10 @@ fn plain_run(text: &str) -> InlineNode {
     }
 }
 
+fn colored_run(text: &str, color: [u8; 3]) -> InlineNode {
+    InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size: 12.0, color }, link_target: None }
+}
+
 #[test]
 fn shapes_a_short_paragraph_into_one_text_run_with_glyphs() {
     let mut font_system = test_font_system();
@@ -123,4 +127,41 @@ fn shape_paragraph_drops_characters_with_no_font_coverage_instead_of_notdef() {
 
     assert!(!all_glyph_ids.contains(&0), "expected no .notdef (glyph id 0) in the output, got {all_glyph_ids:?}");
     assert_eq!(all_glyph_ids.len(), 2, "expected 'a' and 'b' to still shape normally, got {all_glyph_ids:?}");
+}
+
+#[test]
+fn shape_rich_paragraph_keeps_correct_span_colors_across_embedded_newlines() {
+    // Regression test: cosmic-text splits text passed to set_rich_text into separate internal
+    // "BufferLine"s at each '\n', and LayoutGlyph::start/end reset to 0 at the start of every
+    // such line -- they are NOT a running offset into the whole rich-text sequence, despite
+    // looking like one for single-line content. Comparing that line-relative offset directly
+    // against globally-accumulated span ranges (the pre-fix behavior) made every line after the
+    // first inherit whichever span happened to occupy that same *relative* byte position on line
+    // 0 -- exactly the combination a syntax-highlighted, multi-line code block produces (many
+    // spans from per-token highlighting, several embedded newlines from syntect's own per-line
+    // tokenization), and exactly why it went uncaught by every earlier wrapped-paragraph test
+    // (which never mixed multiple spans with an embedded newline in one shape_rich_paragraph call).
+    let content = vec![
+        colored_run("aaa", [255, 0, 0]), // line 0, global byte range 0..3
+        colored_run("\n", [255, 0, 0]),  // line 0's own newline
+        colored_run("bbb", [0, 255, 0]), // line 1, global byte range 4..7, but LOCAL offset 0
+                                         // on its own BufferLine
+    ];
+    let mut font_system = test_font_system();
+    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0);
+
+    let colors_by_source_index: std::collections::HashMap<usize, [u8; 3]> = runs
+        .iter()
+        .map(|r| match &r.element {
+            PositionedElement::TextRun { color, .. } => (r.source_index, *color),
+            other => panic!("expected TextRun, got {other:?}"),
+        })
+        .collect();
+
+    assert_eq!(colors_by_source_index.get(&0), Some(&[255, 0, 0]), "expected 'aaa' (span 0) to keep its own red");
+    assert_eq!(
+        colors_by_source_index.get(&2),
+        Some(&[0, 255, 0]),
+        "expected 'bbb' (span 2, on the second BufferLine) to use its own green, not span 0's color"
+    );
 }
