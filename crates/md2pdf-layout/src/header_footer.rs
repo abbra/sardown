@@ -199,3 +199,16 @@ pub fn render_headers_footers(
         }
     }
 }
+
+pub fn layout_with_header_footer(
+    ast: &[md2pdf_ast::BlockNode],
+    geometry: &PageGeometry,
+    font_system: &mut FontSystem,
+    base_dir: &std::path::Path,
+    diagrams: &md2pdf_enrich::DiagramTable,
+    stylesheet: &Stylesheet,
+) -> crate::LayoutOutput {
+    let mut output = crate::layout(ast, geometry, font_system, base_dir, diagrams);
+    render_headers_footers(&mut output.pages, &output.page_contexts, stylesheet, geometry, font_system);
+    output
+}

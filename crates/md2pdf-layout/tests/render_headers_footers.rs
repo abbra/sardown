@@ -1,5 +1,7 @@
 use cosmic_text::FontSystem;
-use md2pdf_layout::{render_headers_footers, PageContext, PageGeometry, PositionedElement, PositionedPage};
+use md2pdf_ast::{BlockNode, InlineNode, TextStyle};
+use md2pdf_enrich::DiagramTable;
+use md2pdf_layout::{layout_with_header_footer, render_headers_footers, PageContext, PageGeometry, PositionedElement, PositionedPage};
 use md2pdf_style::{HeaderFooterMode, Stylesheet};
 
 fn test_font_system() -> FontSystem {
@@ -172,4 +174,48 @@ fn two_sided_mode_uses_even_zones_on_the_second_physical_page() {
     let mut fs = test_font_system();
     render_headers_footers(&mut pages, &contexts, &sheet, &geometry(), &mut fs);
     assert!(text_of(&pages[1]).contains(&"EVEN".to_string()));
+}
+
+fn letter_geometry() -> PageGeometry {
+    geometry()
+}
+
+fn fixtures_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
+}
+
+fn plain_inline(text: &str) -> InlineNode {
+    InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size: 12.0, color: [0, 0, 0] }, link_target: None }
+}
+
+#[test]
+fn layout_with_header_footer_renders_end_to_end_across_a_forced_page_break() {
+    let ast = vec![
+        BlockNode::Heading { level: 1, id: "ch1".to_string(), content: vec![plain_inline("Chapter One")] },
+        BlockNode::Paragraph { content: vec![plain_inline("Body of chapter one.")] },
+        BlockNode::PageBreak,
+        BlockNode::Heading { level: 1, id: "ch2".to_string(), content: vec![plain_inline("Chapter Two")] },
+        BlockNode::Paragraph { content: vec![plain_inline("Body of chapter two.")] },
+    ];
+    let mut sheet = Stylesheet::default();
+    sheet.header.enabled = true;
+    sheet.header.uniform.center = "{h1}".to_string();
+    sheet.footer.enabled = true;
+    sheet.footer.suppress_on_chapter_start = false; // both pages here are chapter openers; keep
+                                                    // the footer's own numbering independently
+                                                    // observable from the header's suppression
+    sheet.footer.uniform.center = "Page {page} of {total_pages}".to_string();
+    let mut fs = test_font_system();
+    let output = layout_with_header_footer(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &sheet);
+
+    assert_eq!(output.pages.len(), 2);
+    // Both pages open with their own chapter's H1, so the header (suppressed on chapter openers
+    // by default) is absent on both.
+    // "Chapter One"/"Chapter Two" each legitimately appear once already, as the document's own
+    // rendered heading text -- a suppressed header must not add a *second* occurrence.
+    let count = |texts: &[String], needle: &str| texts.iter().filter(|t| t.as_str() == needle).count();
+    assert_eq!(count(&text_of(&output.pages[0]), "Chapter One"), 1, "expected only the body heading, no extra header copy");
+    assert_eq!(count(&text_of(&output.pages[1]), "Chapter Two"), 1, "expected only the body heading, no extra header copy");
+    assert!(text_of(&output.pages[0]).contains(&"Page 1 of 2".to_string()));
+    assert!(text_of(&output.pages[1]).contains(&"Page 2 of 2".to_string()));
 }
