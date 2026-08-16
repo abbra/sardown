@@ -1002,3 +1002,45 @@ fn label_style_none_never_adds_a_label_line() {
     });
     assert!(!has_label_text, "expected no label text when label_style is None");
 }
+
+#[test]
+fn header_bar_label_style_draws_a_background_and_label_before_the_code() {
+    let mut style = Stylesheet::default();
+    style.code_block.label_style = md2pdf_style::LabelStyle::HeaderBar;
+    let ast = vec![BlockNode::CodeBlock {
+        language: Some("rust".to_string()),
+        tokens: vec![md2pdf_ast::HighlightedToken { text: "fn main() {}\n".to_string(), color: [0, 0, 0] }],
+    }];
+    let mut fs = test_font_system();
+    let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    let fills: Vec<_> = output.pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            PositionedElement::Path { fill: Some(c), .. } => Some(*c),
+            _ => None,
+        })
+        .collect();
+    assert!(fills.contains(&style.code_block.default.label_background.0), "expected a header bar background rect, got fills: {fills:?}");
+
+    let label_run = output.pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { text, y, color, .. } if text.contains("Rust") => Some((*y, *color)),
+            _ => None,
+        })
+        .expect("expected a text run containing the auto-generated \"Rust\" label");
+    assert_eq!(label_run.1, style.code_block.default.label_color.0);
+
+    let code_text_y = output.pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { text, y, .. } if text.contains("fn") => Some(*y),
+            _ => None,
+        })
+        .expect("expected the code's own text run");
+    assert!(label_run.0 < code_text_y, "expected the header bar label above the code's own text");
+}

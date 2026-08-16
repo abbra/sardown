@@ -1,6 +1,6 @@
 use crate::{
-    shape_rich_paragraph, AnchorPosition, AnchorTable, ImageTable, PageContext, PageGeometry,
-    PathCommand, PositionedElement, PositionedPage, Rect, StrokeStyle,
+    shape_paragraph, shape_rich_paragraph, AnchorPosition, AnchorTable, ImageTable, PageContext, PageGeometry, PathCommand, PositionedElement, PositionedPage,
+    Rect, StrokeStyle,
 };
 use cosmic_text::FontSystem;
 use md2pdf_ast::BlockNode;
@@ -332,6 +332,46 @@ fn render_block(
             let resolved = cursor.style.code_block.resolve(language.as_deref());
             let code_font_size_pt = resolved.font_size_pt;
             let code_background = resolved.background.0;
+            let label_style = cursor.style.code_block.label_style;
+            // Header bar: drawn (background, then its own label text, in that paint order) as a
+            // fixed-height strip *before* any code content -- using plain sequential pushes here,
+            // and capturing `background_insert_at` (for the code's own background, below) only
+            // after these pushes, keeps this feature from needing any shared insertion-index
+            // arithmetic with the code block's own background insertion further down.
+            if label_style == md2pdf_style::LabelStyle::HeaderBar {
+                let header_bar_height_pt = code_font_size_pt + 8.0;
+                if cursor.remaining_height() < header_bar_height_pt + estimate_line_height(code_font_size_pt) && !cursor.current.is_empty() {
+                    cursor.break_page(margin_pt);
+                }
+                let header_bar_top_y = cursor.y;
+                let header_bar_bottom_y = header_bar_top_y + header_bar_height_pt;
+                cursor.current.push(PositionedElement::Path {
+                    points: vec![
+                        PathCommand::MoveTo(margin_pt + indent_pt, header_bar_top_y),
+                        PathCommand::LineTo(margin_pt + cursor.content_width_pt, header_bar_top_y),
+                        PathCommand::LineTo(margin_pt + cursor.content_width_pt, header_bar_bottom_y),
+                        PathCommand::LineTo(margin_pt + indent_pt, header_bar_bottom_y),
+                        PathCommand::Close,
+                    ],
+                    fill: Some(resolved.label_background.0),
+                    stroke: None,
+                });
+                let label_node = md2pdf_ast::InlineNode {
+                    text: resolved.label.clone(),
+                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt, color: resolved.label_color.0 },
+                    link_target: None,
+                };
+                let mut label_elements = shape_paragraph(font_system, std::slice::from_ref(&label_node), cursor.content_width_pt);
+                if let Some(PositionedElement::TextRun { x, y, .. }) = label_elements.first_mut() {
+                    *x = margin_pt + indent_pt + 6.0;
+                    *y = header_bar_bottom_y - 4.0;
+                }
+                if let Some(label_run) = label_elements.into_iter().next() {
+                    cursor.current.push(label_run);
+                }
+                cursor.y = header_bar_bottom_y;
+            }
+
             let start_y = cursor.y;
             let start_page = cursor.page_number;
             let background_insert_at = cursor.current.len();
