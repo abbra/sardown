@@ -2,6 +2,7 @@ use anyhow::Context;
 
 mod code_block;
 mod color;
+mod header_footer;
 mod heading;
 mod numbering;
 mod page;
@@ -11,6 +12,7 @@ mod typography;
 
 pub use code_block::{CodeBlockDefaultStyle, CodeBlockStyle, CodeLanguageStyle, LabelStyle, ResolvedCodeBlockStyle};
 pub use color::Color;
+pub use header_footer::{HeaderFooterMode, HeaderZones};
 pub use heading::{HeadingLevelStyle, HeadingStyle, ResolvedHeadingStyle};
 pub use numbering::{NumberingFormat, PageNumbering};
 pub use page::{PageFormat, PageStyle};
