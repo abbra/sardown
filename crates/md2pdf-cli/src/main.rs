@@ -47,7 +47,8 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Render { input, output } => {
             let markdown = std::fs::read_to_string(&input)?;
-            let ast = timed_stage("Parsing markdown", || md2pdf_ast::parse(&markdown));
+            let mut ast = timed_stage("Parsing markdown", || md2pdf_ast::parse(&markdown));
+            md2pdf_ast::tag_diagram_origins(&mut ast, &input);
 
             let highlighter = Highlighter::new();
             let ast = timed_stage("Highlighting code blocks", || highlighter.highlight(ast));

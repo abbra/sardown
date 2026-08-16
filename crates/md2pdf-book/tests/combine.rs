@@ -61,3 +61,19 @@ fn missing_summary_md_is_an_error() {
     let result = md2pdf_book::load_book(&fixture("does-not-exist"));
     assert!(result.is_err(), "expected a missing book root/SUMMARY.md to be a real error, not silently empty output");
 }
+
+#[test]
+fn mermaid_diagrams_are_tagged_with_their_chapters_summary_relative_path() {
+    // So a "failed to render this diagram" warning can point the book's author at the actual
+    // chapter file (using the same relative path SUMMARY.md itself names it by), not just an
+    // opaque synthetic diagram id.
+    let blocks = md2pdf_book::load_book(&fixture("diagram-book")).expect("load_book failed");
+    let diagram = blocks
+        .iter()
+        .find_map(|b| match b {
+            BlockNode::MermaidDiagram { line, column, file, .. } => Some((*line, *column, file.clone())),
+            _ => None,
+        })
+        .expect("expected a MermaidDiagram block");
+    assert_eq!(diagram, (5, 1, Some(std::path::PathBuf::from("chapter1.md"))));
+}

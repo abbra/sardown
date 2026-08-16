@@ -95,6 +95,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
     end_tag: TagEnd,
     slugs: &mut SlugGenerator,
     next_diagram_id: &mut usize,
+    diagram_positions: &mut std::vec::IntoIter<(usize, usize)>,
 ) -> Vec<BlockNode> {
     let mut blocks = Vec::new();
     while let Some(event) = parser.next() {
@@ -185,13 +186,17 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                 if language.as_deref() == Some("mermaid") {
                     let id = format!("diagram-{next_diagram_id}");
                     *next_diagram_id += 1;
-                    blocks.push(BlockNode::MermaidDiagram { id, source: raw });
+                    // Falls back to (1, 1) only if the pre-scan and the main lowering pass ever
+                    // disagreed on how many mermaid fences exist -- shouldn't happen since both
+                    // walk the same event stream, but a made-up position is safer than a panic.
+                    let (line, column) = diagram_positions.next().unwrap_or((1, 1));
+                    blocks.push(BlockNode::MermaidDiagram { id, source: raw, line, column, file: None });
                 } else {
                     blocks.push(BlockNode::CodeBlock { language, tokens: vec![HighlightedToken { text: raw, color: DEFAULT_COLOR }] });
                 }
             }
             Event::Start(Tag::BlockQuote(_)) => {
-                let content = lower_block_events(parser, TagEnd::BlockQuote(None), slugs, next_diagram_id);
+                let content = lower_block_events(parser, TagEnd::BlockQuote(None), slugs, next_diagram_id, diagram_positions);
                 blocks.push(BlockNode::Blockquote { content });
             }
             Event::Rule => blocks.push(BlockNode::ThematicBreak),
@@ -201,7 +206,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                 while let Some(event) = parser.next() {
                     match event {
                         Event::Start(Tag::Item) => {
-                            items.push(lower_block_events(parser, TagEnd::Item, slugs, next_diagram_id));
+                            items.push(lower_block_events(parser, TagEnd::Item, slugs, next_diagram_id, diagram_positions));
                         }
                         Event::End(TagEnd::List(_)) => break,
                         _ => {}
@@ -303,10 +308,62 @@ pub fn parse_with_slugs(markdown: &str, slugs: &mut SlugGenerator, next_diagram_
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
 
+    let mut diagram_positions = mermaid_diagram_positions(markdown).into_iter();
     let mut parser = Parser::new_ext(markdown, options).peekable();
     // TagEnd::Item is never opened at the top level, so it never matches; used only as a
     // sentinel that can't legitimately occur, meaning we consume until the iterator is exhausted.
-    lower_block_events(&mut parser, TagEnd::Item, slugs, next_diagram_id)
+    lower_block_events(&mut parser, TagEnd::Item, slugs, next_diagram_id, &mut diagram_positions)
+}
+
+/// 1-indexed (line, column) for a byte offset into `markdown`. Column counts characters (not
+/// bytes) since the start of the line, matching how editors report cursor position.
+fn line_col_at(markdown: &str, byte_offset: usize) -> (usize, usize) {
+    let prefix = &markdown[..byte_offset.min(markdown.len())];
+    let line = prefix.matches('\n').count() + 1;
+    let column = match prefix.rfind('\n') {
+        Some(i) => prefix[i + 1..].chars().count() + 1,
+        None => prefix.chars().count() + 1,
+    };
+    (line, column)
+}
+
+/// The (line, column) of every mermaid fenced code block's opening fence, in the order they
+/// appear. Found via a small, separate scan using pulldown-cmark's byte-offset-tracking
+/// iterator, rather than threading offsets through the main lowering pass (which only ever
+/// handles plain `Event`s, not `(Event, Range<usize>)` pairs). Mermaid diagrams are rare enough
+/// per document that parsing the text twice is cheap, and this keeps the main, already-well-
+/// tested lowering pipeline untouched.
+fn mermaid_diagram_positions(markdown: &str) -> Vec<(usize, usize)> {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+
+    Parser::new_ext(markdown, options)
+        .into_offset_iter()
+        .filter_map(|(event, range)| match event {
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(lang))) if lang.as_ref() == "mermaid" => Some(line_col_at(markdown, range.start)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Sets `file` on every `MermaidDiagram` in `blocks`, recursively (including inside blockquotes
+/// and lists). `parse`/`parse_with_slugs` have no notion of "which file" a markdown string came
+/// from -- callers that do (single-file rendering, per-chapter book combination) call this
+/// afterward so a failed-diagram warning can point at a real file, not just a line number.
+pub fn tag_diagram_origins(blocks: &mut [BlockNode], file: &std::path::Path) {
+    for block in blocks {
+        match block {
+            BlockNode::MermaidDiagram { file: f, .. } => *f = Some(file.to_path_buf()),
+            BlockNode::Blockquote { content } => tag_diagram_origins(content, file),
+            BlockNode::List { items, .. } => {
+                for item in items {
+                    tag_diagram_origins(item, file);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// The `TextStyle` a heading of `level` gets from `parse()` -- same size table, non-bold,

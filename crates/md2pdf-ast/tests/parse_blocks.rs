@@ -214,11 +214,43 @@ fn parses_mermaid_fenced_code_block_as_diagram_not_code_block() {
     let md = "```mermaid\nflowchart TD\n    A --> B\n```\n";
     let blocks = parse(md);
     match &blocks[0] {
-        BlockNode::MermaidDiagram { id, source } => {
+        BlockNode::MermaidDiagram { id, source, .. } => {
             assert_eq!(id, "diagram-0");
             assert!(source.contains("flowchart TD"));
         }
         other => panic!("expected MermaidDiagram, got {other:?}"),
+    }
+}
+
+#[test]
+fn mermaid_diagram_records_its_source_line_and_column() {
+    // So a failed-to-render warning can point back at the real source location instead of just
+    // an opaque synthetic id like "diagram-0".
+    let md = "Intro text.\n\n```mermaid\nflowchart TD\n    A --> B\n```\n";
+    let blocks = parse(md);
+    match &blocks[1] {
+        BlockNode::MermaidDiagram { line, column, file, .. } => {
+            assert_eq!(*line, 3, "expected the line the diagram's opening fence starts on");
+            assert_eq!(*column, 1);
+            assert_eq!(*file, None, "parse() has no file context to attach on its own");
+        }
+        other => panic!("expected MermaidDiagram, got {other:?}"),
+    }
+}
+
+#[test]
+fn tag_diagram_origins_sets_file_on_every_diagram_recursively() {
+    let md = "> ```mermaid\n> flowchart TD\n>     A --> B\n> ```\n";
+    let mut blocks = parse(md);
+    md2pdf_ast::tag_diagram_origins(&mut blocks, std::path::Path::new("chapter1.md"));
+    match &blocks[0] {
+        BlockNode::Blockquote { content } => match &content[0] {
+            BlockNode::MermaidDiagram { file, .. } => {
+                assert_eq!(file.as_deref(), Some(std::path::Path::new("chapter1.md")));
+            }
+            other => panic!("expected MermaidDiagram, got {other:?}"),
+        },
+        other => panic!("expected Blockquote, got {other:?}"),
     }
 }
 

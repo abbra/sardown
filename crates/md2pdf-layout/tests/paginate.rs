@@ -551,7 +551,7 @@ use md2pdf_enrich::{CompiledDiagram, DiagramTable};
 
 #[test]
 fn mermaid_diagram_produces_a_vector_graphic_element() {
-    let ast = vec![BlockNode::MermaidDiagram { id: "d1".to_string(), source: "flowchart TD\n A-->B".to_string() }];
+    let ast = vec![BlockNode::MermaidDiagram { id: "d1".to_string(), source: "flowchart TD\n A-->B".to_string(), line: 1, column: 1, file: None }];
     let mut diagrams = DiagramTable::new();
     diagrams.insert("d1".to_string(), CompiledDiagram { svg: "<svg/>".to_string(), width: 300.0, height: 150.0 });
 
@@ -573,7 +573,7 @@ fn mermaid_diagram_taller_than_a_full_page_is_scaled_down_to_fit_one_page() {
     // taller than an entire page's content area (not just "the remaining space on the current
     // page") still overflowed past the bottom margin even on a fresh page -- breaking to a new
     // page couldn't help, since the diagram was too big for ANY page, not just this one.
-    let ast = vec![BlockNode::MermaidDiagram { id: "d1".to_string(), source: "flowchart TD\n A-->B".to_string() }];
+    let ast = vec![BlockNode::MermaidDiagram { id: "d1".to_string(), source: "flowchart TD\n A-->B".to_string(), line: 1, column: 1, file: None }];
     let mut diagrams = DiagramTable::new();
     // Far taller (aspect-wise) than a US Letter page's content area at 1in margins (~648pt).
     diagrams.insert("d1".to_string(), CompiledDiagram { svg: "<svg/>".to_string(), width: 100.0, height: 2000.0 });
@@ -608,7 +608,7 @@ fn heading_after_mermaid_diagram_does_not_overlap_the_diagrams_bottom_edge() {
         link_target: None,
     };
     let ast = vec![
-        BlockNode::MermaidDiagram { id: "d1".to_string(), source: "flowchart TD\n A-->B".to_string() },
+        BlockNode::MermaidDiagram { id: "d1".to_string(), source: "flowchart TD\n A-->B".to_string(), line: 1, column: 1, file: None },
         BlockNode::Heading { level: 2, id: "next".to_string(), content: vec![heading_content] },
     ];
     let mut diagrams = DiagramTable::new();

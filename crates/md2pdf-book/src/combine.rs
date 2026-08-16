@@ -56,6 +56,10 @@ fn collect_chapters(
                     match std::fs::read_to_string(&chapter_path) {
                         Ok(text) => {
                             let mut blocks = md2pdf_ast::parse_with_slugs(&text, slugs, next_diagram_id);
+                            // Tagged with the same relative path SUMMARY.md itself names this
+                            // chapter by, not the full absolute filesystem path -- that's what
+                            // the book's author will actually recognize in a diagram warning.
+                            md2pdf_ast::tag_diagram_origins(&mut blocks, rel_path);
                             let chapter_dir = chapter_path.parent().unwrap_or(src_dir).to_path_buf();
                             absolutize_image_paths(&mut blocks, &chapter_dir);
                             crate::crossref::classify_links(&mut blocks, &chapter_dir, known_files);
