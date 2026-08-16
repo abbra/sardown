@@ -475,11 +475,21 @@ fn render_block(
             if let Some(diagram) = diagrams.get(id) {
                 let max_width = cursor.content_width_pt - indent_pt;
                 let aspect = diagram.height / diagram.width;
-                let (width, height) = if diagram.width > max_width {
+                let (mut width, mut height) = if diagram.width > max_width {
                     (max_width, max_width * aspect)
                 } else {
                     (diagram.width, diagram.height)
                 };
+                // Fitting by width alone isn't enough: a diagram taller (relative to its width)
+                // than a full page's content area would still overflow past the bottom margin
+                // even on a fresh page -- breaking to a new page can't help when the diagram is
+                // too big for ANY page, not just the current one. Cap by the full page height a
+                // fresh page provides and re-derive width from that to keep the aspect ratio.
+                let max_height = cursor.page_height_pt - margin_pt;
+                if height > max_height {
+                    height = max_height;
+                    width = max_height / aspect;
+                }
                 if cursor.remaining_height() < height && !cursor.current.is_empty() {
                     cursor.break_page(margin_pt);
                 }

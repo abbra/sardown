@@ -366,6 +366,30 @@ fn mermaid_diagram_produces_a_vector_graphic_element() {
 }
 
 #[test]
+fn mermaid_diagram_taller_than_a_full_page_is_scaled_down_to_fit_one_page() {
+    // Regression test: a diagram was only ever scaled down by width, never by height, so one
+    // taller than an entire page's content area (not just "the remaining space on the current
+    // page") still overflowed past the bottom margin even on a fresh page -- breaking to a new
+    // page couldn't help, since the diagram was too big for ANY page, not just this one.
+    let ast = vec![BlockNode::MermaidDiagram { id: "d1".to_string(), source: "flowchart TD\n A-->B".to_string() }];
+    let mut diagrams = DiagramTable::new();
+    // Far taller (aspect-wise) than a US Letter page's content area at 1in margins (~648pt).
+    diagrams.insert("d1".to_string(), CompiledDiagram { svg: "<svg/>".to_string(), width: 100.0, height: 2000.0 });
+
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &diagrams).pages;
+
+    assert_eq!(pages.len(), 1, "a too-tall diagram should be scaled to fit one page, not overflow onto extra pages");
+    match &pages[0].elements[0] {
+        PositionedElement::VectorGraphic { width, height, .. } => {
+            assert!(*height <= 648.5, "diagram height ({height}) exceeds a full page's content height");
+            assert!(*width > 0.0 && *width < 100.0, "expected the diagram to be scaled down proportionally (preserving aspect ratio), got width={width}");
+        }
+        other => panic!("expected VectorGraphic, got {other:?}"),
+    }
+}
+
+#[test]
 fn heading_after_mermaid_diagram_does_not_overlap_the_diagrams_bottom_edge() {
     // Regression test: a diagram has a crisp, hard bottom edge (unlike wrapped body text, where
     // consecutive baselines sitting close together is normal typography). The flat
