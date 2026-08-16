@@ -4,6 +4,10 @@ use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Par
 const DEFAULT_BODY_SIZE: f32 = 12.0;
 const HEADING_SIZES: [f32; 6] = [28.0, 22.0, 18.0, 16.0, 14.0, 12.0];
 const DEFAULT_COLOR: [u8; 3] = [0, 0, 0];
+// Slightly smaller than body text: table cells are narrow and full body size reads as cramped
+// once the cell has proper padding on both sides. Kept in sync with md2pdf-layout's
+// TABLE_TEXT_SIZE_PT, which derives the table's own vertical padding from this same size.
+const TABLE_CELL_SIZE: f32 = 10.5;
 
 struct InlineBuilder {
     runs: Vec<InlineNode>,
@@ -235,7 +239,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                                         // flattening lost the cell boundary — corrupting which
                                         // column every following run in the row landed in and
                                         // silently truncating whatever came after via `zip`.
-                                        row.push(lower_inline_events(parser, TagEnd::TableCell, DEFAULT_BODY_SIZE));
+                                        row.push(lower_inline_events(parser, TagEnd::TableCell, TABLE_CELL_SIZE));
                                     }
                                     Event::End(TagEnd::TableRow) => break,
                                     _ => {}
@@ -264,7 +268,7 @@ fn collect_table_cells<'a, I: Iterator<Item = Event<'a>>>(
     while let Some(event) = parser.next() {
         match event {
             Event::Start(Tag::TableCell) => {
-                cells.push(lower_inline_events(parser, TagEnd::TableCell, DEFAULT_BODY_SIZE));
+                cells.push(lower_inline_events(parser, TagEnd::TableCell, TABLE_CELL_SIZE));
             }
             Event::End(tag) if tag == end_tag => break,
             _ => {}

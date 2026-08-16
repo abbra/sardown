@@ -371,16 +371,21 @@ fn render_block(
             // (e.g. a "Description" column), which used to overflow this constant and
             // overlap the next row entirely.
             const MIN_ROW_HEIGHT: f32 = 20.0;
-            const CELL_PADDING_PT: f32 = 8.0;
+            // Total horizontal padding reserved for a cell, split evenly left and right. Without
+            // this, cell text started exactly at the column's left grid line -- flush against the
+            // vertical divider, with no breathing room on either side.
+            const CELL_PADDING_PT: f32 = 12.0;
+            const CELL_PADDING_X_PT: f32 = CELL_PADDING_PT / 2.0;
             const MIN_CELL_WRAP_WIDTH_PT: f32 = 10.0;
             // `PositionedElement::TextRun::y` is a baseline, and `cursor.y` after placing a row
             // is the *next* row's baseline -- not a safe boundary to draw a grid line on. Used
             // as-is, the header separator line landed exactly on row 1's baseline, cutting
             // through the middle of its text instead of sitting in the empty gap between rows.
             // `md2pdf-ast::parse` gives all table content the same fixed size (its
-            // `DEFAULT_BODY_SIZE`), so a single constant (rather than inspecting each cell's
-            // style) is enough here, matching the code block background's approach.
-            const TABLE_TEXT_SIZE_PT: f32 = 12.0;
+            // `TABLE_CELL_SIZE`), so a single constant (rather than inspecting each cell's style)
+            // is enough here, matching the code block background's approach. Must stay in sync
+            // with md2pdf-ast's `TABLE_CELL_SIZE`.
+            const TABLE_TEXT_SIZE_PT: f32 = 10.5;
             const TABLE_TOP_PAD_PT: f32 = TABLE_TEXT_SIZE_PT * 0.8; // clears the first row's ascender
             const TABLE_ROW_GAP_ADJUST_PT: f32 = TABLE_TEXT_SIZE_PT + 2.0; // baseline -> mid-gap-below-descender
 
@@ -409,7 +414,7 @@ fn render_block(
                 // parameter is normally "wrap at the right margin," which is wrong for a cell —
                 // it let long text bleed across into the next column's space instead of wrapping.
                 let cell_max_width_pt = (width - CELL_PADDING_PT).max(MIN_CELL_WRAP_WIDTH_PT);
-                place_inline_content(cursor, margin_pt, col_x - margin_pt, cell_max_width_pt, header, font_system);
+                place_inline_content(cursor, margin_pt, col_x - margin_pt + CELL_PADDING_X_PT, cell_max_width_pt, header, font_system);
                 header_bottom_y = header_bottom_y.max(cursor.y);
                 col_x += width;
             }
@@ -452,7 +457,7 @@ fn render_block(
                 for (cell, width) in row.iter().zip(&widths) {
                     cursor.y = row_top_y;
                     let cell_max_width_pt = (width - CELL_PADDING_PT).max(MIN_CELL_WRAP_WIDTH_PT);
-                    place_inline_content(cursor, margin_pt, col_x - margin_pt, cell_max_width_pt, cell, font_system);
+                    place_inline_content(cursor, margin_pt, col_x - margin_pt + CELL_PADDING_X_PT, cell_max_width_pt, cell, font_system);
                     row_bottom_y = row_bottom_y.max(cursor.y);
                     col_x += width;
                 }

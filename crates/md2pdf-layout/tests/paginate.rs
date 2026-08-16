@@ -295,6 +295,33 @@ fn cell(text: &str) -> Vec<InlineNode> {
 }
 
 #[test]
+fn table_cell_text_has_horizontal_padding_from_the_column_edges() {
+    // Regression test: a cell's text started exactly at the column's left grid line (x =
+    // margin_pt for the first column, since it has no preceding column) with zero padding,
+    // visually gluing it to the vertical divider between columns.
+    let headers = vec![cell("A"), cell("B")];
+    let rows = vec![vec![cell("x"), cell("y")]];
+    let ast = vec![BlockNode::Table { headers, rows, alignments: vec![ColumnAlignment::None; 2] }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+
+    let margin_pt = 25.4 * 2.834645669; // matches Cursor's own mm-to-pt conversion
+    let first_col_text_x = pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { x, text, .. } if text == "A" => Some(*x),
+            _ => None,
+        })
+        .expect("expected the first column's header text");
+
+    assert!(
+        first_col_text_x > margin_pt + 2.0,
+        "expected cell text ({first_col_text_x}) to start with some padding after the column's left edge ({margin_pt}), not flush against it"
+    );
+}
+
+#[test]
 fn table_row_grows_to_fit_a_wrapped_multiline_cell() {
     // Regression test: row height used to be a fixed 20pt regardless of content, so a cell whose
     // text wrapped to multiple lines (common with real-world "Description"-style columns)

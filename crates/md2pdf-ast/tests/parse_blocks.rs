@@ -155,6 +155,21 @@ fn parses_table_with_alignment() {
 }
 
 #[test]
+fn table_cell_text_is_smaller_than_default_body_text() {
+    // Tables read as visually cramped at full body size once cell padding was fixed to give
+    // borders proper breathing room; a slightly smaller size reads better in a narrow cell.
+    let md = "| A |\n| --- |\n| x |\n";
+    let blocks = parse(md);
+    match &blocks[0] {
+        BlockNode::Table { headers, rows, .. } => {
+            assert!(headers[0][0].style.size < 12.0, "expected table header text smaller than default body size (12.0)");
+            assert!(rows[0][0][0].style.size < 12.0, "expected table row text smaller than default body size (12.0)");
+        }
+        other => panic!("expected Table, got {other:?}"),
+    }
+}
+
+#[test]
 fn table_cell_with_mixed_inline_styling_keeps_all_its_text_in_one_cell() {
     // Regression test: a cell mixing plain text with a styled span (here, inline code) produces
     // more than one InlineNode. Flattening those into the row's flat list (instead of keeping
