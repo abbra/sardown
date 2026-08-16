@@ -238,3 +238,64 @@ fn render_book_auto_discovers_a_style_toml_in_the_book_root() {
     std::fs::remove_file(&styled_path).unwrap();
     std::fs::remove_file(&default_path).unwrap();
 }
+
+#[test]
+fn explicit_style_flag_changes_the_embedded_font() {
+    // Comparing the two PDFs' embedded /BaseFont names (rather than a raw byte-diff of the whole
+    // file) specifically proves the *font* changed -- a byte-diff would also pass if the two
+    // renders merely differed in some incidental non-deterministic metadata elsewhere in the
+    // file, without actually proving font_family had any effect.
+    // `Resources` is stored as an indirect reference, but `Font` (and the individual font
+    // dictionaries within it) are stored inline -- confirmed by inspecting krilla's actual object
+    // graph, which doesn't match the reference-everywhere assumption a naive `as_reference()`
+    // walk would make. `Document::dereference` resolves either representation uniformly, so
+    // every level below is looked up through it instead of assuming one or the other.
+    fn base_fonts_of(doc: &lopdf::Document) -> std::collections::BTreeSet<Vec<u8>> {
+        let mut names = std::collections::BTreeSet::new();
+        for &page_id in doc.get_pages().values() {
+            let Ok(page_dict) = doc.get_dictionary(page_id) else { continue };
+            let Ok(resources_obj) = page_dict.get(b"Resources") else { continue };
+            let Ok((_, resources_obj)) = doc.dereference(resources_obj) else { continue };
+            let Ok(resources) = resources_obj.as_dict() else { continue };
+            let Ok(fonts_obj) = resources.get(b"Font") else { continue };
+            let Ok((_, fonts_obj)) = doc.dereference(fonts_obj) else { continue };
+            let Ok(fonts) = fonts_obj.as_dict() else { continue };
+            for (_, font_ref) in fonts.iter() {
+                let Ok((_, font_obj)) = doc.dereference(font_ref) else { continue };
+                let Ok(font_dict) = font_obj.as_dict() else { continue };
+                if let Ok(base_font) = font_dict.get(b"BaseFont").and_then(|b| b.as_name()) {
+                    names.insert(base_font.to_vec());
+                }
+            }
+        }
+        names
+    }
+
+    let style_path = std::env::temp_dir().join("md2pdf-test-font-family-style.toml");
+    std::fs::write(&style_path, "[typography]\nfont_family = \"monospace\"\n").unwrap();
+
+    let styled_path = std::env::temp_dir().join("md2pdf-test-font-family-output.pdf");
+    let _ = std::fs::remove_file(&styled_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/basic.md")).arg("-o").arg(&styled_path).arg("--style").arg(&style_path);
+    cmd.assert().success();
+    let styled_doc = lopdf::Document::load_mem(&std::fs::read(&styled_path).unwrap()).unwrap();
+
+    let default_path = std::env::temp_dir().join("md2pdf-test-font-family-default.pdf");
+    let _ = std::fs::remove_file(&default_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/basic.md")).arg("-o").arg(&default_path);
+    cmd.assert().success();
+    let default_doc = lopdf::Document::load_mem(&std::fs::read(&default_path).unwrap()).unwrap();
+
+    assert_ne!(
+        base_fonts_of(&styled_doc),
+        base_fonts_of(&default_doc),
+        "expected a different embedded font when typography.font_family is set to \"monospace\""
+    );
+
+    std::fs::remove_file(&style_path).unwrap();
+    std::fs::remove_file(&styled_path).unwrap();
+    std::fs::remove_file(&default_path).unwrap();
+}
+
