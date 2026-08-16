@@ -5,9 +5,9 @@
 # first -- suppress_on_chapter_start is turned off below since a single business/academic
 # document isn't structured into book-style chapters with their own opening-page convention).
 #
-# font_family values are recorded here as the intended look for this tradition, but aren't
-# rendered yet -- font selection isn't wired into layout in this phase (see the design spec's
-# "Font Resolution" section). Every other field below does take effect today.
+# font_family values are now rendered. If a named font (e.g. "Times New Roman", "Garamond")
+# isn't available as a loaded, matchable font on the machine running md2pdf, it falls back to a
+# generic sans-serif font with a warning on stderr, rather than failing the render.
 
 [page]
 format = "letter"

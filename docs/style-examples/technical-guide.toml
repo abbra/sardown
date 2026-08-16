@@ -11,8 +11,9 @@
 # (confirmed directly against syntect's bundled ThemeSet), so that exact value is used below,
 # with light label colors to match.
 #
-# font_family is recorded as intended styling but not yet rendered -- see
-# docs/style-examples/us-letter.toml's comment for details.
+# font_family is now rendered. If a named font isn't available as a loaded, matchable font
+# on the machine running md2pdf, it falls back to a generic sans-serif font with a warning on
+# stderr rather than failing the render.
 
 [page]
 format = "letter"

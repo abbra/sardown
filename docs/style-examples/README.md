@@ -35,6 +35,6 @@ Presets modeled on well-known document-type conventions, independent of region.
 - These are parsed and validated against `md2pdf-style`'s `Stylesheet::load` in
   `crates/md2pdf-style/tests/style_examples.rs`.
 - `font_family` values throughout these files (e.g. "Times New Roman", "Helvetica",
-  "Garamond") are recorded as each style's intended typeface, but aren't rendered yet --
-  font selection isn't wired into layout in this phase (see the design spec's "Font
-  Resolution" section). Every other field takes effect today.
+  "Garamond") are rendered. If a named font isn't available as a loaded, matchable font on the
+  machine running md2pdf, it falls back to a generic sans-serif font with a warning on stderr
+  rather than failing the render.

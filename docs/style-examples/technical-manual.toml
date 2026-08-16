@@ -8,8 +8,9 @@
 # running-footer layout; suppress_on_chapter_start is left at its default (true), matching how
 # printed manuals leave the footer off a chapter's own opening page.
 #
-# font_family is recorded as intended styling but not yet rendered -- see
-# docs/style-examples/us-letter.toml's comment for details.
+# font_family is now rendered. If a named font isn't available as a loaded, matchable font
+# on the machine running md2pdf, it falls back to a generic sans-serif font with a warning on
+# stderr rather than failing the render.
 
 [page]
 format = "letter"
