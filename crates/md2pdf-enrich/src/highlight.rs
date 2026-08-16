@@ -10,9 +10,20 @@ pub struct Highlighter {
 
 impl Highlighter {
     pub fn new() -> Self {
+        Self::with_style(&md2pdf_style::Stylesheet::default())
+    }
+
+    /// Falls back to `InspiredGitHub` (with a warning) for a syntax theme name syntect doesn't
+    /// bundle, rather than panicking -- matching this project's established convention of
+    /// degrading gracefully instead of aborting a whole render over one bad config value.
+    pub fn with_style(style: &md2pdf_style::Stylesheet) -> Self {
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let theme_set = ThemeSet::load_defaults();
-        let theme = theme_set.themes["InspiredGitHub"].clone();
+        let theme_name = &style.code_block.syntax_theme;
+        let theme = theme_set.themes.get(theme_name).cloned().unwrap_or_else(|| {
+            eprintln!("warning: unknown syntax theme {theme_name:?}; falling back to InspiredGitHub");
+            theme_set.themes["InspiredGitHub"].clone()
+        });
         Self { syntax_set, theme }
     }
 
