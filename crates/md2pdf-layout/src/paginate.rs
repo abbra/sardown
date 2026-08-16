@@ -335,14 +335,19 @@ fn render_block(
             let start_y = cursor.y;
             let start_page = cursor.page_number;
             let background_insert_at = cursor.current.len();
-            let combined: Vec<md2pdf_ast::InlineNode> = tokens
-                .iter()
-                .map(|t| md2pdf_ast::InlineNode {
-                    text: t.text.clone(),
-                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt, color: t.color },
+            let mut combined: Vec<md2pdf_ast::InlineNode> = Vec::with_capacity(tokens.len() + 1);
+            if cursor.style.code_block.label_style == md2pdf_style::LabelStyle::Inline {
+                combined.push(md2pdf_ast::InlineNode {
+                    text: format!("{}\n", resolved.label),
+                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt, color: resolved.label_color.0 },
                     link_target: None,
-                })
-                .collect();
+                });
+            }
+            combined.extend(tokens.iter().map(|t| md2pdf_ast::InlineNode {
+                text: t.text.clone(),
+                style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt, color: t.color },
+                link_target: None,
+            }));
             // One rich-shaping call over all tokens so tokens on the same source line (e.g.
             // "fn " and "main" as separate syntect tokens) flow together on one visual line,
             // each keeping its own color; line breaks come from the embedded `\n` characters

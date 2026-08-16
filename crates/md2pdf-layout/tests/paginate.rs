@@ -963,3 +963,42 @@ fn code_block_font_size_uses_the_per_language_override() {
         .expect("expected a code text run");
     assert_eq!(size, 20.0);
 }
+
+#[test]
+fn inline_label_style_prepends_the_label_as_the_first_line_of_code_text() {
+    let mut style = Stylesheet::default();
+    style.code_block.label_style = md2pdf_style::LabelStyle::Inline;
+    let ast = vec![BlockNode::CodeBlock {
+        language: Some("rust".to_string()),
+        tokens: vec![md2pdf_ast::HighlightedToken { text: "fn main() {}\n".to_string(), color: [0, 0, 0] }],
+    }];
+    let mut fs = test_font_system();
+    let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    let label_run = output.pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { text, color, .. } if text.contains("Rust") => Some(*color),
+            _ => None,
+        })
+        .expect("expected a text run containing the auto-generated \"Rust\" label");
+    assert_eq!(label_run, style.code_block.default.label_color.0);
+}
+
+#[test]
+fn label_style_none_never_adds_a_label_line() {
+    let style = Stylesheet::default(); // label_style defaults to None
+    let ast = vec![BlockNode::CodeBlock {
+        language: Some("rust".to_string()),
+        tokens: vec![md2pdf_ast::HighlightedToken { text: "fn main() {}\n".to_string(), color: [0, 0, 0] }],
+    }];
+    let mut fs = test_font_system();
+    let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    let has_label_text = output.pages[0].elements.iter().any(|e| match e {
+        PositionedElement::TextRun { text, .. } => text.contains("Rust"),
+        _ => false,
+    });
+    assert!(!has_label_text, "expected no label text when label_style is None");
+}
