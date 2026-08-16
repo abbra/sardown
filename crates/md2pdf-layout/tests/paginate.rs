@@ -1044,3 +1044,67 @@ fn header_bar_label_style_draws_a_background_and_label_before_the_code() {
         .expect("expected the code's own text run");
     assert!(label_run.0 < code_text_y, "expected the header bar label above the code's own text");
 }
+
+#[test]
+fn corner_label_style_draws_a_badge_overlapping_the_code_backgrounds_top_edge() {
+    let mut style = Stylesheet::default();
+    style.code_block.label_style = md2pdf_style::LabelStyle::Corner;
+    let ast = vec![BlockNode::CodeBlock {
+        language: Some("rust".to_string()),
+        tokens: vec![md2pdf_ast::HighlightedToken { text: "fn main() {}\n".to_string(), color: [0, 0, 0] }],
+    }];
+    let mut fs = test_font_system();
+    let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    let fills: Vec<_> = output.pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            PositionedElement::Path { fill: Some(c), .. } => Some(*c),
+            _ => None,
+        })
+        .collect();
+    assert!(fills.contains(&style.code_block.default.label_background.0), "expected a corner badge background rect, got fills: {fills:?}");
+
+    let label_run = output.pages[0].elements.iter().any(|e| match e {
+        PositionedElement::TextRun { text, color, .. } => text.contains("Rust") && *color == style.code_block.default.label_color.0,
+        _ => false,
+    });
+    assert!(label_run, "expected a \"Rust\" text run in the label color");
+}
+
+#[test]
+fn corner_label_gives_the_start_page_extra_top_padding() {
+    let plain = Stylesheet::default();
+    let mut corner = Stylesheet::default();
+    corner.code_block.label_style = md2pdf_style::LabelStyle::Corner;
+
+    let ast = vec![BlockNode::CodeBlock {
+        language: Some("rust".to_string()),
+        tokens: vec![md2pdf_ast::HighlightedToken { text: "fn main() {}\n".to_string(), color: [0, 0, 0] }],
+    }];
+
+    let background_top_y = |output: &md2pdf_layout::LayoutOutput| {
+        output.pages[0]
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                PositionedElement::Path { points, fill: Some(_), .. } => match points.first() {
+                    Some(md2pdf_layout::PathCommand::MoveTo(_, y)) => Some(*y),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("expected a filled background path")
+    };
+
+    let mut fs_a = test_font_system();
+    let plain_output = layout_impl(&ast, &letter_geometry(), &mut fs_a, &fixtures_dir(), &DiagramTable::new(), &plain);
+    let mut fs_b = test_font_system();
+    let corner_output = layout_impl(&ast, &letter_geometry(), &mut fs_b, &fixtures_dir(), &DiagramTable::new(), &corner);
+
+    assert!(
+        background_top_y(&corner_output) < background_top_y(&plain_output),
+        "expected the corner style's code background to start higher up (larger top pad) than the plain style's"
+    );
+}

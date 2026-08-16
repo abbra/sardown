@@ -407,7 +407,12 @@ fn render_block(
             // tops of ascenders (e.g. "P", "T") poking out above the gray box. 0.8x the code
             // font's size approximates typical sans-serif ascent; the bottom gets a smaller pad
             // for descenders.
-            let top_pad_pt = code_font_size_pt * 0.8;
+            let normal_top_pad_pt = code_font_size_pt * 0.8;
+            let start_top_pad_pt = if label_style == md2pdf_style::LabelStyle::Corner {
+                code_font_size_pt * 1.8 // enough room for the corner badge to sit inside the enlarged pad
+            } else {
+                normal_top_pad_pt
+            };
             // Must stay under LINE_SPACING_PT (the gap the layout loop inserts after every
             // block) or the box bleeds into whatever follows the code block.
             const BOTTOM_PAD_PT: f32 = 2.0;
@@ -434,9 +439,7 @@ fn render_block(
                 // Inserted before the text elements just placed (rather than pushed after): the
                 // PDF renderer paints elements in array order, so an opaque background pushed
                 // *after* its own text would paint over that text instead of sitting behind it.
-                cursor
-                    .current
-                    .insert(background_insert_at, background_rect(start_y - top_pad_pt, last_line_baseline + BOTTOM_PAD_PT));
+                cursor.current.insert(background_insert_at, background_rect(start_y - start_top_pad_pt, last_line_baseline + BOTTOM_PAD_PT));
             } else {
                 // `place_inline_content` broke to one or more new pages mid-block: `start_y`/
                 // `end_y` are local to different pages' coordinate systems, so one rectangle
@@ -446,15 +449,60 @@ fn render_block(
                 // start page from its own top down to the page's bottom margin, any fully-spanned
                 // middle pages the whole content height, and the final page from the top margin
                 // down to end_y. Every page's first line restarts at that page's own margin with
-                // the same baseline-vs-top-pad correction as the block's very first line.
-                cursor
-                    .pages[start_page]
-                    .elements
-                    .insert(background_insert_at, background_rect(start_y - top_pad_pt, page_height_pt));
+                // the same baseline-vs-top-pad correction as the block's very first line -- except
+                // a corner badge's enlarged pad, which only decorates the block's true start.
+                cursor.pages[start_page].elements.insert(background_insert_at, background_rect(start_y - start_top_pad_pt, page_height_pt));
                 for page in (start_page + 1)..end_page {
-                    cursor.pages[page].elements.insert(0, background_rect(margin_pt - top_pad_pt, page_height_pt));
+                    cursor.pages[page].elements.insert(0, background_rect(margin_pt - normal_top_pad_pt, page_height_pt));
                 }
-                cursor.current.insert(0, background_rect(margin_pt - top_pad_pt, last_line_baseline + BOTTOM_PAD_PT));
+                cursor.current.insert(0, background_rect(margin_pt - normal_top_pad_pt, last_line_baseline + BOTTOM_PAD_PT));
+            }
+
+            // Corner badge: painted after the code's own background (a plain push always lands
+            // after whatever's already on start_page, in both the single- and multi-page cases)
+            // so it visually sits on top of it, overlapping the enlarged start-page top pad.
+            // Always belongs to start_page, regardless of which page the code's own text ended
+            // up spanning to.
+            if label_style == md2pdf_style::LabelStyle::Corner {
+                let badge_node = md2pdf_ast::InlineNode {
+                    text: resolved.label.clone(),
+                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt * 0.8, color: resolved.label_color.0 },
+                    link_target: None,
+                };
+                let badge_elements = shape_paragraph(font_system, std::slice::from_ref(&badge_node), content_width_pt);
+                if let Some(PositionedElement::TextRun { glyphs, .. }) = badge_elements.first() {
+                    let badge_text_width: f32 = glyphs.iter().map(|g| g.x_advance).sum();
+                    let badge_padding_x = 6.0;
+                    let badge_width = badge_text_width + badge_padding_x * 2.0;
+                    let badge_height = code_font_size_pt + 4.0;
+                    let badge_right_x = margin_pt + content_width_pt;
+                    let badge_left_x = badge_right_x - badge_width;
+                    let badge_top_y = start_y - start_top_pad_pt;
+                    let badge_bottom_y = badge_top_y + badge_height;
+                    let badge_rect = PositionedElement::Path {
+                        points: vec![
+                            PathCommand::MoveTo(badge_left_x, badge_top_y),
+                            PathCommand::LineTo(badge_right_x, badge_top_y),
+                            PathCommand::LineTo(badge_right_x, badge_bottom_y),
+                            PathCommand::LineTo(badge_left_x, badge_bottom_y),
+                            PathCommand::Close,
+                        ],
+                        fill: Some(resolved.label_background.0),
+                        stroke: None,
+                    };
+                    let mut badge_text = badge_elements.into_iter().next().unwrap();
+                    if let PositionedElement::TextRun { x, y, .. } = &mut badge_text {
+                        *x = badge_left_x + badge_padding_x;
+                        *y = badge_bottom_y - 3.0;
+                    }
+                    if start_page == cursor.page_number {
+                        cursor.current.push(badge_rect);
+                        cursor.current.push(badge_text);
+                    } else {
+                        cursor.pages[start_page].elements.push(badge_rect);
+                        cursor.pages[start_page].elements.push(badge_text);
+                    }
+                }
             }
 
             // The layout loop always adds a flat `LINE_SPACING_PT` gap after every block,
