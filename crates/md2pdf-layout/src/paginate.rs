@@ -89,15 +89,25 @@ fn estimate_line_height(size: f32) -> f32 {
 /// came from the same visual line and must be placed at one shared final `y` with a single cursor
 /// advance, not one advance per run (placing each run independently would advance the cursor
 /// once per span instead of once per line).
+fn to_cosmic_align(alignment: md2pdf_style::TextAlignment) -> cosmic_text::Align {
+    match alignment {
+        md2pdf_style::TextAlignment::Left => cosmic_text::Align::Left,
+        md2pdf_style::TextAlignment::Right => cosmic_text::Align::Right,
+        md2pdf_style::TextAlignment::Center => cosmic_text::Align::Center,
+        md2pdf_style::TextAlignment::Justify => cosmic_text::Align::Justified,
+    }
+}
+
 fn place_inline_content(
     cursor: &mut Cursor,
     margin_pt: f32,
     indent_pt: f32,
     max_width_pt: f32,
     content: &[md2pdf_ast::InlineNode],
+    align: cosmic_text::Align,
     font_system: &mut FontSystem,
 ) {
-    let shaped = shape_rich_paragraph(font_system, content, max_width_pt);
+    let shaped = shape_rich_paragraph(font_system, content, max_width_pt, align);
     let mut iter = shaped.into_iter().peekable();
 
     let mut content_start_y = cursor.y;
@@ -176,7 +186,7 @@ fn measure_row_height(
             continue;
         }
         let cell_max_width_pt = (*width - cell_padding_pt).max(min_cell_wrap_width_pt);
-        let shaped = shape_rich_paragraph(font_system, cell, cell_max_width_pt);
+        let shaped = shape_rich_paragraph(font_system, cell, cell_max_width_pt, cosmic_text::Align::Left);
         let mut ys: Vec<f32> = shaped
             .iter()
             .map(|r| match &r.element {
@@ -247,7 +257,7 @@ fn render_block(
             }
             let anchor_y = cursor.y;
             let max_width_pt = cursor.content_width_pt - indent_pt;
-            place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, font_system);
+            place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, cosmic_text::Align::Left, font_system);
             cursor.anchors.insert(
                 id.clone(),
                 AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: anchor_y },
@@ -255,7 +265,7 @@ fn render_block(
         }
         BlockNode::Paragraph { content } => {
             let max_width_pt = cursor.content_width_pt - indent_pt;
-            place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, font_system);
+            place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, to_cosmic_align(cursor.style.typography.alignment), font_system);
         }
         BlockNode::Blockquote { content } => {
             let start_y = cursor.y;
@@ -394,7 +404,7 @@ fn render_block(
             // syntect leaves at the end of each source line's tokens.
             let code_indent_pt = indent_pt + 8.0;
             let max_width_pt = cursor.content_width_pt - code_indent_pt;
-            place_inline_content(cursor, margin_pt, code_indent_pt, max_width_pt, &combined, font_system);
+            place_inline_content(cursor, margin_pt, code_indent_pt, max_width_pt, &combined, cosmic_text::Align::Left, font_system);
             let end_y = cursor.y;
             let end_page = cursor.page_number;
             let content_width_pt = cursor.content_width_pt;
@@ -565,7 +575,7 @@ fn render_block(
                 // parameter is normally "wrap at the right margin," which is wrong for a cell —
                 // it let long text bleed across into the next column's space instead of wrapping.
                 let cell_max_width_pt = (width - cell_padding_pt).max(MIN_CELL_WRAP_WIDTH_PT);
-                place_inline_content(cursor, margin_pt, col_x - margin_pt + cell_padding_x_pt, cell_max_width_pt, header, font_system);
+                place_inline_content(cursor, margin_pt, col_x - margin_pt + cell_padding_x_pt, cell_max_width_pt, header, cosmic_text::Align::Left, font_system);
                 header_bottom_y = header_bottom_y.max(cursor.y);
                 col_x += width;
             }
@@ -602,7 +612,7 @@ fn render_block(
                 for (cell, width) in row.iter().zip(&widths) {
                     cursor.y = row_top_y;
                     let cell_max_width_pt = (width - cell_padding_pt).max(MIN_CELL_WRAP_WIDTH_PT);
-                    place_inline_content(cursor, margin_pt, col_x - margin_pt + cell_padding_x_pt, cell_max_width_pt, cell, font_system);
+                    place_inline_content(cursor, margin_pt, col_x - margin_pt + cell_padding_x_pt, cell_max_width_pt, cell, cosmic_text::Align::Left, font_system);
                     row_bottom_y = row_bottom_y.max(cursor.y);
                     col_x += width;
                 }

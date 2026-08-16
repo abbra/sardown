@@ -1,5 +1,5 @@
 use crate::{PositionedElement, PositionedGlyph};
-use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Style, Weight};
+use cosmic_text::{Align, Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Style, Weight};
 use md2pdf_ast::InlineNode;
 
 const PT_TO_PX_SCALE: f32 = 1.0; // 1pt == 1px at our fixed 96/72... kept 1:1 for Phase 1 simplicity
@@ -110,7 +110,7 @@ struct Span {
 /// `InlineNode`) and recovers which span each glyph came from via `LayoutGlyph`'s `start`/`end`
 /// cluster fields against precomputed per-span byte ranges — no dependency on any less-certain
 /// "glyph metadata echo" API.
-pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode], max_width_pt: f32) -> Vec<ShapedRun> {
+pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode], max_width_pt: f32, align: Align) -> Vec<ShapedRun> {
     if content.is_empty() {
         return Vec::new();
     }
@@ -154,6 +154,9 @@ pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode]
     let mut buffer = Buffer::new(font_system, metrics);
     buffer.set_size(Some(max_width_pt * PT_TO_PX_SCALE), None);
     buffer.set_rich_text(rich_text_spans, &Attrs::new(), Shaping::Advanced, None);
+    for line in &mut buffer.lines {
+        line.set_align(Some(align));
+    }
     buffer.shape_until_scroll(font_system, false);
 
     let span_index_for = |cluster_start: usize| spans.iter().position(|s| s.range.contains(&cluster_start)).unwrap_or(spans.len().saturating_sub(1));

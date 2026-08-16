@@ -1,4 +1,4 @@
-use cosmic_text::FontSystem;
+use cosmic_text::{Align, FontSystem};
 use md2pdf_ast::{InlineNode, TextStyle};
 use md2pdf_layout::{shape_paragraph, shape_rich_paragraph, PositionedElement};
 
@@ -93,7 +93,7 @@ fn shape_paragraph_falls_back_to_sans_serif_for_an_unknown_family_name_without_p
 fn shape_rich_paragraph_mixes_two_font_families_within_one_call() {
     let mut font_system = font_system_with_distinct_generic_families();
     let content = vec![run_with_family("sans ", "sans-serif"), run_with_family("mono", "monospace")];
-    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0);
+    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left);
 
     let font_ids: Vec<_> = runs
         .iter()
@@ -141,7 +141,7 @@ fn splits_a_run_at_a_font_fallback_boundary_within_one_span() {
     // instead of the intended character.
     let mut font_system = font_system_with_fallback();
     let content = vec![plain_run("a\u{2192}b")];
-    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0);
+    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left);
 
     let font_ids: Vec<_> = runs
         .iter()
@@ -170,7 +170,7 @@ fn shape_rich_paragraph_drops_characters_with_no_font_coverage_instead_of_notdef
     // document" convention for images/diagrams/links -- keeps the render succeeding.
     let mut font_system = font_system_with_fallback(); // neither loaded font covers this character
     let content = vec![plain_run("a\u{1D11E}b")]; // U+1D11E MUSICAL SYMBOL G CLEF
-    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0);
+    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left);
 
     let all_glyph_ids: Vec<_> = runs
         .iter()
@@ -221,7 +221,7 @@ fn shape_rich_paragraph_keeps_correct_span_colors_across_embedded_newlines() {
                                          // on its own BufferLine
     ];
     let mut font_system = test_font_system();
-    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0);
+    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left);
 
     let colors_by_source_index: std::collections::HashMap<usize, [u8; 3]> = runs
         .iter()
@@ -236,5 +236,40 @@ fn shape_rich_paragraph_keeps_correct_span_colors_across_embedded_newlines() {
         colors_by_source_index.get(&2),
         Some(&[0, 255, 0]),
         "expected 'bbb' (span 2, on the second BufferLine) to use its own green, not span 0's color"
+    );
+}
+
+#[test]
+fn shape_rich_paragraph_justifies_a_non_last_wrapped_line_to_the_full_width() {
+    let mut font_system = test_font_system();
+    // Long enough to wrap onto at least 2 lines at 200pt.
+    let content = vec![plain_run("one two three four five six seven eight nine ten")];
+    let max_width_pt = 200.0;
+
+    let left_runs = shape_rich_paragraph(&mut font_system, &content, max_width_pt, Align::Left);
+    let justified_runs = shape_rich_paragraph(&mut font_system, &content, max_width_pt, Align::Justified);
+
+    let rightmost_extent_of_first_line = |runs: &[md2pdf_layout::ShapedRun]| -> f32 {
+        let first_line_y = match &runs[0].element {
+            PositionedElement::TextRun { y, .. } => *y,
+            other => panic!("expected TextRun, got {other:?}"),
+        };
+        runs.iter()
+            .filter_map(|r| match &r.element {
+                PositionedElement::TextRun { y, glyphs, x, .. } if *y == first_line_y => Some(x + glyphs.iter().map(|g| g.x_advance).sum::<f32>()),
+                _ => None,
+            })
+            .fold(0.0f32, f32::max)
+    };
+
+    let left_extent = rightmost_extent_of_first_line(&left_runs);
+    let justified_extent = rightmost_extent_of_first_line(&justified_runs);
+    assert!(
+        justified_extent > left_extent + 1.0,
+        "expected the justified first (non-last) line to reach further right ({justified_extent}) than the left-aligned one ({left_extent})"
+    );
+    assert!(
+        (justified_extent - max_width_pt).abs() < 2.0,
+        "expected the justified line to reach very close to the {max_width_pt}pt wrap width, got {justified_extent}"
     );
 }

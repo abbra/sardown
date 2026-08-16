@@ -1108,3 +1108,45 @@ fn corner_label_gives_the_start_page_extra_top_padding() {
         "expected the corner style's code background to start higher up (larger top pad) than the plain style's"
     );
 }
+
+#[test]
+fn headings_and_code_blocks_stay_left_aligned_even_under_a_justified_stylesheet() {
+    let mut left_style = md2pdf_style::Stylesheet::default();
+    left_style.typography.alignment = md2pdf_style::TextAlignment::Left;
+    let mut justified_style = md2pdf_style::Stylesheet::default();
+    justified_style.typography.alignment = md2pdf_style::TextAlignment::Justify;
+
+    let ast = vec![
+        BlockNode::Heading {
+            level: 2,
+            id: "h".to_string(),
+            content: vec![sized_inline("A somewhat longer heading that wraps across more than one line here", 22.0)],
+        },
+        BlockNode::CodeBlock {
+            language: None,
+            tokens: vec![HighlightedToken { text: "some code text that is long enough to wrap across more than one line".to_string(), color: [0, 0, 0] }],
+        },
+    ];
+
+    let mut fs_left = test_font_system();
+    let left_output = layout_impl(&ast, &letter_geometry(), &mut fs_left, &fixtures_dir(), &DiagramTable::new(), &left_style);
+    let mut fs_justified = test_font_system();
+    let justified_output = layout_impl(&ast, &letter_geometry(), &mut fs_justified, &fixtures_dir(), &DiagramTable::new(), &justified_style);
+
+    let text_run_positions = |pages: &[md2pdf_layout::PositionedPage]| -> Vec<(f32, f32)> {
+        pages
+            .iter()
+            .flat_map(|p| &p.elements)
+            .filter_map(|e| match e {
+                PositionedElement::TextRun { x, y, .. } => Some((*x, *y)),
+                _ => None,
+            })
+            .collect()
+    };
+
+    assert_eq!(
+        text_run_positions(&left_output.pages),
+        text_run_positions(&justified_output.pages),
+        "expected heading and code block glyph positions to be identical regardless of typography.alignment"
+    );
+}
