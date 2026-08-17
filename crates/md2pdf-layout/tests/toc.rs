@@ -103,3 +103,20 @@ fn toc_entries_link_to_their_target_heading_position() {
     assert!(link_targets_toc_page_zero, "expected a LinkAnnotation on the TOC page targeting chapter-one");
     assert!(chapter_one_anchor.page < output.pages.len());
 }
+
+#[test]
+fn layout_with_header_footer_includes_the_toc_when_enabled() {
+    let ast = book_with_headings();
+    let mut style = Stylesheet::default();
+    style.toc.enabled = true;
+    let mut fs = test_font_system();
+    let output = md2pdf_layout::layout_with_header_footer(&ast, &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+    assert!(!output.toc_entries.is_empty(), "expected layout_with_header_footer to run TOC generation when enabled");
+    let has_toc_title = output.pages[0].elements.iter().any(|e| {
+        matches!(
+            e,
+            PositionedElement::TextRun { text, .. } if text.contains("Table of Contents")
+        )
+    });
+    assert!(has_toc_title, "expected the TOC title on the first page");
+}

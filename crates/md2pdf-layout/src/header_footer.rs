@@ -217,6 +217,7 @@ pub fn layout_with_header_footer(
     let (width_mm, height_mm) = stylesheet.page.dimensions_mm();
     let geometry = PageGeometry { page_width_mm: width_mm, page_height_mm: height_mm, margin_mm: stylesheet.page.margin_mm };
     let mut output = crate::layout_impl(ast, &geometry, font_system, base_dir, diagrams, stylesheet);
+    crate::toc::insert_table_of_contents(&mut output, ast, stylesheet, &geometry, font_system);
     render_headers_footers(&mut output.pages, &output.page_contexts, stylesheet, &geometry, font_system);
     output
 }
