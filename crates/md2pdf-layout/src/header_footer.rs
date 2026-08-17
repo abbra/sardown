@@ -1,4 +1,4 @@
-use crate::{AnchorTable, PageContext, PageGeometry, PathCommand, PositionedElement, PositionedPage};
+use crate::{AnchorTable, PageContext, PageGeometry, PositionedElement, PositionedPage};
 use cosmic_text::FontSystem;
 use md2pdf_ast::{InlineNode, TextStyle};
 use md2pdf_style::{DocumentStyle, HeaderFooterMode, HeaderFooterStyle, HeaderZones, NumberingFormat, PageNumbering, Stylesheet};
@@ -226,7 +226,7 @@ pub fn render_headers_footers(
         let page_display = display_number_for_page(i, &segments);
         let is_odd_physical_page = i % 2 == 0;
 
-        if stylesheet.header.enabled && !(stylesheet.header.suppress_on_chapter_start && ctx.is_chapter_opener) {
+        if stylesheet.header.enabled && !(stylesheet.header.suppress_on_chapter_start && ctx.is_chapter_opener) && !ctx.suppress_header {
             render_band(
                 page,
                 &stylesheet.header,
@@ -241,7 +241,7 @@ pub fn render_headers_footers(
                 font_system,
             );
         }
-        if stylesheet.footer.enabled && !(stylesheet.footer.suppress_on_chapter_start && ctx.is_chapter_opener) {
+        if stylesheet.footer.enabled && !(stylesheet.footer.suppress_on_chapter_start && ctx.is_chapter_opener) && !ctx.suppress_footer {
             render_band(
                 page,
                 &stylesheet.footer,
@@ -280,31 +280,9 @@ pub fn apply_asymmetric_margins(pages: &mut [PositionedPage], geometry: &PageGeo
         let shift_pt = target_left_pt - baseline_pt;
         if shift_pt != 0.0 {
             for element in &mut page.elements {
-                shift_element_x(element, shift_pt);
+                crate::shift_element(element, shift_pt, 0.0);
             }
         }
-    }
-}
-
-fn shift_element_x(element: &mut PositionedElement, dx: f32) {
-    match element {
-        PositionedElement::TextRun { x, .. } => *x += dx,
-        PositionedElement::Path { points, .. } => {
-            for command in points {
-                match command {
-                    PathCommand::MoveTo(x, _) | PathCommand::LineTo(x, _) => *x += dx,
-                    PathCommand::CubicTo(x1, _, x2, _, x3, _) => {
-                        *x1 += dx;
-                        *x2 += dx;
-                        *x3 += dx;
-                    }
-                    PathCommand::Close => {}
-                }
-            }
-        }
-        PositionedElement::VectorGraphic { x, .. } => *x += dx,
-        PositionedElement::LinkAnnotation { rect, .. } => rect.x += dx,
-        PositionedElement::RasterImage { x, .. } => *x += dx,
     }
 }
 

@@ -22,7 +22,11 @@ fn empty_page(n: usize) -> PositionedPage {
 }
 
 fn ctx(h1: Option<&str>, is_chapter_opener: bool) -> PageContext {
-    PageContext { current_h1: h1.map(String::from), current_h2: None, is_chapter_opener }
+    PageContext { current_h1: h1.map(String::from), current_h2: None, is_chapter_opener, suppress_header: false, suppress_footer: false }
+}
+
+fn ctx_suppressing(h1: Option<&str>, suppress_header: bool, suppress_footer: bool) -> PageContext {
+    PageContext { current_h1: h1.map(String::from), current_h2: None, is_chapter_opener: false, suppress_header, suppress_footer }
 }
 
 fn text_of(page: &PositionedPage) -> Vec<String> {
@@ -233,6 +237,38 @@ fn two_sided_mode_uses_even_zones_on_the_second_physical_page() {
     let mut fs = test_font_system();
     render_headers_footers(&mut pages, &contexts, &AnchorTable::new(), &sheet, &geometry(), &mut fs);
     assert!(text_of(&pages[1]).contains(&"EVEN".to_string()));
+}
+
+#[test]
+fn a_page_with_suppress_header_set_renders_no_header_but_still_renders_its_footer() {
+    let mut sheet = Stylesheet::default();
+    sheet.header.enabled = true;
+    sheet.header.uniform.center = "HEADER".to_string();
+    sheet.footer.enabled = true;
+    sheet.footer.uniform.center = "FOOTER".to_string();
+    let mut pages = vec![empty_page(0)];
+    let contexts = vec![ctx_suppressing(None, true, false)];
+    let mut fs = test_font_system();
+    render_headers_footers(&mut pages, &contexts, &AnchorTable::new(), &sheet, &geometry(), &mut fs);
+    let text = text_of(&pages[0]);
+    assert!(!text.contains(&"HEADER".to_string()));
+    assert!(text.contains(&"FOOTER".to_string()));
+}
+
+#[test]
+fn a_page_with_suppress_footer_set_renders_no_footer_but_still_renders_its_header() {
+    let mut sheet = Stylesheet::default();
+    sheet.header.enabled = true;
+    sheet.header.uniform.center = "HEADER".to_string();
+    sheet.footer.enabled = true;
+    sheet.footer.uniform.center = "FOOTER".to_string();
+    let mut pages = vec![empty_page(0)];
+    let contexts = vec![ctx_suppressing(None, false, true)];
+    let mut fs = test_font_system();
+    render_headers_footers(&mut pages, &contexts, &AnchorTable::new(), &sheet, &geometry(), &mut fs);
+    let text = text_of(&pages[0]);
+    assert!(text.contains(&"HEADER".to_string()));
+    assert!(!text.contains(&"FOOTER".to_string()));
 }
 
 fn fixtures_dir() -> std::path::PathBuf {

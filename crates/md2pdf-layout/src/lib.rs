@@ -75,6 +75,13 @@ pub struct PageContext {
     pub current_h1: Option<String>,
     pub current_h2: Option<String>,
     pub is_chapter_opener: bool,
+    /// Set by md2pdf-slides for a slide whose resolved layout has `suppress_header`/
+    /// `suppress_footer` set. Independent of `is_chapter_opener`: a book or single-document
+    /// render never sets these (always `false`), since `is_chapter_opener` already covers that
+    /// case and always suppresses header and footer together, which a slide layout must not be
+    /// forced to do.
+    pub suppress_header: bool,
+    pub suppress_footer: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -85,7 +92,7 @@ pub struct Rect {
     pub height: f32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PathCommand {
     MoveTo(f32, f32),
     LineTo(f32, f32),
@@ -134,4 +141,47 @@ pub enum PositionedElement {
         height: f32,
         image_id: String,
     },
+}
+
+/// Shifts one positioned element by `(dx, dy)` points -- shared by `apply_asymmetric_margins`
+/// (horizontal-only, `dy = 0.0`) and md2pdf-slides' vertical-centering post-process (`dx = 0.0`),
+/// so the coordinate-shifting logic for every `PositionedElement` variant lives in one place.
+pub fn shift_element(element: &mut PositionedElement, dx: f32, dy: f32) {
+    match element {
+        PositionedElement::TextRun { x, y, .. } => {
+            *x += dx;
+            *y += dy;
+        }
+        PositionedElement::Path { points, .. } => {
+            for command in points {
+                match command {
+                    PathCommand::MoveTo(x, y) | PathCommand::LineTo(x, y) => {
+                        *x += dx;
+                        *y += dy;
+                    }
+                    PathCommand::CubicTo(x1, y1, x2, y2, x3, y3) => {
+                        *x1 += dx;
+                        *y1 += dy;
+                        *x2 += dx;
+                        *y2 += dy;
+                        *x3 += dx;
+                        *y3 += dy;
+                    }
+                    PathCommand::Close => {}
+                }
+            }
+        }
+        PositionedElement::VectorGraphic { x, y, .. } => {
+            *x += dx;
+            *y += dy;
+        }
+        PositionedElement::LinkAnnotation { rect, .. } => {
+            rect.x += dx;
+            rect.y += dy;
+        }
+        PositionedElement::RasterImage { x, y, .. } => {
+            *x += dx;
+            *y += dy;
+        }
+    }
 }

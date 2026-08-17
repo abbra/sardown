@@ -2,7 +2,7 @@ use md2pdf_layout::{format_page_number, resolve_template, PageContext};
 use md2pdf_style::{DocumentStyle, NumberingFormat};
 
 fn ctx(h1: Option<&str>, h2: Option<&str>) -> PageContext {
-    PageContext { current_h1: h1.map(String::from), current_h2: h2.map(String::from), is_chapter_opener: false }
+    PageContext { current_h1: h1.map(String::from), current_h2: h2.map(String::from), is_chapter_opener: false, suppress_header: false, suppress_footer: false }
 }
 
 fn no_document() -> DocumentStyle {

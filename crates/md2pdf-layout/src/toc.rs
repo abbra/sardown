@@ -146,7 +146,7 @@ pub fn insert_table_of_contents(output: &mut LayoutOutput, ast: &[BlockNode], st
 
     debug_assert_eq!(toc_pages.len(), toc_page_count, "TOC page count arithmetic and actual pagination must agree");
 
-    let default_context = || PageContext { current_h1: None, current_h2: None, is_chapter_opener: false };
+    let default_context = || PageContext { current_h1: None, current_h2: None, is_chapter_opener: false, suppress_header: false, suppress_footer: false };
     output.page_contexts.splice(0..0, std::iter::repeat_with(default_context).take(toc_pages.len()));
     output.pages.splice(0..0, toc_pages);
     output.toc_entries = entries;

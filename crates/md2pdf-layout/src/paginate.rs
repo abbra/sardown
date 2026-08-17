@@ -52,6 +52,8 @@ impl<'a> Cursor<'a> {
             current_h1: self.current_h1.clone(),
             current_h2: self.current_h2.clone(),
             is_chapter_opener: std::mem::take(&mut self.chapter_opener_pending),
+            suppress_header: false,
+            suppress_footer: false,
         });
     }
 
