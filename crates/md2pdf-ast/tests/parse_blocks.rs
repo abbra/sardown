@@ -300,6 +300,20 @@ fn parse_with_slugs_shares_diagram_id_counter_across_calls() {
 }
 
 #[test]
+fn inline_code_spans_use_a_monospace_font_distinct_from_surrounding_text() {
+    let ast = parse("Some `inline code` here.\n");
+    match &ast[0] {
+        BlockNode::Paragraph { content } => {
+            let plain = content.iter().find(|n| n.text.contains("Some")).expect("missing plain text run");
+            let code = content.iter().find(|n| n.text == "inline code").expect("missing inline code run");
+            assert_ne!(code.style.font_family, plain.style.font_family, "expected inline code to use a distinct font family from surrounding text");
+            assert_eq!(code.style.font_family, "monospace");
+        }
+        other => panic!("expected Paragraph, got {other:?}"),
+    }
+}
+
+#[test]
 fn task_list_items_render_a_checkbox_glyph_instead_of_literal_brackets() {
     let md = "- [ ] Unchecked\n- [x] Checked\n";
     let blocks = parse(md);

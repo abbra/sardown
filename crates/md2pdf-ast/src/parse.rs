@@ -32,6 +32,13 @@ impl InlineBuilder {
     }
 
     fn push_text(&mut self, text: String) {
+        self.push_text_with_font_family(text, self.base_font_family.clone());
+    }
+
+    /// Like `push_text`, but with an explicit font family instead of `base_font_family` --
+    /// used for inline code spans, which always render monospace regardless of the surrounding
+    /// text's own configured body font.
+    fn push_text_with_font_family(&mut self, text: String, font_family: String) {
         if text.is_empty() {
             return;
         }
@@ -42,7 +49,7 @@ impl InlineBuilder {
                 italic: self.italic_depth > 0,
                 size: self.base_size,
                 color: self.base_color,
-                font_family: self.base_font_family.clone(),
+                font_family,
             },
             link_target: self.link_target.clone(),
         });
@@ -63,7 +70,7 @@ fn link_target_from_url(url: &str) -> LinkTarget {
 fn apply_inline_event(builder: &mut InlineBuilder, event: Event) {
     match event {
         Event::Text(text) => builder.push_text(text.into_string()),
-        Event::Code(text) => builder.push_text(text.into_string()),
+        Event::Code(text) => builder.push_text_with_font_family(text.into_string(), "monospace".to_string()),
         Event::Start(Tag::Strong) => builder.bold_depth += 1,
         Event::End(TagEnd::Strong) => builder.bold_depth = builder.bold_depth.saturating_sub(1),
         Event::Start(Tag::Emphasis) => builder.italic_depth += 1,

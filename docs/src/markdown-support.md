@@ -18,9 +18,11 @@ combinations of the two, plus links (`[text](url)`). Soft and hard line
 breaks within a paragraph both collapse to a single space (a hard break
 does not currently force a visual line break).
 
-Inline code spans (`` `code` ``) are parsed correctly but render as plain
-text — they don't currently get a monospace font or background
-highlight the way fenced code blocks do.
+Inline code spans (`` `code` ``) render in a monospace font, distinct
+from the surrounding body text. They don't yet get a background
+highlight box the way fenced code blocks do — that's a separate,
+not-yet-implemented rendering feature (drawing a background behind an
+individual run within a paragraph, rather than behind a whole block).
 
 `~~strikethrough~~` is parsed without leaving stray `~~` characters in the
 output, but the strikethrough line itself isn't drawn — the text renders
