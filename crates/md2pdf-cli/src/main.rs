@@ -170,7 +170,7 @@ fn main() -> anyhow::Result<()> {
                 md2pdf_layout::layout_with_header_footer(&ast, &mut font_system, &base_dir, &diagrams, &stylesheet)
             });
             let pdf_bytes = timed_stage("Rendering PDF", || {
-                md2pdf_pdf::render_pdf(&output_layout.pages, font_system.db(), &output_layout.images, &diagrams, &output_layout.anchors, output_layout.page_width_pt, output_layout.page_height_pt, &output_layout.toc_entries)
+                md2pdf_pdf::render_pdf(&output_layout.pages, font_system.db(), &output_layout.images, &output_layout.diagrams, &output_layout.anchors, output_layout.page_width_pt, output_layout.page_height_pt, &output_layout.toc_entries)
             })?;
             timed_stage("Writing output", || std::fs::write(&output, pdf_bytes))?;
             eprintln!("Wrote {} ({} pages)", output.display(), output_layout.pages.len());
@@ -200,7 +200,7 @@ fn main() -> anyhow::Result<()> {
                 md2pdf_layout::layout_with_header_footer(&ast, &mut font_system, &book_root, &diagrams, &stylesheet)
             });
             let pdf_bytes = timed_stage("Rendering PDF", || {
-                md2pdf_pdf::render_pdf(&output_layout.pages, font_system.db(), &output_layout.images, &diagrams, &output_layout.anchors, output_layout.page_width_pt, output_layout.page_height_pt, &output_layout.toc_entries)
+                md2pdf_pdf::render_pdf(&output_layout.pages, font_system.db(), &output_layout.images, &output_layout.diagrams, &output_layout.anchors, output_layout.page_width_pt, output_layout.page_height_pt, &output_layout.toc_entries)
             })?;
             timed_stage("Writing output", || std::fs::write(&output, pdf_bytes))?;
             eprintln!("Wrote {} ({} pages)", output.display(), output_layout.pages.len());

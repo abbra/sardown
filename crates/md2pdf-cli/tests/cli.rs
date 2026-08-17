@@ -147,8 +147,36 @@ fn renders_an_embedded_svg_image_as_vector_content_not_a_raster_image() {
         doc.objects.values().any(|obj| obj.as_stream().ok().and_then(|s| s.dict.get(b"Subtype").ok()).and_then(|s| s.as_name().ok()) == Some(b"Image"));
     assert!(!has_image_xobject, "expected an SVG image to render as vector content, not an Image XObject");
 
+    // "No raster Image XObject" is necessary but not sufficient -- a render that silently drops
+    // the diagram entirely (drawing nothing) would also satisfy that check. Confirm real path
+    // content was actually drawn by comparing against a control document with no image at all:
+    // the diagram's own <rect> fill must contribute real content-stream bytes beyond the heading
+    // text both documents share.
+    let control_md_path = std::env::temp_dir().join("md2pdf-test-svg-image-control-doc.md");
+    std::fs::write(&control_md_path, "# Test\n").unwrap();
+    let control_out_path = std::env::temp_dir().join("md2pdf-test-svg-image-control-output.pdf");
+    let _ = std::fs::remove_file(&control_out_path);
+    let mut control_cmd = Command::cargo_bin("md2pdf").unwrap();
+    control_cmd.arg("render").arg(&control_md_path).arg("-o").arg(&control_out_path);
+    control_cmd.assert().success();
+    let control_bytes = std::fs::read(&control_out_path).unwrap();
+    let control_doc = lopdf::Document::load_mem(&control_bytes).unwrap();
+
+    let page_id = *doc.get_pages().values().next().expect("expected one page");
+    let content_len = doc.get_page_content(page_id).len();
+    let control_page_id = *control_doc.get_pages().values().next().expect("expected one page");
+    let control_content_len = control_doc.get_page_content(control_page_id).len();
+    assert!(
+        content_len > control_content_len + 50,
+        "expected the SVG's own vector content to meaningfully grow the page content stream \
+         (got {content_len} bytes vs {control_content_len} bytes for the same heading with no \
+         image) -- a silently-dropped diagram would leave these nearly identical"
+    );
+
     std::fs::remove_file(&md_path).unwrap();
     std::fs::remove_file(&out_path).unwrap();
+    std::fs::remove_file(&control_md_path).unwrap();
+    std::fs::remove_file(&control_out_path).unwrap();
 }
 
 #[test]

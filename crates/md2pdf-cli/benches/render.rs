@@ -31,8 +31,17 @@ fn bench_full_render(c: &mut Criterion) {
                 std::path::Path::new("."),
                 &diagrams,
             );
-            md2pdf_pdf::render_pdf(&output.pages, font_system.db(), &output.images, &diagrams, &output.anchors, output.page_width_pt, output.page_height_pt, &output.toc_entries)
-                .unwrap()
+            md2pdf_pdf::render_pdf(
+                &output.pages,
+                font_system.db(),
+                &output.images,
+                &output.diagrams,
+                &output.anchors,
+                output.page_width_pt,
+                output.page_height_pt,
+                &output.toc_entries,
+            )
+            .unwrap()
         })
     });
 }

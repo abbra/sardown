@@ -136,6 +136,40 @@ fn renders_a_page_with_a_diagram_and_both_link_kinds() {
     let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &diagrams, &anchors, 612.0, 792.0, &[]).expect("render_pdf failed");
     let doc = lopdf::Document::load_mem(&pdf_bytes).expect("output is not a valid PDF");
     assert_eq!(doc.get_pages().len(), 1);
+
+    // "Doesn't crash and produces one page" is necessary but not sufficient -- a diagram_id that
+    // doesn't resolve in `diagrams` (e.g. the caller passing a different/incomplete DiagramTable
+    // than the one layout actually used) silently draws nothing at all, with no error and no
+    // warning. Confirm the diagram's own <rect> actually contributed real path-drawing content by
+    // comparing against a page with everything else but the VectorGraphic element removed.
+    let page_id = *doc.get_pages().values().next().unwrap();
+    let content_len = doc.get_page_content(page_id).len();
+
+    let page_without_diagram = PositionedPage {
+        page_number: 0,
+        elements: vec![
+            PositionedElement::LinkAnnotation {
+                rect: Rect { x: 10.0, y: 70.0, width: 80.0, height: 12.0 },
+                destination: LinkTarget::ExternalUrl("https://example.com".to_string()),
+            },
+            PositionedElement::LinkAnnotation {
+                rect: Rect { x: 10.0, y: 90.0, width: 80.0, height: 12.0 },
+                destination: LinkTarget::InternalAnchor("target".to_string()),
+            },
+        ],
+    };
+    let control_bytes = render_pdf(&[page_without_diagram], &db, &ImageTable::new(), &diagrams, &anchors, 612.0, 792.0, &[]).expect("render_pdf failed");
+    let control_doc = lopdf::Document::load_mem(&control_bytes).unwrap();
+    let control_page_id = *control_doc.get_pages().values().next().unwrap();
+    let control_content_len = control_doc.get_page_content(control_page_id).len();
+
+    assert!(
+        content_len > control_content_len,
+        "expected the diagram's own vector content to add real bytes to the page content stream \
+         (got {content_len} vs {control_content_len} with the VectorGraphic element removed) -- \
+         a diagram_id that fails to resolve in `diagrams` would silently draw nothing, leaving \
+         these equal"
+    );
 }
 
 #[test]

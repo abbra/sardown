@@ -760,6 +760,14 @@ fn fit_vector_graphic(natural_width: f32, natural_height: f32, max_width: f32, m
 pub struct LayoutOutput {
     pub pages: Vec<PositionedPage>,
     pub images: ImageTable,
+    /// The diagram table actually used during layout -- the caller's own `DiagramTable` (Mermaid
+    /// diagrams, compiled before layout ever runs) extended with any embedded `.svg` images
+    /// discovered by `collect_svg_diagrams` (which can only happen once `base_dir` is known,
+    /// inside layout itself). Callers must render with *this* table, not the one they originally
+    /// passed in -- rendering with the original would silently drop every embedded SVG image
+    /// (they'd resolve to `None` in `render_pdf`'s `VectorGraphic` lookup and draw nothing, with
+    /// no warning at all, since that lookup has no failure path).
+    pub diagrams: DiagramTable,
     pub anchors: AnchorTable,
     pub page_contexts: Vec<PageContext>,
     pub page_width_pt: f32,
@@ -800,6 +808,7 @@ pub fn layout_impl(
     LayoutOutput {
         pages,
         images,
+        diagrams,
         anchors,
         page_contexts,
         page_width_pt: geometry.page_width_mm * PT_PER_MM,
