@@ -42,3 +42,13 @@ listed chapter but no heading in it actually slugifies to
 `no-such-heading`, is recognized as an attempted cross-reference but can't
 be resolved — it falls back to inert (unlinked) text rather than pointing
 at a broken destination.
+
+## What cross-references can't do
+
+Everything above produces a **clickable link** — a reader clicking it
+jumps to the target. There's no way to resolve a cross-reference into
+**inline text naming its page number** (the "see page 42" convention
+common in printed books, as opposed to a clickable link). If you write
+"see the installation guide (page 42)" the "42" is just literal text you
+typed — it's never checked or kept in sync with where that chapter
+actually ends up landing after layout.
