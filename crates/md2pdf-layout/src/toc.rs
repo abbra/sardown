@@ -96,7 +96,7 @@ pub fn insert_table_of_contents(output: &mut LayoutOutput, ast: &[BlockNode], st
     let line_height_pt = crate::paginate::estimate_line_height(body.body_size_pt);
     let lines_per_toc_page = ((usable_height_pt / line_height_pt).floor() as usize).max(1);
     let total_lines = 1 + entries.len();
-    let toc_page_count = (total_lines + lines_per_toc_page - 1) / lines_per_toc_page;
+    let toc_page_count = total_lines.div_ceil(lines_per_toc_page);
 
     // Shift every existing page and anchor *before* laying out the TOC's own content, so each
     // entry can look up its target heading's already-correct, final page number directly -- this
@@ -111,7 +111,7 @@ pub fn insert_table_of_contents(output: &mut LayoutOutput, ast: &[BlockNode], st
 
     // Resolved after the shift above, so a reset's `at_heading` looks up the same final,
     // post-shift page numbers that `render_headers_footers` will later use for the same headings.
-    let numbering_segments = crate::header_footer::resolve_numbering_segments(&stylesheet.page.numbering, &output.anchors);
+    let numbering_segments = crate::numbering::resolve_numbering_segments(&stylesheet.page.numbering, &output.anchors);
 
     let title_style = stylesheet.heading.resolve(1);
     let (_, dot_width) = shape_line(font_system, ".", body.body_size_pt, body.body_color.0, &body.font_family);
@@ -137,7 +137,7 @@ pub fn insert_table_of_contents(output: &mut LayoutOutput, ast: &[BlockNode], st
 
         let indent_pt = entry.level.saturating_sub(1) as f32 * ENTRY_INDENT_PT;
         let final_page = output.anchors.get(&entry.id).map(|a| a.page).unwrap_or(0);
-        let page_number_text = crate::header_footer::display_number_for_page(final_page, &numbering_segments);
+        let page_number_text = crate::numbering::display_number_for_page(final_page, &numbering_segments);
 
         let (heading_element, heading_width) = shape_line(font_system, &entry.text, body.body_size_pt, body.body_color.0, &body.font_family);
         let (page_number_element, page_number_width) = shape_line(font_system, &page_number_text, body.body_size_pt, body.body_color.0, &body.font_family);
