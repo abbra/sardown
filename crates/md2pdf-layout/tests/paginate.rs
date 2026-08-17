@@ -1226,3 +1226,46 @@ fn strikethrough_text_draws_a_horizontal_line_through_it() {
     assert!(line_y < struck_y, "expected the strikethrough line to sit above the text baseline");
     assert_ne!((line_x0, line_y), (plain_run_x.0, plain_run_x.1), "the line shouldn't be positioned at the plain run's own coordinates");
 }
+
+fn any_line_ends_in_a_hyphen(output: &md2pdf_layout::LayoutOutput) -> bool {
+    output.pages.iter().flat_map(|p| &p.elements).any(|e| match e {
+        PositionedElement::TextRun { text, .. } => text.ends_with('-'),
+        _ => false,
+    })
+}
+
+#[test]
+fn hyphenation_enabled_in_the_stylesheet_splits_a_long_word_across_lines() {
+    let mut style = Stylesheet::default();
+    style.typography.hyphenation = true;
+    style.typography.language = "en-us".to_string();
+    let ast = parse("An extraordinarily long hyphenation demonstration paragraph that must wrap.\n");
+    let mut fs = test_font_system();
+    let narrow_geometry = PageGeometry { page_width_mm: 40.0, page_height_mm: 279.4, margin_mm: 5.0, ..Default::default() };
+    let output = layout_impl(&ast, &narrow_geometry, &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    assert!(any_line_ends_in_a_hyphen(&output), "expected at least one line to end in a hyphenated word break");
+}
+
+#[test]
+fn hyphenation_disabled_by_default_produces_no_hyphenated_breaks() {
+    let style = Stylesheet::default(); // hyphenation: false
+    let ast = parse("An extraordinarily long hyphenation demonstration paragraph that must wrap.\n");
+    let mut fs = test_font_system();
+    let narrow_geometry = PageGeometry { page_width_mm: 40.0, page_height_mm: 279.4, margin_mm: 5.0, ..Default::default() };
+    let output = layout_impl(&ast, &narrow_geometry, &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    assert!(!any_line_ends_in_a_hyphen(&output), "expected no hyphenation to occur when typography.hyphenation is false");
+}
+
+#[test]
+fn hyphenation_does_not_apply_to_headings() {
+    let mut style = Stylesheet::default();
+    style.typography.hyphenation = true;
+    let ast = parse("# An Extraordinarily Long Hyphenation Demonstration Heading\n");
+    let mut fs = test_font_system();
+    let narrow_geometry = PageGeometry { page_width_mm: 40.0, page_height_mm: 279.4, margin_mm: 5.0, ..Default::default() };
+    let output = layout_impl(&ast, &narrow_geometry, &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    assert!(!any_line_ends_in_a_hyphen(&output), "expected headings to never be hyphenated, even with typography.hyphenation = true");
+}

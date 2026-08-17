@@ -105,8 +105,17 @@ fn place_inline_content(
     max_width_pt: f32,
     content: &[md2pdf_ast::InlineNode],
     align: cosmic_text::Align,
+    hyphenator: Option<&crate::Hyphenator>,
     font_system: &mut FontSystem,
 ) {
+    let hyphenated;
+    let content = match hyphenator {
+        Some(h) => {
+            hyphenated = crate::insert_hyphenation_breaks(content, h, max_width_pt, font_system);
+            hyphenated.as_slice()
+        }
+        None => content,
+    };
     let shaped = shape_rich_paragraph(font_system, content, max_width_pt, align);
     let mut iter = shaped.into_iter().peekable();
 
@@ -237,6 +246,7 @@ fn estimate_next_block_ascent_pt(next_block: Option<&BlockNode>) -> f32 {
     size * 0.8
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_block(
     block: &BlockNode,
     cursor: &mut Cursor,
@@ -245,6 +255,7 @@ fn render_block(
     font_system: &mut FontSystem,
     images: &ImageTable,
     diagrams: &DiagramTable,
+    hyphenator: Option<&crate::Hyphenator>,
     next_block: Option<&BlockNode>,
 ) {
     match block {
@@ -274,7 +285,7 @@ fn render_block(
             }
             let anchor_y = cursor.y;
             let max_width_pt = cursor.content_width_pt - indent_pt;
-            place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, cosmic_text::Align::Left, font_system);
+            place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, cosmic_text::Align::Left, None, font_system);
             cursor.anchors.insert(
                 id.clone(),
                 AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: anchor_y },
@@ -282,7 +293,7 @@ fn render_block(
         }
         BlockNode::Paragraph { content } => {
             let max_width_pt = cursor.content_width_pt - indent_pt;
-            place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, to_cosmic_align(cursor.style.typography.alignment), font_system);
+            place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, to_cosmic_align(cursor.style.typography.alignment), hyphenator, font_system);
         }
         BlockNode::Blockquote { content } => {
             let start_y = cursor.y;
@@ -290,7 +301,7 @@ fn render_block(
             let child_indent_pt = indent_pt + cursor.style.blockquote.indent_pt;
             for (i, child) in content.iter().enumerate() {
                 let child_next = content.get(i + 1).or(next_block);
-                render_block(child, cursor, margin_pt, child_indent_pt, font_system, images, diagrams, child_next);
+                render_block(child, cursor, margin_pt, child_indent_pt, font_system, images, diagrams, hyphenator, child_next);
             }
             let end_y = cursor.y;
             let end_page = cursor.page_number;
@@ -351,7 +362,7 @@ fn render_block(
                         .get(child_i + 1)
                         .or_else(|| items.get(item_i + 1).and_then(|next_item| next_item.first()))
                         .or(next_block);
-                    render_block(child, cursor, margin_pt, child_indent_pt, font_system, images, diagrams, child_next);
+                    render_block(child, cursor, margin_pt, child_indent_pt, font_system, images, diagrams, hyphenator, child_next);
                 }
             }
         }
@@ -442,7 +453,7 @@ fn render_block(
             // syntect leaves at the end of each source line's tokens.
             let code_indent_pt = indent_pt + 8.0;
             let max_width_pt = cursor.content_width_pt - code_indent_pt;
-            place_inline_content(cursor, margin_pt, code_indent_pt, max_width_pt, &combined, cosmic_text::Align::Left, font_system);
+            place_inline_content(cursor, margin_pt, code_indent_pt, max_width_pt, &combined, cosmic_text::Align::Left, None, font_system);
             let end_y = cursor.y;
             let end_page = cursor.page_number;
             let content_width_pt = cursor.content_width_pt;
@@ -620,7 +631,7 @@ fn render_block(
                 // parameter is normally "wrap at the right margin," which is wrong for a cell —
                 // it let long text bleed across into the next column's space instead of wrapping.
                 let cell_max_width_pt = (width - cell_padding_pt).max(MIN_CELL_WRAP_WIDTH_PT);
-                place_inline_content(cursor, margin_pt, col_x - margin_pt + cell_padding_x_pt, cell_max_width_pt, header, cosmic_text::Align::Left, font_system);
+                place_inline_content(cursor, margin_pt, col_x - margin_pt + cell_padding_x_pt, cell_max_width_pt, header, cosmic_text::Align::Left, None, font_system);
                 header_bottom_y = header_bottom_y.max(cursor.y);
                 col_x += width;
             }
@@ -657,7 +668,7 @@ fn render_block(
                 for (cell, width) in row.iter().zip(&widths) {
                     cursor.y = row_top_y;
                     let cell_max_width_pt = (width - cell_padding_pt).max(MIN_CELL_WRAP_WIDTH_PT);
-                    place_inline_content(cursor, margin_pt, col_x - margin_pt + cell_padding_x_pt, cell_max_width_pt, cell, cosmic_text::Align::Left, font_system);
+                    place_inline_content(cursor, margin_pt, col_x - margin_pt + cell_padding_x_pt, cell_max_width_pt, cell, cosmic_text::Align::Left, None, font_system);
                     row_bottom_y = row_bottom_y.max(cursor.y);
                     col_x += width;
                 }
@@ -778,10 +789,11 @@ pub fn layout_impl(
     // merge them into one local table so render_block doesn't need to know the difference.
     let mut diagrams = diagrams.clone();
     diagrams.extend(crate::image::collect_svg_diagrams(ast, base_dir));
+    let hyphenator = if stylesheet.typography.hyphenation { crate::Hyphenator::load(&stylesheet.typography.language) } else { None };
     let margin_pt = geometry.margin_mm * PT_PER_MM;
     let mut cursor = Cursor::new(geometry, stylesheet);
     for (i, block) in ast.iter().enumerate() {
-        render_block(block, &mut cursor, margin_pt, 0.0, font_system, &images, &diagrams, ast.get(i + 1));
+        render_block(block, &mut cursor, margin_pt, 0.0, font_system, &images, &diagrams, hyphenator.as_ref(), ast.get(i + 1));
         cursor.y += LINE_SPACING_PT;
     }
     let (pages, anchors, page_contexts) = cursor.finish();
