@@ -38,6 +38,8 @@ fn rejects_a_hex_string_of_the_wrong_length() {
     let toml_text = r##"color = "#1a2b""##;
     #[derive(Debug, serde::Deserialize)]
     struct Wrapper {
+        // Never read: only deserialization itself (rejecting the bad value) is under test.
+        #[allow(dead_code)]
         color: Color,
     }
     let err = toml::from_str::<Wrapper>(toml_text).unwrap_err();
@@ -49,6 +51,8 @@ fn rejects_a_hex_string_with_non_hex_characters() {
     let toml_text = r##"color = "#gggggg""##;
     #[derive(serde::Deserialize)]
     struct Wrapper {
+        // Never read: only deserialization itself (rejecting the bad value) is under test.
+        #[allow(dead_code)]
         color: Color,
     }
     assert!(toml::from_str::<Wrapper>(toml_text).is_err());
