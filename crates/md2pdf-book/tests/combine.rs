@@ -58,6 +58,30 @@ fn resolves_each_chapters_images_relative_to_its_own_directory() {
 }
 
 #[test]
+fn part_titles_render_as_their_own_page_with_a_heading() {
+    let blocks = md2pdf_book::load_book(&fixture("part-title-book"), &Stylesheet::default()).expect("load_book failed");
+
+    let part_title_index = blocks
+        .iter()
+        .position(|b| matches!(b, BlockNode::Heading { content, .. } if content[0].text == "Part Two"))
+        .expect("expected a heading rendered for the \"Part Two\" part title");
+    assert!(matches!(&blocks[part_title_index - 1], BlockNode::PageBreak), "expected the part title heading to start its own page");
+
+    let chapter_one_index = blocks
+        .iter()
+        .position(|b| matches!(b, BlockNode::Heading { content, .. } if content[0].text == "Chapter One"))
+        .expect("expected Chapter One's heading");
+    let chapter_two_index = blocks
+        .iter()
+        .position(|b| matches!(b, BlockNode::Heading { content, .. } if content[0].text == "Chapter Two"))
+        .expect("expected Chapter Two's heading");
+    assert!(
+        chapter_one_index < part_title_index && part_title_index < chapter_two_index,
+        "expected the part title to sit between the chapters it separates, got order: {chapter_one_index}, {part_title_index}, {chapter_two_index}"
+    );
+}
+
+#[test]
 fn missing_summary_md_is_an_error() {
     let result = md2pdf_book::load_book(&fixture("does-not-exist"), &Stylesheet::default());
     assert!(result.is_err(), "expected a missing book root/SUMMARY.md to be a real error, not silently empty output");

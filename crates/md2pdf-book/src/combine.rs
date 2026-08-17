@@ -74,9 +74,13 @@ fn collect_chapters(
                 // mdBook allows a draft parent (no link) with real, linked sub-chapters.
                 collect_chapters(children, src_dir, known_files, slugs, next_diagram_id, slug_map, chapter_start_map, out, style);
             }
-            SummaryItem::PartTitle(_) | SummaryItem::Separator => {
-                // No visual treatment in the combined body in this phase -- these matter for
-                // the table of contents (a later phase), not chapter concatenation.
+            SummaryItem::PartTitle(title) => {
+                out.push(BlockNode::PageBreak);
+                out.push(synthesized_heading(title, slugs, style));
+            }
+            SummaryItem::Separator => {
+                // SUMMARY.md's thematic breaks are a sidebar-only grouping cue with no title
+                // text of their own -- nothing to render as a heading.
             }
         }
     }
@@ -120,17 +124,31 @@ fn prepend_chapter_start(blocks: &mut Vec<BlockNode>, title: &str, slugs: &mut S
     let needs_heading = !matches!(blocks.first(), Some(BlockNode::Heading { .. }));
     let mut prefix = vec![BlockNode::PageBreak];
     if needs_heading {
-        let id = slugs.generate(title);
-        let resolved = style.heading.resolve(1);
-        prefix.push(BlockNode::Heading {
-            level: 1,
-            id,
-            content: vec![InlineNode {
-                text: title.to_string(),
-                style: md2pdf_ast::TextStyle { bold: false, italic: false, strikethrough: false, size: resolved.size_pt, color: resolved.color.0, font_family: resolved.font_family.clone() },
-                link_target: None,
-            }],
-        });
+        prefix.push(synthesized_heading(title, slugs, style));
     }
     blocks.splice(0..0, prefix);
+}
+
+/// Builds a level-1 `BlockNode::Heading` from plain title text, styled per the stylesheet's own
+/// H1 resolution -- shared by chapter-start synthesis and part-title rendering, both of which
+/// need a heading that didn't come from parsing an actual source file.
+fn synthesized_heading(title: &str, slugs: &mut SlugGenerator, style: &md2pdf_style::Stylesheet) -> BlockNode {
+    let id = slugs.generate(title);
+    let resolved = style.heading.resolve(1);
+    BlockNode::Heading {
+        level: 1,
+        id,
+        content: vec![InlineNode {
+            text: title.to_string(),
+            style: md2pdf_ast::TextStyle {
+                bold: false,
+                italic: false,
+                strikethrough: false,
+                size: resolved.size_pt,
+                color: resolved.color.0,
+                font_family: resolved.font_family.clone(),
+            },
+            link_target: None,
+        }],
+    }
 }
