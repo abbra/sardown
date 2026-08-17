@@ -8,6 +8,8 @@ use_system_fonts = true
 body_size_pt = 12.0
 body_color = "#000000"
 alignment = "left"
+hyphenation = false
+language = "en-us"
 ```
 
 This controls ordinary body text: paragraphs, list items, and blockquote
@@ -56,3 +58,33 @@ everywhere a color field appears in a stylesheet.
 
 Headings, code blocks, and table cells are always left-aligned regardless
 of this setting.
+
+## Hyphenation
+
+```toml
+[typography]
+hyphenation = true
+language = "en-us"
+```
+
+`hyphenation` (default `false`) turns on real, dictionary-based
+hyphenation for paragraph, list-item, and blockquote text — most useful
+with `alignment = "justify"`, where a long word that can't split leaves
+the words around it stretched further apart than necessary. `language`
+selects which hyphenation patterns to use; it accepts any of the ~79
+BCP-47-ish codes the `hyphenation` crate embeds (`"en-us"`, `"en-gb"`,
+`"de-1996"`, `"fr"`, and so on — see
+[its documentation](https://docs.rs/hyphenation/latest/hyphenation/enum.Language.html)
+for the full list). An unrecognized `language` value disables hyphenation
+for the render with a warning, the same way an unresolvable `font_family`
+falls back with a warning rather than failing the render.
+
+Headings, code blocks, and table cells are never hyphenated, regardless
+of this setting.
+
+**Current limitation:** a word carrying any punctuation, digits, or an
+apostrophe (`"don't"`, `"word,"`, `"word."`) is never hyphenated in the
+current implementation — only whole alphabetic words are considered. This
+still covers the common case (long technical or compound words), but a
+word at the end of a sentence or clause won't split even if it's long
+enough to benefit.

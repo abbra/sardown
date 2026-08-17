@@ -554,3 +554,28 @@ fn title_and_author_flags_override_the_stylesheets_document_section_in_header_fo
     std::fs::remove_file(&md_path).unwrap();
     std::fs::remove_file(&out_path).unwrap();
 }
+
+#[test]
+fn hyphenation_splits_a_long_word_when_enabled_in_the_stylesheet() {
+    let style_path = std::env::temp_dir().join("md2pdf-test-hyphenation-style.toml");
+    std::fs::write(&style_path, "[page]\nwidth_mm = 60.0\nheight_mm = 279.4\nmargin_mm = 5.0\n\n[typography]\nhyphenation = true\nlanguage = \"en-us\"\n")
+        .unwrap();
+
+    let md_path = std::env::temp_dir().join("md2pdf-test-hyphenation-doc.md");
+    std::fs::write(&md_path, "An extraordinarily long hyphenation demonstration paragraph that must wrap across several lines.\n").unwrap();
+
+    let out_path = std::env::temp_dir().join("md2pdf-test-hyphenation-output.pdf");
+    let _ = std::fs::remove_file(&out_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(&md_path).arg("-o").arg(&out_path).arg("--style").arg(&style_path);
+    cmd.assert().success();
+
+    let bytes = std::fs::read(&out_path).unwrap();
+    let doc = lopdf::Document::load_mem(&bytes).unwrap();
+    let text = doc.extract_text(&[1]).unwrap_or_default();
+    assert!(text.contains('-'), "expected a hyphenated line break somewhere in the narrow-column output: {text}");
+
+    std::fs::remove_file(&style_path).unwrap();
+    std::fs::remove_file(&md_path).unwrap();
+    std::fs::remove_file(&out_path).unwrap();
+}

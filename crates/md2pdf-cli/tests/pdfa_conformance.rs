@@ -119,6 +119,26 @@ fn rendered_output_is_pdf_a_2b_compliant() {
     Command::cargo_bin("md2pdf").unwrap().args(["render"]).arg(svg_dir.join("doc.md")).arg("-o").arg(&svg_pdf).assert().success();
     fixtures.push(svg_pdf.clone());
 
+    // Exercises hyphenated output -- a literal hyphen character and forced line break the
+    // validator has never seen from this project before. basic.md's own short words never need
+    // to hyphenate, so this uses a dedicated fixture with a genuinely long word instead.
+    let hyphenation_style_path = tmp.join("md2pdf-test-pdfa-hyphenation-style.toml");
+    std::fs::write(&hyphenation_style_path, "[page]\nwidth_mm = 60.0\nheight_mm = 279.4\nmargin_mm = 5.0\n\n[typography]\nhyphenation = true\n").unwrap();
+    let hyphenation_doc_path = tmp.join("md2pdf-test-pdfa-hyphenation-doc.md");
+    std::fs::write(&hyphenation_doc_path, "An extraordinarily long hyphenation demonstration paragraph that must wrap across several lines.\n").unwrap();
+    let hyphenation_pdf = tmp.join("md2pdf-test-pdfa-hyphenation.pdf");
+    Command::cargo_bin("md2pdf")
+        .unwrap()
+        .args(["render"])
+        .arg(&hyphenation_doc_path)
+        .arg("-o")
+        .arg(&hyphenation_pdf)
+        .arg("--style")
+        .arg(&hyphenation_style_path)
+        .assert()
+        .success();
+    fixtures.push(hyphenation_pdf.clone());
+
     let output = std::process::Command::new(&verapdf)
         .arg("--flavour")
         .arg("2b")
@@ -138,4 +158,6 @@ fn rendered_output_is_pdf_a_2b_compliant() {
     let _ = std::fs::remove_file(&font_style_path);
     let _ = std::fs::remove_dir_all(&image_dir);
     let _ = std::fs::remove_dir_all(&svg_dir);
+    let _ = std::fs::remove_file(&hyphenation_style_path);
+    let _ = std::fs::remove_file(&hyphenation_doc_path);
 }
