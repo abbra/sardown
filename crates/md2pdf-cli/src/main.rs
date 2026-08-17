@@ -169,6 +169,45 @@ fn timed_stage<T>(label: &str, f: impl FnOnce() -> anyhow::Result<T>) -> anyhow:
     result
 }
 
+/// Runs `Highlighter::with_style`'s highlight pass and Mermaid diagram compilation -- the two
+/// enrichment stages every render mode except `render-slides` needs identically (`render_slide_deck`
+/// runs its own copy of this same pipeline internally, since it also needs to re-run it per slide
+/// during auto-shrink).
+fn highlight_and_compile_diagrams(
+    ast: Vec<md2pdf_ast::BlockNode>,
+    stylesheet: &md2pdf_style::Stylesheet,
+) -> anyhow::Result<(Vec<md2pdf_ast::BlockNode>, md2pdf_enrich::DiagramTable)> {
+    let highlighter = Highlighter::with_style(stylesheet);
+    let ast = timed_stage("Highlighting code blocks", || Ok(highlighter.highlight(ast)))?;
+    let diagrams = timed_stage("Compiling diagrams", || Ok(md2pdf_enrich::compile_diagrams(&ast)))?;
+    Ok((ast, diagrams))
+}
+
+/// Renders `output_layout` to PDF bytes and writes them to `output_path` -- the tail every render
+/// mode shares identically once it has its own `LayoutOutput` in hand.
+fn write_pdf_output(
+    output_layout: &md2pdf_layout::LayoutOutput,
+    font_system: &cosmic_text::FontSystem,
+    output_path: &std::path::Path,
+    item_noun: &str,
+) -> anyhow::Result<()> {
+    let pdf_bytes = timed_stage("Rendering PDF", || {
+        md2pdf_pdf::render_pdf(
+            &output_layout.pages,
+            font_system.db(),
+            &output_layout.images,
+            &output_layout.diagrams,
+            &output_layout.anchors,
+            output_layout.page_width_pt,
+            output_layout.page_height_pt,
+            &output_layout.toc_entries,
+        )
+    })?;
+    timed_stage("Writing output", || Ok(std::fs::write(output_path, pdf_bytes)?))?;
+    eprintln!("Wrote {} ({} {item_noun})", output_path.display(), output_layout.pages.len());
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -183,23 +222,15 @@ fn main() -> anyhow::Result<()> {
             let mut ast = timed_stage("Parsing markdown", || Ok(md2pdf_ast::parse_with_style(&markdown, &mut slugs, &mut next_diagram_id, &stylesheet)))?;
             md2pdf_ast::tag_diagram_origins(&mut ast, &input);
 
-            let highlighter = Highlighter::with_style(&stylesheet);
-            let ast = timed_stage("Highlighting code blocks", || Ok(highlighter.highlight(ast)))?;
-            let diagrams = timed_stage("Compiling diagrams", || Ok(md2pdf_enrich::compile_diagrams(&ast)))?;
+            let (ast, diagrams) = highlight_and_compile_diagrams(ast, &stylesheet)?;
 
             let base_dir = base_dir_of(&input);
 
             let mut font_system = timed_stage("Loading fonts", || Ok(build_font_system(&stylesheet.typography)))?;
 
-            let output_layout = timed_stage("Laying out pages", || {
-                Ok(md2pdf_layout::layout_with_header_footer(&ast, &mut font_system, &base_dir, &diagrams, &stylesheet))
-            })?;
-            let pdf_bytes = timed_stage("Rendering PDF", || {
-                md2pdf_pdf::render_pdf(&output_layout.pages, font_system.db(), &output_layout.images, &output_layout.diagrams, &output_layout.anchors, output_layout.page_width_pt, output_layout.page_height_pt, &output_layout.toc_entries)
-            })?;
-            timed_stage("Writing output", || Ok(std::fs::write(&output, pdf_bytes)?))?;
-            eprintln!("Wrote {} ({} pages)", output.display(), output_layout.pages.len());
-            Ok(())
+            let output_layout =
+                timed_stage("Laying out pages", || Ok(md2pdf_layout::layout_with_header_footer(&ast, &mut font_system, &base_dir, &diagrams, &stylesheet)))?;
+            write_pdf_output(&output_layout, &font_system, &output, "pages")
         }
         Commands::RenderBook { book_root, output, style, title, author, date } => {
             let mut stylesheet = timed_stage("Resolving stylesheet", || {
@@ -209,9 +240,7 @@ fn main() -> anyhow::Result<()> {
 
             let ast = timed_stage("Loading book", || md2pdf_book::load_book(&book_root, &stylesheet))?;
 
-            let highlighter = Highlighter::with_style(&stylesheet);
-            let ast = timed_stage("Highlighting code blocks", || Ok(highlighter.highlight(ast)))?;
-            let diagrams = timed_stage("Compiling diagrams", || Ok(md2pdf_enrich::compile_diagrams(&ast)))?;
+            let (ast, diagrams) = highlight_and_compile_diagrams(ast, &stylesheet)?;
 
             let mut font_system = timed_stage("Loading fonts", || Ok(build_font_system(&stylesheet.typography)))?;
 
@@ -221,15 +250,9 @@ fn main() -> anyhow::Result<()> {
             // rejecting any absolute path that isn't one of its descendants. Passing "." there
             // (the CLI process's own CWD) silently dropped every image in any book that didn't
             // happen to live under the current directory; book_root is the real boundary.
-            let output_layout = timed_stage("Laying out pages", || {
-                Ok(md2pdf_layout::layout_with_header_footer(&ast, &mut font_system, &book_root, &diagrams, &stylesheet))
-            })?;
-            let pdf_bytes = timed_stage("Rendering PDF", || {
-                md2pdf_pdf::render_pdf(&output_layout.pages, font_system.db(), &output_layout.images, &output_layout.diagrams, &output_layout.anchors, output_layout.page_width_pt, output_layout.page_height_pt, &output_layout.toc_entries)
-            })?;
-            timed_stage("Writing output", || Ok(std::fs::write(&output, pdf_bytes)?))?;
-            eprintln!("Wrote {} ({} pages)", output.display(), output_layout.pages.len());
-            Ok(())
+            let output_layout =
+                timed_stage("Laying out pages", || Ok(md2pdf_layout::layout_with_header_footer(&ast, &mut font_system, &book_root, &diagrams, &stylesheet)))?;
+            write_pdf_output(&output_layout, &font_system, &output, "pages")
         }
         Commands::RenderSlides { input, output, style, title, author, date } => {
             let mut stylesheet =
@@ -240,15 +263,9 @@ fn main() -> anyhow::Result<()> {
             let base_dir = base_dir_of(&input);
             let mut font_system = timed_stage("Loading fonts", || Ok(build_font_system(&stylesheet.typography)))?;
 
-            let output_layout = timed_stage("Laying out slides", || {
-                md2pdf_slides::render_slide_deck(&markdown, &input, &base_dir, &mut font_system, &stylesheet)
-            })?;
-            let pdf_bytes = timed_stage("Rendering PDF", || {
-                md2pdf_pdf::render_pdf(&output_layout.pages, font_system.db(), &output_layout.images, &output_layout.diagrams, &output_layout.anchors, output_layout.page_width_pt, output_layout.page_height_pt, &output_layout.toc_entries)
-            })?;
-            timed_stage("Writing output", || Ok(std::fs::write(&output, pdf_bytes)?))?;
-            eprintln!("Wrote {} ({} slides)", output.display(), output_layout.pages.len());
-            Ok(())
+            let output_layout =
+                timed_stage("Laying out slides", || md2pdf_slides::render_slide_deck(&markdown, &input, &base_dir, &mut font_system, &stylesheet))?;
+            write_pdf_output(&output_layout, &font_system, &output, "slides")
         }
     }
 }
