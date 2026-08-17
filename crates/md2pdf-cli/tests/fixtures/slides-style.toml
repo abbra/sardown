@@ -1,0 +1,29 @@
+[page]
+width_mm = 254.0
+height_mm = 142.875
+margin_mm = 12.0
+
+[header]
+enabled = true
+[header.uniform]
+center = "{title}"
+
+[footer]
+enabled = true
+[footer.uniform]
+center = "Slide {page} of {total_pages}"
+
+[slides]
+default_layout = "content"
+min_scale = 0.5
+
+[slides.layouts.content]
+vertical_align = "top"
+
+[slides.layouts.title]
+vertical_align = "center"
+alignment = "center"
+background_color = "#1b0d33"
+text_color = "#ffffff"
+suppress_header = true
+suppress_footer = true

@@ -57,6 +57,28 @@ enum Commands {
         #[arg(long)]
         date: Option<String>,
     },
+    /// Render a Markdown slide deck (split into slides on `---`) to PDF
+    RenderSlides {
+        input: PathBuf,
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Path to a stylesheet TOML file. Falls back to built-in defaults if omitted.
+        #[arg(long)]
+        style: Option<PathBuf>,
+        /// Document title, available to header/footer templates as {title}. Overrides
+        /// [document].title from the stylesheet if both are given.
+        #[arg(long)]
+        title: Option<String>,
+        /// Document author, available to header/footer templates as {author}. Overrides
+        /// [document].author from the stylesheet if both are given.
+        #[arg(long)]
+        author: Option<String>,
+        /// Document date ("YYYY-MM-DD" or any other literal string), available to header/footer
+        /// templates as {date}. Overrides [document].date from the stylesheet if both are given;
+        /// if neither is given, defaults to today's date.
+        #[arg(long)]
+        date: Option<String>,
+    },
 }
 
 /// Applies `--title`/`--author`/`--date` on top of the stylesheet's own `[document]` section, in
@@ -204,6 +226,25 @@ fn main() -> anyhow::Result<()> {
             })?;
             timed_stage("Writing output", || std::fs::write(&output, pdf_bytes))?;
             eprintln!("Wrote {} ({} pages)", output.display(), output_layout.pages.len());
+            Ok(())
+        }
+        Commands::RenderSlides { input, output, style, title, author, date } => {
+            let mut stylesheet =
+                timed_stage("Resolving stylesheet", || md2pdf_style::Stylesheet::resolve(style.as_deref(), None))?;
+            apply_document_overrides(&mut stylesheet, title, author, date);
+
+            let markdown = std::fs::read_to_string(&input)?;
+            let base_dir = input.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
+            let mut font_system = timed_stage("Loading fonts", || build_font_system(&stylesheet.typography));
+
+            let output_layout = timed_stage("Laying out slides", || {
+                md2pdf_slides::render_slide_deck(&markdown, &base_dir, &mut font_system, &stylesheet)
+            })?;
+            let pdf_bytes = timed_stage("Rendering PDF", || {
+                md2pdf_pdf::render_pdf(&output_layout.pages, font_system.db(), &output_layout.images, &output_layout.diagrams, &output_layout.anchors, output_layout.page_width_pt, output_layout.page_height_pt, &output_layout.toc_entries)
+            })?;
+            timed_stage("Writing output", || std::fs::write(&output, pdf_bytes))?;
+            eprintln!("Wrote {} ({} slides)", output.display(), output_layout.pages.len());
             Ok(())
         }
     }

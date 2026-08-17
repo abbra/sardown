@@ -21,6 +21,7 @@ md2pdf-book = { version = "0.1.0", path = "../md2pdf-book" }
 md2pdf-enrich = { version = "0.1.0", path = "../md2pdf-enrich" }
 md2pdf-layout = { path = "../md2pdf-layout" }
 md2pdf-pdf = { version = "0.1.0", path = "../md2pdf-pdf" }
+md2pdf-slides = { version = "0.1.0", path = "../md2pdf-slides" }
 md2pdf-style = { version = "0.1.0", path = "../md2pdf-style" }
 
 [dev-dependencies]

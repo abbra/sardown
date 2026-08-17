@@ -668,3 +668,41 @@ fn hyphenation_splits_a_long_word_when_enabled_in_the_stylesheet() {
     std::fs::remove_file(&md_path).unwrap();
     std::fs::remove_file(&out_path).unwrap();
 }
+
+#[test]
+fn render_slides_subcommand_produces_one_page_per_slide_with_layout_driven_styling() {
+    let out_path = std::env::temp_dir().join("md2pdf-test-slides.pdf");
+    let _ = std::fs::remove_file(&out_path);
+
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render-slides")
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/slides-deck.md"))
+        .arg("-o")
+        .arg(&out_path)
+        .arg("--style")
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/slides-style.toml"))
+        .arg("--title")
+        .arg("My Deck Title");
+    cmd.assert().success();
+
+    let bytes = std::fs::read(&out_path).expect("output PDF was not written");
+    let doc = lopdf::Document::load_mem(&bytes).expect("output is not a valid PDF");
+    assert_eq!(doc.get_pages().len(), 3, "expected one page per slide (3 slides, split on '---')");
+
+    let text1 = doc.extract_text(&[1]).unwrap_or_default();
+    assert!(text1.contains("My Deck"), "title slide's own heading missing: {text1}");
+    assert!(!text1.contains("My Deck Title"), "expected the header to be suppressed on the title layout: {text1}");
+    assert!(!text1.contains("Slide 1 of 3"), "expected the footer to be suppressed on the title layout: {text1}");
+
+    let text2 = doc.extract_text(&[2]).unwrap_or_default();
+    assert!(text2.contains("First Content Slide"), "content slide's own heading missing: {text2}");
+    assert!(text2.contains("My Deck Title"), "expected the header to render on the non-title layout: {text2}");
+    assert!(text2.contains("Slide 2 of 3"), "expected the footer to render on the non-title layout: {text2}");
+}
+
+#[test]
+fn render_slides_subcommand_requires_input_and_output() {
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render-slides").arg("nonexistent.md").arg("-o").arg("/tmp/md2pdf-test-slides-missing.pdf");
+    cmd.assert().failure();
+}
