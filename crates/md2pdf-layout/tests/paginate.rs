@@ -1352,3 +1352,35 @@ fn hyphenation_does_not_apply_to_headings() {
 
     assert!(!any_line_ends_in_a_hyphen(&output), "expected headings to never be hyphenated, even with typography.hyphenation = true");
 }
+
+#[test]
+fn a_raster_image_taller_than_the_page_is_capped_to_the_available_height() {
+    // Regression test: unlike embedded SVGs and Mermaid diagrams (both placed via
+    // fit_vector_graphic, which caps by width *and* height), a raster image was only ever capped
+    // by width -- a narrow, very tall image (tests/fixtures/tall-image.png is 100x2000px, aspect
+    // 20:1) scaled to fit a normal content width still ends up far taller than any page, with no
+    // second pass to cap it back down. tall-image.png alone on a US Letter page (content width
+    // ~165mm) would naively scale to roughly 467pt wide x 9340pt tall -- vastly taller than the
+    // ~640pt of vertical space even a full fresh page provides.
+    let ast =
+        vec![BlockNode::Image { alt: "tall".to_string(), title: None, source: md2pdf_ast::ImageSource::Embedded(std::path::PathBuf::from("tall-image.png")) }];
+    let mut fs = test_font_system();
+    let geometry = letter_geometry();
+    let output = layout(&ast, &geometry, &mut fs, &fixtures_dir(), &DiagramTable::new());
+
+    let margin_pt = geometry.margin_mm * 2.834645669;
+    let page_height_pt = geometry.page_height_mm * 2.834645669;
+    let max_height_pt = page_height_pt - margin_pt - margin_pt; // top margin to bottom margin
+
+    match &output.pages[0].elements[0] {
+        PositionedElement::RasterImage { width, height, .. } => {
+            assert!(*height <= max_height_pt + 0.5, "expected the image's height to be capped to the page's available height ({max_height_pt}), got {height}");
+            let aspect = 2000.0 / 100.0;
+            assert!(
+                (*width - *height / aspect).abs() < 0.5,
+                "expected the aspect ratio to still be preserved after height-capping: width={width}, height={height}"
+            );
+        }
+        other => panic!("expected RasterImage, got {other:?}"),
+    }
+}

@@ -723,12 +723,8 @@ fn render_block(
             let key = path.to_string_lossy().to_string();
             if let Some(decoded) = images.get(&key) {
                 let max_width = cursor.content_width_pt - indent_pt;
-                let aspect = decoded.height as f32 / decoded.width as f32;
-                let (width, height) = if decoded.width as f32 > max_width {
-                    (max_width, max_width * aspect)
-                } else {
-                    (decoded.width as f32, decoded.height as f32)
-                };
+                let max_height = cursor.page_height_pt - margin_pt;
+                let (width, height) = fit_vector_graphic(decoded.width as f32, decoded.height as f32, max_width, max_height);
                 if cursor.remaining_height() < height && !cursor.current.is_empty() {
                     cursor.break_page(margin_pt);
                 }
@@ -780,7 +776,9 @@ fn render_block(
 /// aspect ratio: capped by width first, then -- since a diagram taller (relative to its width)
 /// than a full page's content area would still overflow past the bottom margin even on a fresh
 /// page -- re-capped by height, re-deriving width from that so the aspect ratio still holds.
-/// Shared by Mermaid diagrams and embedded `.svg` images, both rendered as `VectorGraphic`.
+/// Shared by Mermaid diagrams and embedded `.svg` images (both rendered as `VectorGraphic`) and
+/// embedded raster images (`RasterImage`) -- despite the name, nothing here is vector-specific;
+/// it's just where this logic was first introduced.
 fn fit_vector_graphic(natural_width: f32, natural_height: f32, max_width: f32, max_height: f32) -> (f32, f32) {
     let aspect = natural_height / natural_width;
     let (mut width, mut height) = if natural_width > max_width { (max_width, max_width * aspect) } else { (natural_width, natural_height) };
