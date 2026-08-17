@@ -8,8 +8,8 @@ mod stylesheet_for_slide;
 
 use anyhow::Context;
 pub use concat::concat_slide_layouts;
-pub use postprocess::{center_vertically, draw_background_diagram, draw_background_image, fill_background};
 use md2pdf_ast::{BlockNode, ImageSource};
+pub use postprocess::{center_vertically, draw_background_diagram, draw_background_image, fill_background};
 pub use rescale::rescale_slide_content;
 pub use resolve::resolve_layout;
 pub use shrink::layout_slide_with_shrink;
