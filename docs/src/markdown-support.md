@@ -82,6 +82,12 @@ than a full page. **External image URLs (`http://`/`https://`) are
 not fetched** — they're skipped with a warning on stderr rather than
 silently failing or blocking on a network request.
 
+`![alt](data:image/png;base64,...)` embeds the image data directly —
+`image/png`, `image/jpeg`, and `image/svg+xml` are all supported, decoded
+the same way as a referenced file (an embedded SVG still renders as vector
+content). Only the base64-encoded form of a data URI is supported; a
+percent-encoded one is skipped with a warning.
+
 ## What's out of scope
 
 md2pdf is not an HTML renderer: raw embedded HTML blocks/inline HTML,
