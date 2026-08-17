@@ -10,7 +10,38 @@ fn default_heading_style_matches_todays_hardcoded_sizes_and_color() {
         assert_eq!(resolved.size_pt, expected_size, "level {level}");
         assert_eq!(resolved.color, Color([0, 0, 0]), "level {level}");
         assert_eq!(resolved.font_family, "sans-serif", "level {level}");
+        assert_eq!(resolved.underline_width_pt, 0.0, "level {level}: no underline by default");
     }
+}
+
+#[test]
+fn a_document_wide_underline_applies_to_every_level_without_its_own_override() {
+    let heading: HeadingStyle = toml::from_str(
+        r##"underline_width_pt = 2.0
+underline_color = "#d2d2d2""##,
+    )
+    .unwrap();
+    for level in 1u8..=6 {
+        let resolved = heading.resolve(level);
+        assert_eq!(resolved.underline_width_pt, 2.0, "level {level}");
+        assert_eq!(resolved.underline_color, Color([210, 210, 210]), "level {level}");
+    }
+}
+
+#[test]
+fn a_per_level_underline_override_only_changes_that_level() {
+    let toml_text = r##"
+        underline_width_pt = 2.0
+        underline_color = "#d2d2d2"
+
+        [levels.2]
+        underline_width_pt = 0.0
+    "##;
+    let heading: HeadingStyle = toml::from_str(toml_text).unwrap();
+
+    assert_eq!(heading.resolve(1).underline_width_pt, 2.0, "level 1 keeps the document-wide underline");
+    assert_eq!(heading.resolve(2).underline_width_pt, 0.0, "level 2's own override turns its underline off");
+    assert_eq!(heading.resolve(2).underline_color, Color([210, 210, 210]), "unset underline_color at level 2 still falls back to the document-wide value");
 }
 
 #[test]

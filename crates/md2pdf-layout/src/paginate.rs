@@ -100,6 +100,10 @@ fn to_cosmic_align(alignment: md2pdf_style::TextAlignment) -> cosmic_text::Align
     }
 }
 
+/// Returns the rendered width (in points, relative to `margin_pt + indent_pt`) of the widest line
+/// placed -- used by the `Heading` arm to draw an underline hugging the heading's own text width
+/// rather than the full content width (matching how a block-level heading element sized to its
+/// content, not stretched to fill its container, would look).
 fn place_inline_content(
     cursor: &mut Cursor,
     margin_pt: f32,
@@ -109,7 +113,7 @@ fn place_inline_content(
     align: cosmic_text::Align,
     hyphenator: Option<&crate::Hyphenator>,
     font_system: &mut FontSystem,
-) {
+) -> f32 {
     let hyphenated;
     let content = match hyphenator {
         Some(h) => {
@@ -123,6 +127,8 @@ fn place_inline_content(
 
     let mut content_start_y = cursor.y;
     let mut first_line_y: Option<f32> = None;
+    let line_start_x = margin_pt + indent_pt;
+    let mut max_end_x = line_start_x;
 
     while let Some(first) = iter.next() {
         let line_y = match &first.element {
@@ -168,6 +174,7 @@ fn place_inline_content(
                     *y = placed_y;
                     let width: f32 = glyphs.iter().map(|g| g.x_advance).sum();
                     let rect = Rect { x: *x, y: placed_y - *size, width, height: *size * 1.2 };
+                    max_end_x = max_end_x.max(rect.x + rect.width);
                     // A strikethrough line conventionally sits roughly through the x-height, above
                     // the baseline -- 0.3x the font size is a reasonable approximation without
                     // needing the font's own strikethrough-position metric (not exposed by the
@@ -192,6 +199,7 @@ fn place_inline_content(
         }
         cursor.y = placed_y + line_height;
     }
+    max_end_x - line_start_x
 }
 
 /// Shapes every cell in `row` (without placing anything) to find how tall the row will actually
