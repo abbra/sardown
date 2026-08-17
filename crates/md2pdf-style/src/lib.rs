@@ -7,6 +7,7 @@ mod header_footer;
 mod heading;
 mod numbering;
 mod page;
+mod slides;
 mod structural;
 mod table;
 mod toc;
@@ -19,6 +20,7 @@ pub use header_footer::{HeaderFooterMode, HeaderFooterStyle, HeaderZones};
 pub use heading::{HeadingLevelStyle, HeadingStyle, ResolvedHeadingStyle};
 pub use numbering::{NumberingFormat, PageNumbering, PageNumberingReset};
 pub use page::{PageFormat, PageStyle};
+pub use slides::{SlideLayoutStyle, SlidesStyle, VerticalAlign};
 pub use structural::{BlockquoteStyle, ListStyle, ThematicBreakStyle};
 pub use table::TableStyle;
 pub use toc::TocStyle;
@@ -39,6 +41,7 @@ pub struct Stylesheet {
     pub header: HeaderFooterStyle,
     pub footer: HeaderFooterStyle,
     pub toc: TocStyle,
+    pub slides: SlidesStyle,
 }
 
 impl Stylesheet {
@@ -77,6 +80,11 @@ impl Stylesheet {
         self.footer.validate("footer")?;
         if !(1..=6).contains(&self.toc.depth) {
             anyhow::bail!("[toc] depth must be between 1 and 6, got {}", self.toc.depth);
+        }
+        if let Some(name) = &self.slides.default_layout {
+            if !self.slides.layouts.contains_key(name) {
+                anyhow::bail!("[slides] default_layout = {name:?} has no matching [slides.layouts.{name}] table");
+            }
         }
         Ok(())
     }
