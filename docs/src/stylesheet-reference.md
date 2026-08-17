@@ -85,7 +85,11 @@ Built-in per-level sizes (used when a level has no `[heading.levels.N]`
 override): H1 `28.0`, H2 `22.0`, H3 `18.0`, H4 `16.0`, H5 `14.0`, H6
 `12.0`. Setting `underline_width_pt` above `0.0` draws a rule spanning the
 heading's own rendered text width (not the full content width) just below
-its baseline.
+its baseline -- shifted to hug wherever the heading actually starts under
+`[typography]`'s `alignment` (e.g. centered), not just the left margin.
+Headings honor `alignment`'s `"left"`/`"right"`/`"center"` values, but
+never `"justify"`: a justified heading still renders left-aligned, the
+same as a justified code block.
 
 ### `[heading.levels.<1-6>]`
 
@@ -236,16 +240,38 @@ auto-shrink-to-fit scaling.
 | `secondary_text_color` | color | falls back to `text_color` |
 | `suppress_header` | boolean | `false` |
 | `suppress_footer` | boolean | `false` |
-| `background_image` | path | (none) |
-| `background_image_corner` | `"top_left"` \| `"top_right"` \| `"bottom_left"` \| `"bottom_right"` | `"bottom_left"` |
-| `background_image_width_pt` | number | `60.0` |
-| `background_image_margin_pt` | number | `14.0` |
+| `background_images` | array of tables | `[]` |
 
-`text_color` applies to headings and **bold** paragraph/list text;
-`secondary_text_color` applies to non-bold paragraph/list text only --
-lets a layout reproduce a "muted body text, bright bold/heading text"
-hierarchy (e.g. a byline's name staying bright while the rest of its own
-line is dimmed). `background_image` is drawn in one corner of every slide
-using the layout, on top of `background_color` and behind all slide
-content, at its natural aspect ratio scaled to `background_image_width_pt`
-wide.
+`text_color` applies to headings (including the H1 underline color -- see
+`[heading]` above) and **bold** paragraph/list text; `secondary_text_color`
+applies to non-bold paragraph/list text only -- lets a layout reproduce a
+"muted body text, bright bold/heading text" hierarchy (e.g. a byline's
+name staying bright while the rest of its own line is dimmed).
+
+#### `[[slides.layouts.<name>.background_images]]`
+
+Zero or more decorative images (logos, watermarks), each drawn in one
+corner of every slide using the layout, on top of `background_color` and
+behind all slide content, at its natural aspect ratio scaled to
+`width_pt` wide. `path` may point at either a raster image (PNG, JPEG,
+...) or an `.svg` file -- both are resolved the same way embedded
+Markdown images are, relative to the input file and constrained to stay
+within its directory.
+
+| Field | Type | Default |
+|---|---|---|
+| `path` | path | (required) |
+| `corner` | `"top_left"` \| `"top_right"` \| `"bottom_left"` \| `"bottom_right"` | `"bottom_left"` |
+| `width_pt` | number | `60.0` |
+| `margin_pt` | number | `14.0` |
+
+```toml
+[[slides.layouts.title.background_images]]
+path = "logo.png"
+corner = "bottom_right"
+width_pt = 80.0
+
+[[slides.layouts.title.background_images]]
+path = "watermark.svg"
+corner = "top_left"
+```
