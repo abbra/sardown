@@ -51,6 +51,28 @@ Example:
 md2pdf render-book my-book -o my-book.pdf
 ```
 
+## `render-slides`
+
+```
+md2pdf render-slides [OPTIONS] --output <OUTPUT> <INPUT>
+```
+
+| Argument/Option | Description |
+|---|---|
+| `<INPUT>` | Path to the Markdown source file, split into slides on `---` -- see [Slide Decks](./slides.md) |
+| `-o, --output <OUTPUT>` | Path to write the output PDF (required) |
+| `--style <STYLE>` | Path to a stylesheet TOML file. Falls back to built-in defaults if omitted |
+| `--title <TITLE>` | Document title, available to header/footer templates as `{title}`. Overrides `[document].title` from the stylesheet if both are given |
+| `--author <AUTHOR>` | Document author, available to header/footer templates as `{author}`. Overrides `[document].author` from the stylesheet if both are given |
+| `--date <DATE>` | Document date, available to header/footer templates as `{date}`. Overrides `[document].date` from the stylesheet if both are given; defaults to today's date if neither is set |
+| `-h, --help` | Print help |
+
+Example:
+
+```bash
+md2pdf render-slides deck.md -o deck.pdf --style slides-style.toml
+```
+
 ## Output and diagnostics
 
 Both commands print stage-by-stage progress (parsing, highlighting,

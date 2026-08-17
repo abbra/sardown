@@ -189,3 +189,35 @@ in a template string: `{page}`, `{total_pages}`, `{h1}`, `{h2}`, `{title}`,
 | `enabled` | boolean | `false` |
 | `depth` | integer (`1`-`6`) | `2` |
 | `title` | string | `"Table of Contents"` |
+
+## `[slides]`
+
+Only used by `render-slides` -- see [Slide Decks](./slides.md).
+
+| Field | Type | Default |
+|---|---|---|
+| `default_layout` | string | (none) |
+| `min_scale` | number | `0.5` |
+
+`default_layout` is the layout used by any slide without its own
+`@layout:` directive; if set, it must name a table under
+`[slides.layouts]`. `min_scale` is the auto-shrink-to-fit floor -- the
+smallest scale (relative to the document's own configured font sizes) a
+slide's text is ever shrunk to.
+
+### `[slides.layouts.<name>]`
+
+Every field is optional; an unset field inherits the document's own
+`[typography]`/`[heading]` value. All fields except `vertical_align`,
+`suppress_header`, and `suppress_footer` are also subject to
+auto-shrink-to-fit scaling.
+
+| Field | Type | Default |
+|---|---|---|
+| `alignment` | `"left"` \| `"right"` \| `"center"` \| `"justify"` | (inherits `[typography]`) |
+| `vertical_align` | `"top"` \| `"center"` | `"top"` |
+| `body_size_pt` | number | (inherits `[typography]`) |
+| `background_color` | color | (none) |
+| `text_color` | color | (inherits `[typography]`/`[heading]`) |
+| `suppress_header` | boolean | `false` |
+| `suppress_footer` | boolean | `false` |

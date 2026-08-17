@@ -6,6 +6,7 @@
 - [Quick Start](./quick-start.md)
 - [Writing Markdown](./markdown-support.md)
 - [Diagrams](./diagrams.md)
+- [Slide Decks](./slides.md)
 - [Rendering Books](./books/index.md)
   - [SUMMARY.md Format](./books/summary-format.md)
   - [Cross-References](./books/cross-references.md)
