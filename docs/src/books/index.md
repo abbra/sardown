@@ -49,7 +49,30 @@ my-book/
   alongside real chapters in the generated table of contents and PDF
   bookmarks.
 
+## Including file content
+
+A chapter can splice in another file's content with `\{{#include path}}`,
+resolved relative to that chapter's own directory. This is most often used
+inside a fenced code block, so the included file's raw text becomes the
+block's contents:
+
+````markdown
+```rust
+\{{#include ../examples/hello.rs}}
+```
+````
+
+A line range can be given as `\{{#include path:N}}` (just line `N`) or
+`\{{#include path:N:M}}` (lines `N` through `M`, inclusive; either bound can
+be omitted — `\{{#include path::M}}` means "up to line `M`",
+`\{{#include path:N:}}` means "from line `N` to the end"). A directive
+whose target file can't be read is dropped with a warning, not rendered
+literally.
+
 ## What's not yet supported
 
-- `\{{#include ...}}` and other mdBook preprocessor directives are not
-  processed — chapter files are read as plain Markdown.
+- mdBook's anchor-based include ranges (`\{{#include path:anchor_name}}`,
+  matched via `// ANCHOR: name` / `// ANCHOR_END: name` comments in the
+  source file) are not supported — only whole-file and line-range forms.
+- Other mdBook preprocessor directives (`\{{#playground}}`,
+  `\{{#rustdoc_include}}`, custom preprocessors) are not processed.
