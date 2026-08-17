@@ -42,9 +42,9 @@ pub fn render_pdf(
     // Cache one krilla::text::Font per fontdb::ID so repeated glyphs on the same page
     // don't reload/re-register the font.
     let mut font_cache: HashMap<fontdb::ID, Font> = HashMap::new();
-    // Built once (not per-diagram): loading system fonts is a real filesystem scan, and a
-    // document can contain many diagrams.
-    let svg_options = svg_render_options();
+    // Built once (not per-diagram): cloning the database is far cheaper than re-scanning fonts
+    // from disk, and a document can contain many diagrams.
+    let svg_options = svg_render_options(font_data);
 
     for page_data in pages {
         let mut page = document.start_page_with(PageSettings::new(page_size));
@@ -163,28 +163,45 @@ pub fn render_pdf(
     document.finish().context("krilla failed to serialize the document")
 }
 
-/// usvg needs a populated font database to shape `<text>` elements into glyph outlines --
-/// `Options::default()` ships an empty one, which silently drops every text label in a diagram
-/// (boxes/arrows still render fine, since they're pure geometry with no font dependency).
-/// Loading system fonts isn't sufficient by itself either: fontconfig can advertise a generic
-/// alias (e.g. "sans-serif" -> "FreeSans") for a font that isn't actually installed, and
-/// `fontdb::Database::query` has no further fallback once every requested family fails to match
-/// a loaded face -- so the generic sans-serif alias is repointed at whatever's actually on disk
-/// if the configured one doesn't resolve to anything real.
-fn svg_render_options() -> usvg::Options<'static> {
-    let mut options = usvg::Options::default();
-    ensure_resolvable_sans_serif(options.fontdb_mut());
-    options
+/// usvg needs a font database to shape `<text>` elements into glyph outlines. Reuses the
+/// document's own font database (already respects `typography.font_dirs`/`use_system_fonts`, and
+/// was already loaded once for the rest of the document's text) instead of building a fresh,
+/// system-fonts-only one from scratch -- cheaper (cloning metadata beats re-scanning disk), and
+/// gives diagram text access to the same custom fonts the rest of the document uses instead of
+/// silently ignoring `font_dirs` for diagrams specifically.
+///
+/// Real-world SVGs (e.g. Graphviz output, which commonly emits
+/// `font-family="Helvetica,sans-Serif"` -- note the capital S) often name literal fonts that
+/// aren't installed, and usvg's own font-family parser only recognizes the lowercase CSS generic
+/// keywords, so "sans-Serif" parses as a literal name too and also fails to match. usvg's default
+/// font selector unconditionally appends `fontdb::Family::Serif` as its last-resort fallback once
+/// every requested family fails -- but a fontconfig-advertised generic alias (e.g. serif ->
+/// "FreeSerif") can point at a font that isn't actually installed, and `fontdb::Database::query`
+/// has no further fallback of its own once every requested family fails to match a loaded face.
+/// So both the serif and sans-serif generic aliases are repointed at whatever's actually loaded,
+/// guaranteeing usvg's last-resort fallback always resolves to a real, usable font instead of
+/// silently dropping the text -- this was a real, reported bug: diagram shapes rendered fine
+/// (pure geometry, no font dependency) while every text label silently vanished.
+fn svg_render_options(font_data: &fontdb::Database) -> usvg::Options<'static> {
+    let mut fontdb = font_data.clone();
+    ensure_resolvable_generic_families(&mut fontdb);
+    usvg::Options { fontdb: std::sync::Arc::new(fontdb), ..Default::default() }
 }
 
-fn ensure_resolvable_sans_serif(fontdb: &mut fontdb::Database) {
-    fontdb.load_system_fonts();
-    let alias = fontdb.family_name(&fontdb::Family::SansSerif).to_string();
-    let alias_resolves = fontdb.faces().any(|face| face.families.iter().any(|(name, _)| *name == alias));
-    if !alias_resolves {
-        let fallback = fontdb.faces().next().and_then(|face| face.families.first().map(|(name, _)| name.clone()));
-        if let Some(fallback) = fallback {
-            fontdb.set_sans_serif_family(fallback);
+fn ensure_resolvable_generic_families(fontdb: &mut fontdb::Database) {
+    let Some(fallback) = fontdb.faces().next().and_then(|face| face.families.first().map(|(name, _)| name.clone())) else {
+        return;
+    };
+    for family in [fontdb::Family::Serif, fontdb::Family::SansSerif] {
+        let alias = fontdb.family_name(&family).to_string();
+        let alias_resolves = fontdb.faces().any(|face| face.families.iter().any(|(name, _)| *name == alias));
+        if alias_resolves {
+            continue;
+        }
+        match family {
+            fontdb::Family::Serif => fontdb.set_serif_family(fallback.clone()),
+            fontdb::Family::SansSerif => fontdb.set_sans_serif_family(fallback.clone()),
+            _ => unreachable!("only Serif and SansSerif are iterated above"),
         }
     }
 }

@@ -180,6 +180,67 @@ fn renders_an_embedded_svg_image_as_vector_content_not_a_raster_image() {
 }
 
 #[test]
+fn embedded_svg_text_labels_render_using_the_documents_own_configured_fonts() {
+    // Regression test: SVG diagrams (e.g. Graphviz output, which commonly emits
+    // font-family="Helvetica,sans-Serif" -- note the capital S, which is not the lowercase
+    // generic keyword usvg's own font-family parser recognizes) were rendering their shapes but
+    // silently dropping every text label. Root cause: SVG rendering built its own fresh,
+    // system-fonts-only fontdb::Database from scratch instead of reusing the one already loaded
+    // for the rest of the document (which respects typography.font_dirs). Using
+    // use_system_fonts = false here makes the test deterministic regardless of what's installed
+    // on the host: the only way text can render at all is via the loaded custom font, proving
+    // real reuse rather than an incidental system-font match.
+    let style_path = std::env::temp_dir().join("md2pdf-test-svg-text-style.toml");
+    let font_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../md2pdf-layout/tests/fixtures");
+    std::fs::write(&style_path, format!("[typography]\nuse_system_fonts = false\nfont_dirs = [\"{font_dir}\"]\n")).unwrap();
+
+    let svg_with_text = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"50\" viewBox=\"0 0 200 50\">\n  \
+         <text x=\"10\" y=\"30\" font-family=\"Helvetica,sans-Serif\" font-size=\"24\">Hello</text>\n</svg>\n";
+    let svg_without_text = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"50\" viewBox=\"0 0 200 50\"></svg>\n";
+
+    let md_path = std::env::temp_dir().join("md2pdf-test-svg-text-doc.md");
+    std::fs::write(&md_path, "# Test\n\n![label](with-text.svg)\n").unwrap();
+    std::fs::write(std::env::temp_dir().join("with-text.svg"), svg_with_text).unwrap();
+    let control_md_path = std::env::temp_dir().join("md2pdf-test-svg-text-control-doc.md");
+    std::fs::write(&control_md_path, "# Test\n\n![label](without-text.svg)\n").unwrap();
+    std::fs::write(std::env::temp_dir().join("without-text.svg"), svg_without_text).unwrap();
+
+    let out_path = std::env::temp_dir().join("md2pdf-test-svg-text-output.pdf");
+    let _ = std::fs::remove_file(&out_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(&md_path).arg("-o").arg(&out_path).arg("--style").arg(&style_path);
+    cmd.assert().success();
+
+    let control_out_path = std::env::temp_dir().join("md2pdf-test-svg-text-control-output.pdf");
+    let _ = std::fs::remove_file(&control_out_path);
+    let mut control_cmd = Command::cargo_bin("md2pdf").unwrap();
+    control_cmd.arg("render").arg(&control_md_path).arg("-o").arg(&control_out_path).arg("--style").arg(&style_path);
+    control_cmd.assert().success();
+
+    let doc = lopdf::Document::load_mem(&std::fs::read(&out_path).unwrap()).unwrap();
+    let control_doc = lopdf::Document::load_mem(&std::fs::read(&control_out_path).unwrap()).unwrap();
+    let page_id = *doc.get_pages().values().next().unwrap();
+    let control_page_id = *control_doc.get_pages().values().next().unwrap();
+    let content_len = doc.get_page_content(page_id).len();
+    let control_content_len = control_doc.get_page_content(control_page_id).len();
+
+    assert!(
+        content_len > control_content_len + 50,
+        "expected the SVG text label to contribute real glyph-outline path content beyond the \
+         empty-SVG control (got {content_len} bytes vs {control_content_len} bytes) -- a font \
+         that failed to resolve would leave these nearly identical"
+    );
+
+    std::fs::remove_file(&style_path).unwrap();
+    std::fs::remove_file(&md_path).unwrap();
+    std::fs::remove_file(&control_md_path).unwrap();
+    std::fs::remove_file(std::env::temp_dir().join("with-text.svg")).unwrap();
+    std::fs::remove_file(std::env::temp_dir().join("without-text.svg")).unwrap();
+    std::fs::remove_file(&out_path).unwrap();
+    std::fs::remove_file(&control_out_path).unwrap();
+}
+
+#[test]
 fn diagram_parse_error_reports_the_offending_line_inside_the_diagram_not_just_the_fence() {
     // Regression test: a failed-diagram warning previously only ever named the opening
     // ```mermaid fence's own location -- useless for finding the actual bad line in anything
