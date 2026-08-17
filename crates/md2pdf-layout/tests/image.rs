@@ -12,6 +12,16 @@ fn decodes_embedded_local_image_and_indexes_by_path() {
 }
 
 #[test]
+fn decodes_embedded_jpeg_image() {
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let ast = vec![BlockNode::Image { alt: "test".to_string(), title: None, source: ImageSource::Embedded(std::path::PathBuf::from("test-image.jpg")) }];
+    let table = decode_images(&ast, &base_dir);
+    let decoded = table.get("test-image.jpg").expect("jpeg image not found in table");
+    assert_eq!((decoded.width, decoded.height), (3, 3));
+    assert_eq!(decoded.rgba8.len(), 3 * 3 * 4);
+}
+
+#[test]
 fn path_traversal_outside_base_dir_is_rejected() {
     let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     // Escapes tests/fixtures/ back up to the crate root and reads Cargo.toml — must be refused
