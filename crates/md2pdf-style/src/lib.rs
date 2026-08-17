@@ -8,6 +8,7 @@ mod numbering;
 mod page;
 mod structural;
 mod table;
+mod toc;
 mod typography;
 
 pub use code_block::{CodeBlockDefaultStyle, CodeBlockStyle, CodeLanguageStyle, LabelStyle, ResolvedCodeBlockStyle};
@@ -18,6 +19,7 @@ pub use numbering::{NumberingFormat, PageNumbering};
 pub use page::{PageFormat, PageStyle};
 pub use structural::{BlockquoteStyle, ListStyle, ThematicBreakStyle};
 pub use table::TableStyle;
+pub use toc::TocStyle;
 pub use typography::{TextAlignment, TypographyStyle};
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -33,6 +35,7 @@ pub struct Stylesheet {
     pub code_block: CodeBlockStyle,
     pub header: HeaderFooterStyle,
     pub footer: HeaderFooterStyle,
+    pub toc: TocStyle,
 }
 
 impl Stylesheet {
@@ -64,6 +67,9 @@ impl Stylesheet {
         }
         self.header.validate("header")?;
         self.footer.validate("footer")?;
+        if !(1..=6).contains(&self.toc.depth) {
+            anyhow::bail!("[toc] depth must be between 1 and 6, got {}", self.toc.depth);
+        }
         Ok(())
     }
 }
