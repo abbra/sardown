@@ -142,6 +142,19 @@ mod date_tests {
     }
 }
 
+/// The directory `input`'s own relative image references (and the SVG/security containment
+/// check in `decode_images`) should resolve against. `Path::parent()` returns `Some("")` -- an
+/// empty path, not `None` -- for a *bare* relative filename with no directory component (e.g.
+/// "doc.md"), so a plain `.unwrap_or_else(|| Path::new("."))` never reaches its fallback in that
+/// case: `PathBuf::from("")` fails to canonicalize at all ("No such file or directory"), silently
+/// dropping every embedded image. Treating an empty parent the same as "no parent" avoids that.
+fn base_dir_of(input: &std::path::Path) -> std::path::PathBuf {
+    match input.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+        _ => std::path::PathBuf::from("."),
+    }
+}
+
 fn build_font_system(typography: &md2pdf_style::TypographyStyle) -> cosmic_text::FontSystem {
     let mut font_db = fontdb::Database::new();
     if typography.use_system_fonts {
@@ -184,7 +197,7 @@ fn main() -> anyhow::Result<()> {
             let ast = timed_stage("Highlighting code blocks", || highlighter.highlight(ast));
             let diagrams = timed_stage("Compiling diagrams", || md2pdf_enrich::compile_diagrams(&ast));
 
-            let base_dir = input.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
+            let base_dir = base_dir_of(&input);
 
             let mut font_system = timed_stage("Loading fonts", || build_font_system(&stylesheet.typography));
 
@@ -234,7 +247,7 @@ fn main() -> anyhow::Result<()> {
             apply_document_overrides(&mut stylesheet, title, author, date);
 
             let markdown = std::fs::read_to_string(&input)?;
-            let base_dir = input.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
+            let base_dir = base_dir_of(&input);
             let mut font_system = timed_stage("Loading fonts", || build_font_system(&stylesheet.typography));
 
             let output_layout = timed_stage("Laying out slides", || {

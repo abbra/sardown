@@ -706,3 +706,30 @@ fn render_slides_subcommand_requires_input_and_output() {
     cmd.arg("render-slides").arg("nonexistent.md").arg("-o").arg("/tmp/md2pdf-test-slides-missing.pdf");
     cmd.assert().failure();
 }
+
+#[test]
+fn render_loads_images_when_given_a_bare_relative_filename_from_its_own_directory() {
+    // Regression test: `Path::new("doc.md").parent()` returns `Some("")` (an empty path), not
+    // `None` -- so `input.parent().unwrap_or_else(|| Path::new("."))` never falls back to ".":
+    // base_dir became an empty PathBuf, which fails to canonicalize ("No such file or directory"),
+    // silently dropping every embedded image. Only triggered by a *bare* relative filename with
+    // no directory component (e.g. "doc.md", not "./doc.md" or an absolute path) run from that
+    // file's own directory -- exactly how a user invoking `md2pdf render doc.md` from inside the
+    // document's own directory naturally would.
+    let dir = std::env::temp_dir().join("md2pdf-test-bare-relative-input");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("doc.md"), "# Doc\n\n![pic](test-image.png)\n").unwrap();
+    std::fs::copy(concat!(env!("CARGO_MANIFEST_DIR"), "/../md2pdf-layout/tests/fixtures/test-image.png"), dir.join("test-image.png")).unwrap();
+
+    let out_path = dir.join("doc.pdf");
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.current_dir(&dir).arg("render").arg("doc.md").arg("-o").arg("doc.pdf");
+    cmd.assert().success();
+
+    let bytes = std::fs::read(&out_path).expect("output PDF was not written");
+    let doc = lopdf::Document::load_mem(&bytes).expect("output is not a valid PDF");
+    let has_image_xobject =
+        doc.objects.values().any(|obj| obj.as_stream().ok().and_then(|s| s.dict.get(b"Subtype").ok()).and_then(|s| s.as_name().ok()) == Some(b"Image"));
+    assert!(has_image_xobject, "expected the image to be embedded even with a bare relative input filename");
+}
