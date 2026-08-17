@@ -71,6 +71,13 @@ fn mixes_literal_text_and_placeholders_in_one_template() {
 #[test]
 fn substitutes_title_and_author() {
     let context = ctx(None, None);
-    let document = DocumentStyle { title: "My Book".to_string(), author: "Jane Doe".to_string() };
+    let document = DocumentStyle { title: "My Book".to_string(), author: "Jane Doe".to_string(), ..Default::default() };
     assert_eq!(resolve_template("{title} by {author}", &context, "1", "1", &document), "My Book by Jane Doe");
+}
+
+#[test]
+fn substitutes_date() {
+    let context = ctx(None, None);
+    let document = DocumentStyle { date: "2026-08-17".to_string(), ..Default::default() };
+    assert_eq!(resolve_template("Generated {date}", &context, "1", "1", &document), "Generated 2026-08-17");
 }

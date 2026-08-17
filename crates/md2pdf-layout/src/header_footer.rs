@@ -100,7 +100,8 @@ pub(crate) fn display_number_for_page(page_index: usize, segments: &[NumberingSe
     format_page_number(segment.start_at + offset_into_segment, segment.format)
 }
 
-/// Substitutes `{h1}`, `{h2}`, `{page}`, `{total_pages}`, `{title}`, and `{author}` in `template`.
+/// Substitutes `{h1}`, `{h2}`, `{page}`, `{total_pages}`, `{title}`, `{author}`, and `{date}` in
+/// `template`.
 /// Assumes `template` was already validated by `md2pdf_style::Stylesheet::validate` (built in
 /// this feature's Phase 1) -- an unknown placeholder or unterminated `{` here indicates a caller
 /// bypassed that validation, so this panics rather than silently producing wrong output or
@@ -120,6 +121,7 @@ pub fn resolve_template(template: &str, ctx: &PageContext, page_display: &str, t
             "total_pages" => total_pages_display,
             "title" => document.title.as_str(),
             "author" => document.author.as_str(),
+            "date" => document.date.as_str(),
             other => panic!("unknown placeholder {{{other}}} should have been rejected by Stylesheet::validate"),
         };
         result.push_str(value);

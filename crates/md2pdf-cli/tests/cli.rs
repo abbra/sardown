@@ -457,6 +457,48 @@ fn a_numbering_reset_restarts_the_page_count_from_the_named_heading() {
 }
 
 #[test]
+fn date_flag_overrides_the_stylesheets_document_section_and_defaults_to_todays_date_otherwise() {
+    let style_path = std::env::temp_dir().join("md2pdf-test-date-style.toml");
+    std::fs::write(
+        &style_path,
+        "[document]\ndate = \"1999-12-31\"\n\n[header]\nenabled = true\nsuppress_on_chapter_start = false\nuniform.center = \"{date}\"\n",
+    )
+    .unwrap();
+
+    let md_path = std::env::temp_dir().join("md2pdf-test-date-doc.md");
+    std::fs::write(&md_path, "# Chapter One\n\nBody.\n").unwrap();
+
+    // --date wins over the stylesheet's own [document].date.
+    let overridden_path = std::env::temp_dir().join("md2pdf-test-date-overridden.pdf");
+    let _ = std::fs::remove_file(&overridden_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(&md_path).arg("-o").arg(&overridden_path).arg("--style").arg(&style_path).arg("--date").arg("2026-08-17");
+    cmd.assert().success();
+    let overridden_text = lopdf::Document::load_mem(&std::fs::read(&overridden_path).unwrap()).unwrap().extract_text(&[1]).unwrap_or_default();
+    assert!(overridden_text.contains("2026-08-17"), "expected --date to override the stylesheet's date: {overridden_text}");
+    assert!(!overridden_text.contains("1999-12-31"), "expected --date to win over the stylesheet's date: {overridden_text}");
+
+    // Neither --date nor the stylesheet sets a date -- falls back to today's date, which must at
+    // least look like an ISO-8601 date rather than being left empty.
+    let style_path_no_date = std::env::temp_dir().join("md2pdf-test-date-style-no-date.toml");
+    std::fs::write(&style_path_no_date, "[header]\nenabled = true\nsuppress_on_chapter_start = false\nuniform.center = \"{date}\"\n").unwrap();
+    let default_path = std::env::temp_dir().join("md2pdf-test-date-default.pdf");
+    let _ = std::fs::remove_file(&default_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(&md_path).arg("-o").arg(&default_path).arg("--style").arg(&style_path_no_date);
+    cmd.assert().success();
+    let default_text = lopdf::Document::load_mem(&std::fs::read(&default_path).unwrap()).unwrap().extract_text(&[1]).unwrap_or_default();
+    let today_looking = default_text.split_whitespace().any(|word| word.len() == 10 && word.chars().filter(|c| *c == '-').count() == 2);
+    assert!(today_looking, "expected an auto-computed ISO-8601-looking date somewhere in the header: {default_text}");
+
+    std::fs::remove_file(&style_path).unwrap();
+    std::fs::remove_file(&style_path_no_date).unwrap();
+    std::fs::remove_file(&md_path).unwrap();
+    std::fs::remove_file(&overridden_path).unwrap();
+    std::fs::remove_file(&default_path).unwrap();
+}
+
+#[test]
 fn title_and_author_flags_override_the_stylesheets_document_section_in_header_footer_templates() {
     let style_path = std::env::temp_dir().join("md2pdf-test-document-style.toml");
     std::fs::write(

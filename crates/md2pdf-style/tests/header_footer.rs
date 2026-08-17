@@ -87,6 +87,13 @@ fn validate_accepts_the_title_and_author_placeholders() {
 }
 
 #[test]
+fn validate_accepts_the_date_placeholder() {
+    let toml_text = "enabled = true\n[uniform]\ncenter = \"{date}\"\n";
+    let style: HeaderFooterStyle = toml::from_str(toml_text).unwrap();
+    assert!(style.validate("header").is_ok());
+}
+
+#[test]
 fn validate_rejects_an_unknown_placeholder() {
     let toml_text = "enabled = true\n[uniform]\nleft = \"{bogus}\"\n";
     let style: HeaderFooterStyle = toml::from_str(toml_text).unwrap();

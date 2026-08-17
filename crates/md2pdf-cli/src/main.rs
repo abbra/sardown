@@ -27,6 +27,11 @@ enum Commands {
         /// [document].author from the stylesheet if both are given.
         #[arg(long)]
         author: Option<String>,
+        /// Document date ("YYYY-MM-DD" or any other literal string), available to header/footer
+        /// templates as {date}. Overrides [document].date from the stylesheet if both are given;
+        /// if neither is given, defaults to today's date.
+        #[arg(long)]
+        date: Option<String>,
     },
     /// Render an mdBook source tree (a directory containing book.toml and/or src/SUMMARY.md) to
     /// one combined PDF
@@ -46,18 +51,72 @@ enum Commands {
         /// [document].author from the stylesheet if both are given.
         #[arg(long)]
         author: Option<String>,
+        /// Document date ("YYYY-MM-DD" or any other literal string), available to header/footer
+        /// templates as {date}. Overrides [document].date from the stylesheet if both are given;
+        /// if neither is given, defaults to today's date.
+        #[arg(long)]
+        date: Option<String>,
     },
 }
 
-/// Applies `--title`/`--author` on top of the stylesheet's own `[document]` section, in place --
-/// the CLI flag wins if both are given, otherwise the stylesheet's value (including its default
-/// of "") passes through unchanged.
-fn apply_document_overrides(stylesheet: &mut md2pdf_style::Stylesheet, title: Option<String>, author: Option<String>) {
+/// Applies `--title`/`--author`/`--date` on top of the stylesheet's own `[document]` section, in
+/// place -- a CLI flag wins if both are given, otherwise the stylesheet's own value (including
+/// its default of `""`) passes through unchanged. `date` is the one exception: an empty result
+/// (neither the flag nor the stylesheet set one) falls back to today's date rather than staying
+/// empty, since "no date was configured" should still show *something* sensible in a template.
+fn apply_document_overrides(stylesheet: &mut md2pdf_style::Stylesheet, title: Option<String>, author: Option<String>, date: Option<String>) {
     if let Some(title) = title {
         stylesheet.document.title = title;
     }
     if let Some(author) = author {
         stylesheet.document.author = author;
+    }
+    if let Some(date) = date {
+        stylesheet.document.date = date;
+    } else if stylesheet.document.date.is_empty() {
+        stylesheet.document.date = today_date_string();
+    }
+}
+
+/// Today's date as "YYYY-MM-DD" (UTC), used to populate `{date}` when neither `--date` nor the
+/// stylesheet's `[document].date` set it explicitly.
+fn today_date_string() -> String {
+    let days_since_epoch =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).expect("system clock is before the Unix epoch").as_secs() as i64 / 86400;
+    let (year, month, day) = civil_from_days(days_since_epoch);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
+/// Howard Hinnant's `civil_from_days`: converts a day count since 1970-01-01 (UTC) into a
+/// proleptic-Gregorian (year, month, day) -- see
+/// http://howardhinnant.github.io/date_algorithms.html. Avoids pulling in a date/time crate as a
+/// real (non-dev) dependency for one ISO-8601 string; chrono is already in the dependency tree,
+/// but only as a dev-dependency of the golden-image/PDF-rendering test tooling.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (if m <= 2 { y + 1 } else { y }, m as u32, d as u32)
+}
+
+#[cfg(test)]
+mod date_tests {
+    use super::civil_from_days;
+
+    #[test]
+    fn known_epoch_days_convert_to_the_correct_calendar_date() {
+        assert_eq!(civil_from_days(0), (1970, 1, 1));
+        assert_eq!(civil_from_days(1), (1970, 1, 2));
+        assert_eq!(civil_from_days(365), (1971, 1, 1)); // 1970 is not a leap year
+        assert_eq!(civil_from_days(10957), (2000, 1, 1));
+        assert_eq!(civil_from_days(19723), (2024, 1, 1));
+        assert_eq!(civil_from_days(20089), (2025, 1, 1));
     }
 }
 
@@ -86,10 +145,10 @@ fn timed_stage<T>(label: &str, f: impl FnOnce() -> T) -> T {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Render { input, output, style, title, author } => {
+        Commands::Render { input, output, style, title, author, date } => {
             let mut stylesheet =
                 timed_stage("Resolving stylesheet", || md2pdf_style::Stylesheet::resolve(style.as_deref(), None))?;
-            apply_document_overrides(&mut stylesheet, title, author);
+            apply_document_overrides(&mut stylesheet, title, author, date);
 
             let markdown = std::fs::read_to_string(&input)?;
             let mut slugs = md2pdf_ast::SlugGenerator::new();
@@ -117,11 +176,11 @@ fn main() -> anyhow::Result<()> {
             eprintln!("Wrote {} ({} pages)", output.display(), output_layout.pages.len());
             Ok(())
         }
-        Commands::RenderBook { book_root, output, style, title, author } => {
+        Commands::RenderBook { book_root, output, style, title, author, date } => {
             let mut stylesheet = timed_stage("Resolving stylesheet", || {
                 md2pdf_style::Stylesheet::resolve(style.as_deref(), Some(&book_root))
             })?;
-            apply_document_overrides(&mut stylesheet, title, author);
+            apply_document_overrides(&mut stylesheet, title, author, date);
 
             let ast = timed_stage("Loading book", || md2pdf_book::load_book(&book_root, &stylesheet))?;
 

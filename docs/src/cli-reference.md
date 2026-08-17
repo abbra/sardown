@@ -20,6 +20,7 @@ md2pdf render [OPTIONS] --output <OUTPUT> <INPUT>
 | `--style <STYLE>` | Path to a stylesheet TOML file. Falls back to built-in defaults if omitted — see [Styling Your Documents](./styling/index.md) |
 | `--title <TITLE>` | Document title, available to header/footer templates as `{title}`. Overrides `[document].title` from the stylesheet if both are given |
 | `--author <AUTHOR>` | Document author, available to header/footer templates as `{author}`. Overrides `[document].author` from the stylesheet if both are given |
+| `--date <DATE>` | Document date, available to header/footer templates as `{date}`. Overrides `[document].date` from the stylesheet if both are given; defaults to today's date if neither is set |
 | `-h, --help` | Print help |
 
 Example:
@@ -41,6 +42,7 @@ md2pdf render-book [OPTIONS] --output <OUTPUT> <BOOK_ROOT>
 | `--style <STYLE>` | Path to a stylesheet TOML file. Falls back to `<book_root>/style.toml` if present, then to built-in defaults — see [Rendering Books](./books/index.md) |
 | `--title <TITLE>` | Document title, available to header/footer templates as `{title}`. Overrides `[document].title` from the stylesheet if both are given |
 | `--author <AUTHOR>` | Document author, available to header/footer templates as `{author}`. Overrides `[document].author` from the stylesheet if both are given |
+| `--date <DATE>` | Document date, available to header/footer templates as `{date}`. Overrides `[document].date` from the stylesheet if both are given; defaults to today's date if neither is set |
 | `-h, --help` | Print help |
 
 Example:

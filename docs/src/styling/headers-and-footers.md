@@ -33,22 +33,27 @@ A template can mix literal text with placeholders:
 | `{h2}` | The most recent level-2 heading text before this page |
 | `{title}` | `[document].title`, or the `--title` CLI flag if given |
 | `{author}` | `[document].author`, or the `--author` CLI flag if given |
+| `{date}` | `[document].date`, the `--date` CLI flag, or today's date if neither is set |
 
-`{title}`/`{author}` come from a `[document]` section:
+`{title}`/`{author}`/`{date}` come from a `[document]` section:
 
 ```toml
 [document]
 title = "My Book"
 author = "Jane Doe"
+date = "2026-01-01"   # a literal string, used as-is -- omit it to use today's date instead
 
 [header]
 enabled = true
 uniform.center = "{title}"
 ```
 
-`--title`/`--author` on the command line override `[document].title`/
-`.author` if both are given — see the
-[Command-Line Reference](../cli-reference.md).
+`--title`/`--author`/`--date` on the command line override
+`[document].title`/`.author`/`.date` if both are given — see the
+[Command-Line Reference](../cli-reference.md). Unlike title/author,
+`{date}` never renders empty: if neither the stylesheet nor `--date` sets
+one, it defaults to today's date (in the local system's UTC day) at
+render time.
 
 ```toml
 [footer.uniform]

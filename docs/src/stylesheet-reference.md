@@ -15,9 +15,11 @@ value shown here. A color field accepts either a 6-digit hex string
 |---|---|---|
 | `title` | string | `""` |
 | `author` | string | `""` |
+| `date` | string | `""` (auto-filled with today's date at render time if still empty) |
 
-Available to `[header]`/`[footer]` templates as `{title}`/`{author}`. The
-`--title`/`--author` CLI flags override these if both are given.
+Available to `[header]`/`[footer]` templates as `{title}`/`{author}`/
+`{date}`. The `--title`/`--author`/`--date` CLI flags override these if
+both are given.
 
 ## `[page]`
 
@@ -175,7 +177,7 @@ nothing shown in that zone):
 `.uniform` is used when `mode = "uniform"`; `.odd`/`.even` are used when
 `mode = "two_sided"`, selected by physical page parity. Valid placeholders
 in a template string: `{page}`, `{total_pages}`, `{h1}`, `{h2}`, `{title}`,
-`{author}` — see
+`{author}`, `{date}` — see
 [Headers and Footers](./styling/headers-and-footers.md#zones-and-templates).
 
 ## `[toc]`
