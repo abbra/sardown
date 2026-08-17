@@ -161,3 +161,18 @@ fn no_text_color_override_leaves_the_original_color_untouched() {
     let BlockNode::Paragraph { content } = &blocks[0] else { unreachable!() };
     assert_eq!(content[0].style.color, [0, 0, 0]);
 }
+
+#[test]
+fn rescaling_recurses_into_each_column_of_a_columns_block() {
+    let mut blocks = vec![BlockNode::Columns(vec![
+        vec![BlockNode::Paragraph { content: vec![plain("Left.", 12.0)] }],
+        vec![BlockNode::Heading { level: 1, id: "h".to_string(), content: vec![plain("Right.", 28.0)] }],
+    ])];
+    let base = Stylesheet::default();
+    rescale_slide_content(&mut blocks, &base, &SlideLayoutStyle::default(), 0.5);
+    let BlockNode::Columns(columns) = &blocks[0] else { unreachable!() };
+    let BlockNode::Paragraph { content: left } = &columns[0][0] else { unreachable!() };
+    let BlockNode::Heading { content: right, .. } = &columns[1][0] else { unreachable!() };
+    assert_eq!(left[0].style.size, 6.0, "paragraph inside a column still resizes to body_size_pt * scale");
+    assert_eq!(right[0].style.size, 14.0, "heading inside a column still resizes to its own level's size * scale");
+}

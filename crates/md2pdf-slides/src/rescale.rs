@@ -57,6 +57,11 @@ fn rescale_blocks(
                     rescale_blocks(item, base, scale, body_size_pt, table_cell_size_pt, primary_color, secondary_color);
                 }
             }
+            BlockNode::Columns(columns) => {
+                for column in columns {
+                    rescale_blocks(column, base, scale, body_size_pt, table_cell_size_pt, primary_color, secondary_color);
+                }
+            }
             BlockNode::Table { headers, rows, .. } => {
                 for cell in headers.iter_mut() {
                     set_inline_style(cell, table_cell_size_pt, primary_color, primary_color);
