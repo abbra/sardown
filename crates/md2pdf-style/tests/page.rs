@@ -24,6 +24,8 @@ fn explicit_width_and_height_override_the_format_preset() {
         width_mm: Some(100.0),
         height_mm: Some(50.0),
         margin_mm: 10.0,
+        inner_margin_mm: None,
+        outer_margin_mm: None,
         numbering: PageNumbering::default(),
     };
     assert_eq!(page.dimensions_mm(), (100.0, 50.0));

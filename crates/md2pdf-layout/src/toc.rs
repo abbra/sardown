@@ -71,7 +71,7 @@ pub fn insert_table_of_contents(output: &mut LayoutOutput, ast: &[BlockNode], st
     }
 
     let margin_pt = geometry.margin_mm * PT_PER_MM;
-    let content_width_pt = output.page_width_pt - 2.0 * margin_pt;
+    let content_width_pt = output.page_width_pt - geometry.horizontal_margin_budget_mm() * PT_PER_MM;
     let usable_height_pt = (output.page_height_pt - 2.0 * margin_pt).max(0.0);
     let body = &stylesheet.typography;
     let line_height_pt = crate::paginate::estimate_line_height(body.body_size_pt);

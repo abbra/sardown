@@ -26,7 +26,7 @@ fn bench_full_render(c: &mut Criterion) {
             let diagrams = md2pdf_enrich::compile_diagrams(&ast);
             let output = md2pdf_layout::layout(
                 &ast,
-                &md2pdf_layout::PageGeometry { page_width_mm: 215.9, page_height_mm: 279.4, margin_mm: 25.4 },
+                &md2pdf_layout::PageGeometry { page_width_mm: 215.9, page_height_mm: 279.4, margin_mm: 25.4, ..Default::default() },
                 &mut font_system,
                 std::path::Path::new("."),
                 &diagrams,

@@ -30,7 +30,7 @@ impl<'a> Cursor<'a> {
         Self {
             y: margin_pt,
             page_height_pt: geometry.page_height_mm * PT_PER_MM - margin_pt, // bottom boundary
-            content_width_pt: geometry.page_width_mm * PT_PER_MM - 2.0 * margin_pt,
+            content_width_pt: geometry.page_width_mm * PT_PER_MM - geometry.horizontal_margin_budget_mm() * PT_PER_MM,
             pages: Vec::new(),
             current: Vec::new(),
             page_number: 0,

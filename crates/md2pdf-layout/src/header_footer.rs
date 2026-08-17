@@ -1,4 +1,4 @@
-use crate::{PageContext, PageGeometry, PositionedElement, PositionedPage};
+use crate::{PageContext, PageGeometry, PathCommand, PositionedElement, PositionedPage};
 use cosmic_text::FontSystem;
 use md2pdf_ast::{InlineNode, TextStyle};
 use md2pdf_style::{DocumentStyle, HeaderFooterMode, HeaderFooterStyle, HeaderZones, NumberingFormat, Stylesheet};
@@ -170,7 +170,7 @@ pub fn render_headers_footers(
         return;
     }
     let margin_pt = geometry.margin_mm * PT_PER_MM;
-    let content_width_pt = geometry.page_width_mm * PT_PER_MM - 2.0 * margin_pt;
+    let content_width_pt = geometry.page_width_mm * PT_PER_MM - geometry.horizontal_margin_budget_mm() * PT_PER_MM;
     let full_page_height_pt = geometry.page_height_mm * PT_PER_MM;
     let numbering = &stylesheet.page.numbering;
     let total_pages_display = format_page_number(numbering.start_at + pages.len() as u32 - 1, numbering.format);
@@ -212,6 +212,55 @@ pub fn render_headers_footers(
     }
 }
 
+/// Shifts every element on each page to its real final left edge once `geometry.inner_margin_mm`
+/// / `outer_margin_mm` are both set -- a no-op otherwise. Layout itself always places content
+/// using plain `margin_mm` as an arbitrary x-origin baseline (see `PageGeometry`'s doc comment for
+/// why only `content_width_pt` needs to change during layout); this is the step that moves each
+/// page's content from that baseline to `inner_margin_mm` (recto, odd physical pages) or
+/// `outer_margin_mm` (verso, even physical pages), matching `render_headers_footers`'s own
+/// odd/even physical-page convention.
+pub fn apply_asymmetric_margins(pages: &mut [PositionedPage], geometry: &PageGeometry) {
+    let (Some(inner_mm), Some(outer_mm)) = (geometry.inner_margin_mm, geometry.outer_margin_mm) else {
+        return;
+    };
+    let baseline_pt = geometry.margin_mm * PT_PER_MM;
+    let inner_pt = inner_mm * PT_PER_MM;
+    let outer_pt = outer_mm * PT_PER_MM;
+
+    for (i, page) in pages.iter_mut().enumerate() {
+        let is_recto = i % 2 == 0;
+        let target_left_pt = if is_recto { inner_pt } else { outer_pt };
+        let shift_pt = target_left_pt - baseline_pt;
+        if shift_pt != 0.0 {
+            for element in &mut page.elements {
+                shift_element_x(element, shift_pt);
+            }
+        }
+    }
+}
+
+fn shift_element_x(element: &mut PositionedElement, dx: f32) {
+    match element {
+        PositionedElement::TextRun { x, .. } => *x += dx,
+        PositionedElement::Path { points, .. } => {
+            for command in points {
+                match command {
+                    PathCommand::MoveTo(x, _) | PathCommand::LineTo(x, _) => *x += dx,
+                    PathCommand::CubicTo(x1, _, x2, _, x3, _) => {
+                        *x1 += dx;
+                        *x2 += dx;
+                        *x3 += dx;
+                    }
+                    PathCommand::Close => {}
+                }
+            }
+        }
+        PositionedElement::VectorGraphic { x, .. } => *x += dx,
+        PositionedElement::LinkAnnotation { rect, .. } => rect.x += dx,
+        PositionedElement::RasterImage { x, .. } => *x += dx,
+    }
+}
+
 pub fn layout_with_header_footer(
     ast: &[md2pdf_ast::BlockNode],
     font_system: &mut FontSystem,
@@ -220,9 +269,16 @@ pub fn layout_with_header_footer(
     stylesheet: &Stylesheet,
 ) -> crate::LayoutOutput {
     let (width_mm, height_mm) = stylesheet.page.dimensions_mm();
-    let geometry = PageGeometry { page_width_mm: width_mm, page_height_mm: height_mm, margin_mm: stylesheet.page.margin_mm };
+    let geometry = PageGeometry {
+        page_width_mm: width_mm,
+        page_height_mm: height_mm,
+        margin_mm: stylesheet.page.margin_mm,
+        inner_margin_mm: stylesheet.page.inner_margin_mm,
+        outer_margin_mm: stylesheet.page.outer_margin_mm,
+    };
     let mut output = crate::layout_impl(ast, &geometry, font_system, base_dir, diagrams, stylesheet);
     crate::toc::insert_table_of_contents(&mut output, ast, stylesheet, &geometry, font_system);
     render_headers_footers(&mut output.pages, &output.page_contexts, stylesheet, &geometry, font_system);
+    apply_asymmetric_margins(&mut output.pages, &geometry);
     output
 }

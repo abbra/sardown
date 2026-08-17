@@ -27,9 +27,14 @@ Available to `[header]`/`[footer]` templates as `{title}`/`{author}`. The
 | `width_mm` | number | unset |
 | `height_mm` | number | unset |
 | `margin_mm` | number | `25.4` |
+| `inner_margin_mm` | number | unset |
+| `outer_margin_mm` | number | unset |
 
 Setting `width_mm`/`height_mm` overrides `format` entirely; both must be
-set together, or loading the stylesheet is an error.
+set together, or loading the stylesheet is an error. Setting
+`inner_margin_mm`/`outer_margin_mm` enables asymmetric two-sided-binding
+margins (both must be set together too) — see
+[Page Setup](./styling/page.md#asymmetric-two-sided-binding-margins).
 
 ### `[page.numbering]`
 

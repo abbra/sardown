@@ -12,7 +12,7 @@ fn test_font_system() -> FontSystem {
 }
 
 fn letter_geometry() -> PageGeometry {
-    PageGeometry { page_width_mm: 215.9, page_height_mm: 279.4, margin_mm: 25.4 }
+    PageGeometry { page_width_mm: 215.9, page_height_mm: 279.4, margin_mm: 25.4, ..Default::default() }
 }
 
 fn fixtures_dir() -> std::path::PathBuf {

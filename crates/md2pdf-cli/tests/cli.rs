@@ -394,6 +394,34 @@ fn explicit_style_flag_generates_a_toc_page_with_working_links() {
 }
 
 #[test]
+fn asymmetric_margins_shift_recto_and_verso_pages_to_opposite_edges() {
+    let style_path = std::env::temp_dir().join("md2pdf-test-asymmetric-margins-style.toml");
+    std::fs::write(&style_path, "[page]\ninner_margin_mm = 35.0\nouter_margin_mm = 15.0\n\n[typography]\nbody_size_pt = 60.0\n").unwrap();
+
+    // A single short sentence never overflows at any body size; repeat it enough times that a
+    // 60pt body size visibly forces a second physical page (same technique as the style
+    // auto-discovery test above).
+    let md_path = std::env::temp_dir().join("md2pdf-test-asymmetric-margins-doc.md");
+    let body = "This is a line of body text used to fill up space on the page. ".repeat(6);
+    std::fs::write(&md_path, format!("# Chapter One\n\n{body}\n")).unwrap();
+
+    let out_path = std::env::temp_dir().join("md2pdf-test-asymmetric-margins-output.pdf");
+    let _ = std::fs::remove_file(&out_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(&md_path).arg("-o").arg(&out_path).arg("--style").arg(&style_path);
+    cmd.assert().success();
+
+    let bytes = std::fs::read(&out_path).unwrap();
+    assert!(bytes.starts_with(b"%PDF-"));
+    let doc = lopdf::Document::load_mem(&bytes).expect("output is not a valid PDF");
+    assert!(doc.get_pages().len() >= 2, "expected at least 2 pages so page-parity actually differs, got {}", doc.get_pages().len());
+
+    std::fs::remove_file(&style_path).unwrap();
+    std::fs::remove_file(&md_path).unwrap();
+    std::fs::remove_file(&out_path).unwrap();
+}
+
+#[test]
 fn title_and_author_flags_override_the_stylesheets_document_section_in_header_footer_templates() {
     let style_path = std::env::temp_dir().join("md2pdf-test-document-style.toml");
     std::fs::write(

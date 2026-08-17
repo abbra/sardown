@@ -4,7 +4,7 @@ mod paginate;
 mod shape;
 mod table;
 mod toc;
-pub use header_footer::{format_page_number, layout_with_header_footer, render_headers_footers, resolve_template};
+pub use header_footer::{apply_asymmetric_margins, format_page_number, layout_with_header_footer, render_headers_footers, resolve_template};
 pub use image::{decode_images, DecodedImage, ImageTable};
 pub use paginate::{layout, layout_impl, LayoutOutput};
 pub use shape::{shape_paragraph, shape_rich_paragraph, ShapedRun};
@@ -15,11 +15,32 @@ pub mod test_support {
     pub use crate::table::column_widths;
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct PageGeometry {
     pub page_width_mm: f32,
     pub page_height_mm: f32,
     pub margin_mm: f32,
+    /// Both `Some` together enables asymmetric (two-sided binding) margins: `inner_margin_mm`
+    /// sits nearest the spine (bigger, to allow for binding), alternating sides by physical page
+    /// parity. Layout still runs its one pass using plain `margin_mm` as an arbitrary x-origin
+    /// baseline; `header_footer::apply_asymmetric_margins` shifts every page's content
+    /// afterward to its real final left edge (`inner_margin_mm` on recto pages, `outer_margin_mm`
+    /// on verso) -- so only `content_width_pt` (below) needs to change during layout itself.
+    /// `None`/`None` (the default) changes nothing about existing symmetric-margin output.
+    pub inner_margin_mm: Option<f32>,
+    pub outer_margin_mm: Option<f32>,
+}
+
+impl PageGeometry {
+    /// Total horizontal margin budget (left + right). Constant across every page regardless of
+    /// which physical side ends up "inner" vs "outer" on it, so line-wrapping width is identical
+    /// for every page and only the x-origin needs to shift per page parity.
+    pub fn horizontal_margin_budget_mm(&self) -> f32 {
+        match (self.inner_margin_mm, self.outer_margin_mm) {
+            (Some(inner), Some(outer)) => inner + outer,
+            _ => 2.0 * self.margin_mm,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

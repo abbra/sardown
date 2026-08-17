@@ -30,6 +30,12 @@ pub struct PageStyle {
     pub width_mm: Option<f32>,
     pub height_mm: Option<f32>,
     pub margin_mm: f32,
+    /// Both must be set together (enforced by `Stylesheet::validate`) to enable asymmetric,
+    /// two-sided-binding margins -- `inner_margin_mm` sits nearest the spine (bigger, to allow
+    /// for binding), alternating sides by physical page parity; `margin_mm` is used unchanged for
+    /// top/bottom either way. Unset (the default) keeps `margin_mm` symmetric on every side.
+    pub inner_margin_mm: Option<f32>,
+    pub outer_margin_mm: Option<f32>,
     pub numbering: crate::PageNumbering,
 }
 
@@ -40,6 +46,8 @@ impl Default for PageStyle {
             width_mm: None,
             height_mm: None,
             margin_mm: 25.4,
+            inner_margin_mm: None,
+            outer_margin_mm: None,
             numbering: crate::PageNumbering::default(),
         }
     }

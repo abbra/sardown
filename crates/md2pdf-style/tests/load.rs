@@ -62,6 +62,31 @@ fn rejects_a_page_size_with_only_height_mm_set() {
 }
 
 #[test]
+fn rejects_a_page_style_with_only_inner_margin_mm_set() {
+    let path = write_temp_toml("[page]\ninner_margin_mm = 30.0\n");
+    let err = Stylesheet::load(&path).unwrap_err();
+    assert!(format!("{err:?}").contains("outer_margin_mm"), "expected error to name the missing field, got: {err:?}");
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn rejects_a_page_style_with_only_outer_margin_mm_set() {
+    let path = write_temp_toml("[page]\nouter_margin_mm = 20.0\n");
+    let err = Stylesheet::load(&path).unwrap_err();
+    assert!(format!("{err:?}").contains("inner_margin_mm"), "expected error to name the missing field, got: {err:?}");
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn accepts_a_page_style_with_both_inner_and_outer_margin_mm_set() {
+    let path = write_temp_toml("[page]\ninner_margin_mm = 30.0\nouter_margin_mm = 20.0\n");
+    let sheet = Stylesheet::load(&path).unwrap();
+    assert_eq!(sheet.page.inner_margin_mm, Some(30.0));
+    assert_eq!(sheet.page.outer_margin_mm, Some(20.0));
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
 fn rejects_an_invalid_hex_color() {
     let path = write_temp_toml("[blockquote]\nborder_color = \"not-a-color\"\n");
     assert!(Stylesheet::load(&path).is_err());

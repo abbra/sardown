@@ -68,6 +68,11 @@ impl Stylesheet {
             (None, Some(_)) => anyhow::bail!("[page] sets height_mm but not width_mm -- set both or neither"),
             _ => {}
         }
+        match (self.page.inner_margin_mm, self.page.outer_margin_mm) {
+            (Some(_), None) => anyhow::bail!("[page] sets inner_margin_mm but not outer_margin_mm -- set both or neither"),
+            (None, Some(_)) => anyhow::bail!("[page] sets outer_margin_mm but not inner_margin_mm -- set both or neither"),
+            _ => {}
+        }
         self.header.validate("header")?;
         self.footer.validate("footer")?;
         if !(1..=6).contains(&self.toc.depth) {
