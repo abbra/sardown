@@ -415,6 +415,11 @@ pub fn tag_diagram_origins(blocks: &mut [BlockNode], file: &std::path::Path) {
                     tag_diagram_origins(item, file);
                 }
             }
+            BlockNode::Columns(columns) => {
+                for column in columns {
+                    tag_diagram_origins(column, file);
+                }
+            }
             _ => {}
         }
     }

@@ -1,5 +1,7 @@
+mod columns;
 mod parse;
 mod slug;
+pub use columns::group_columns;
 pub use parse::{heading_style_for_level, parse, parse_with_slugs, parse_with_style, tag_diagram_origins};
 pub use slug::{generate_heading_id, SlugGenerator};
 
@@ -41,7 +43,15 @@ pub enum BlockNode {
     },
     /// `start` is the literal number the list's first item was written with (CommonMark honors
     /// this -- "5. Fifth" starts numbering at 5, not 1), and is `None` for an unordered list.
-    List { ordered: bool, start: Option<u64>, items: Vec<Vec<BlockNode>> },
+    List {
+        ordered: bool,
+        start: Option<u64>,
+        items: Vec<Vec<BlockNode>>,
+    },
+    /// One `Vec<BlockNode>` per column, in source order. Never produced by the core parser --
+    /// built by the separate `group_columns` post-parse transform from `::columns`/`::column`/
+    /// `::end` sentinel paragraphs. See `group_columns`'s own doc comment for the exact syntax.
+    Columns(Vec<Vec<BlockNode>>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

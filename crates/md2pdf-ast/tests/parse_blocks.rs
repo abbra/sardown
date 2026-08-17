@@ -293,6 +293,21 @@ fn tag_diagram_origins_sets_file_on_every_diagram_recursively() {
 }
 
 #[test]
+fn tag_diagram_origins_recurses_into_columns() {
+    let mut blocks = vec![BlockNode::Columns(vec![vec![BlockNode::MermaidDiagram {
+        id: "d0".to_string(),
+        source: "flowchart TD\n    A --> B".to_string(),
+        line: 1,
+        column: 1,
+        file: None,
+    }]])];
+    md2pdf_ast::tag_diagram_origins(&mut blocks, std::path::Path::new("chapter1.md"));
+    let BlockNode::Columns(columns) = &blocks[0] else { panic!("expected Columns") };
+    let BlockNode::MermaidDiagram { file, .. } = &columns[0][0] else { panic!("expected MermaidDiagram") };
+    assert_eq!(file.as_deref(), Some(std::path::Path::new("chapter1.md")));
+}
+
+#[test]
 fn assigns_sequential_ids_to_multiple_diagrams() {
     let md = "```mermaid\nflowchart TD\n    A --> B\n```\n\n```mermaid\nflowchart TD\n    C --> D\n```\n";
     let blocks = parse(md);
