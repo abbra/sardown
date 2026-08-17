@@ -19,6 +19,8 @@ pub struct TypographyStyle {
     pub body_size_pt: f32,
     pub body_color: Color,
     pub alignment: TextAlignment,
+    pub hyphenation: bool,
+    pub language: String,
 }
 
 impl Default for TypographyStyle {
@@ -30,6 +32,8 @@ impl Default for TypographyStyle {
             body_size_pt: 12.0,
             body_color: Color([0, 0, 0]),
             alignment: TextAlignment::Left,
+            hyphenation: false,
+            language: "en-us".to_string(),
         }
     }
 }

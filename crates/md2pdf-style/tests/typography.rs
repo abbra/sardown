@@ -34,3 +34,17 @@ fn a_toml_document_can_request_justified_alignment() {
     let typography: TypographyStyle = toml::from_str(r#"alignment = "justify""#).unwrap();
     assert_eq!(typography.alignment, TextAlignment::Justify);
 }
+
+#[test]
+fn default_typography_has_hyphenation_disabled_with_english_us_as_the_default_language() {
+    let typography = TypographyStyle::default();
+    assert!(!typography.hyphenation);
+    assert_eq!(typography.language, "en-us");
+}
+
+#[test]
+fn a_toml_document_can_enable_hyphenation_and_set_a_language() {
+    let typography: TypographyStyle = toml::from_str("hyphenation = true\nlanguage = \"de-1996\"\n").unwrap();
+    assert!(typography.hyphenation);
+    assert_eq!(typography.language, "de-1996");
+}
