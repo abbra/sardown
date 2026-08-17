@@ -52,7 +52,7 @@ proptest! {
         }, &mut font_system, std::path::Path::new("."), &diagrams);
 
         let pdf_bytes =
-            md2pdf_pdf::render_pdf(&output.pages, font_system.db(), &output.images, &diagrams, &output.anchors, output.page_width_pt, output.page_height_pt);
+            md2pdf_pdf::render_pdf(&output.pages, font_system.db(), &output.images, &diagrams, &output.anchors, output.page_width_pt, output.page_height_pt, &output.toc_entries);
         prop_assert!(pdf_bytes.is_ok(), "render_pdf returned an error instead of panicking, which is fine, but got: {:?}", pdf_bytes.err());
     }
 }

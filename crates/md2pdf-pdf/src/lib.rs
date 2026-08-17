@@ -5,9 +5,11 @@ mod paths;
 use anyhow::Context;
 use krilla::configure::validate::Archival;
 use krilla::configure::{Configuration, ConfigurationBuilder};
+use krilla::destination::XyzDestination;
 use krilla::document::Document;
 use krilla::geom::{Point, Size, Transform};
 use krilla::image::Image;
+use krilla::outline::{Outline, OutlineNode};
 use krilla::page::PageSettings;
 use krilla::text::Font;
 use krilla::{Data, SerializeSettings};
@@ -29,6 +31,7 @@ pub fn render_pdf(
     anchors: &AnchorTable,
     page_width_pt: f32,
     page_height_pt: f32,
+    toc_entries: &[md2pdf_layout::TocEntry],
 ) -> anyhow::Result<Vec<u8>> {
     let configuration = pdf_a2b_configuration()?;
     let settings = SerializeSettings { configuration, ..Default::default() };
@@ -128,6 +131,33 @@ pub fn render_pdf(
         for annotation in pending_annotations {
             page.add_annotation(annotation);
         }
+    }
+
+    if !toc_entries.is_empty() {
+        let mut outline = Outline::new();
+        let mut current_top_level: Option<OutlineNode> = None;
+        for entry in toc_entries {
+            let Some(anchor) = anchors.get(&entry.id) else { continue };
+            let destination = XyzDestination::new(anchor.page, Point::from_xy(anchor.x, anchor.y));
+            let node = OutlineNode::new(entry.text.clone(), destination);
+            if entry.level <= 1 {
+                if let Some(finished) = current_top_level.take() {
+                    outline.push_child(finished);
+                }
+                current_top_level = Some(node);
+            } else if let Some(parent) = current_top_level.as_mut() {
+                parent.push_child(node);
+            } else {
+                // A deeper-level entry with no preceding top-level entry (shouldn't happen given
+                // TOC generation always starts from level 1, but degrade to a flat top-level
+                // entry rather than dropping it).
+                outline.push_child(node);
+            }
+        }
+        if let Some(finished) = current_top_level.take() {
+            outline.push_child(finished);
+        }
+        document.set_outline(outline);
     }
 
     document.finish().context("krilla failed to serialize the document")

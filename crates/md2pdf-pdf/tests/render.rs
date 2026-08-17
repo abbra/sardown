@@ -27,8 +27,7 @@ fn renders_a_single_page_with_one_text_run_to_valid_pdf_bytes() {
         }],
     };
 
-    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0)
-        .expect("render_pdf failed");
+    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0, &[]).expect("render_pdf failed");
 
     assert!(pdf_bytes.starts_with(b"%PDF-"), "output does not start with a PDF header");
     let doc = lopdf::Document::load_mem(&pdf_bytes).expect("krilla output is not a valid PDF");
@@ -55,8 +54,7 @@ fn renders_a_page_with_a_stroked_path_and_a_raster_image() {
         ],
     };
 
-    let pdf_bytes = render_pdf(&[page], &db, &images, &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0)
-        .expect("render_pdf failed");
+    let pdf_bytes = render_pdf(&[page], &db, &images, &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0, &[]).expect("render_pdf failed");
     let doc = lopdf::Document::load_mem(&pdf_bytes).expect("output is not a valid PDF");
     assert_eq!(doc.get_pages().len(), 1);
 }
@@ -91,8 +89,7 @@ fn text_after_a_stroked_path_is_not_drawn_in_fill_and_stroke_mode() {
         ],
     };
 
-    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0)
-        .expect("render_pdf failed");
+    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0, &[]).expect("render_pdf failed");
     let doc = lopdf::Document::load_mem(&pdf_bytes).expect("output is not a valid PDF");
     let page_id = *doc.get_pages().values().next().expect("expected one page");
     let content = doc.get_page_content(page_id);
@@ -136,8 +133,7 @@ fn renders_a_page_with_a_diagram_and_both_link_kinds() {
         ],
     };
 
-    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &diagrams, &anchors, 612.0, 792.0)
-        .expect("render_pdf failed");
+    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &diagrams, &anchors, 612.0, 792.0, &[]).expect("render_pdf failed");
     let doc = lopdf::Document::load_mem(&pdf_bytes).expect("output is not a valid PDF");
     assert_eq!(doc.get_pages().len(), 1);
 }
@@ -152,7 +148,7 @@ fn dangling_internal_anchor_is_skipped_not_errored() {
             destination: LinkTarget::InternalAnchor("does-not-exist".to_string()),
         }],
     };
-    let result = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0);
+    let result = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0, &[]);
     assert!(result.is_ok(), "a dangling internal link should be silently skipped, not fail the whole render");
 }
 
@@ -170,7 +166,7 @@ fn cross_file_anchor_reaching_pdf_render_is_skipped_not_errored() {
             destination: LinkTarget::CrossFileAnchor { file: std::path::PathBuf::from("other.md"), fragment: None },
         }],
     };
-    let result = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0);
+    let result = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0, &[]);
     assert!(result.is_ok(), "a CrossFileAnchor reaching the renderer should be skipped, not fail the whole render");
 }
 
@@ -192,16 +188,7 @@ fn embedded_font_is_subsetted_not_fully_embedded() {
             color: [0, 0, 0],
         }],
     };
-    let pdf_bytes = render_pdf(
-        &[page],
-        &db,
-        &ImageTable::new(),
-        &DiagramTable::new(),
-        &AnchorTable::new(),
-        612.0,
-        792.0,
-    )
-    .unwrap();
+    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0, &[]).unwrap();
 
     // krilla doesn't set the (spec-optional) `Length1` key on FontFile2 streams, so the only
     // reliable way to find the embedded font program is to follow FontDescriptor -> FontFile2
