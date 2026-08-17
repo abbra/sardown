@@ -1748,6 +1748,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "md2pdf-slides"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cosmic-text",
+ "fontdb 0.23.0",
+ "md2pdf-ast",
+ "md2pdf-enrich",
+ "md2pdf-layout",
+ "md2pdf-style",
+ "toml",
+]
+
+[[package]]
 name = "md2pdf-style"
 version = "0.1.0"
 dependencies = [

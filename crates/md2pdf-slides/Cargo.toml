@@ -13,3 +13,4 @@ md2pdf-style = { version = "0.1.0", path = "../md2pdf-style" }
 
 [dev-dependencies]
 toml = "1.1.4"
+fontdb = "0.23"
