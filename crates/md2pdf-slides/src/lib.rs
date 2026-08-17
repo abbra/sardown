@@ -12,7 +12,7 @@ use md2pdf_ast::{BlockNode, ImageSource};
 pub use postprocess::{center_vertically, draw_background_diagram, draw_background_image, fill_background};
 pub use rescale::rescale_slide_content;
 pub use resolve::resolve_layout;
-pub use shrink::layout_slide_with_shrink;
+pub use shrink::{layout_slide_with_shrink, DeckContext};
 pub use split::{split_into_slides, Slide};
 pub use stylesheet_for_slide::build_slide_stylesheet;
 
@@ -61,21 +61,13 @@ pub fn render_slide_deck(
     let mut background_diagrams = md2pdf_enrich::DiagramTable::new();
     let mut attempted_background_paths = std::collections::HashSet::new();
 
+    let deck_context = DeckContext { geometry: &geometry, base_dir, diagrams: &diagrams, base_stylesheet: stylesheet, min_scale: stylesheet.slides.min_scale };
+
     let mut slide_outputs = Vec::with_capacity(slides.len());
     for (i, slide) in slides.iter().enumerate() {
-        let layout = resolve_layout(slide.layout_name.as_deref(), &stylesheet.slides)
-            .with_context(|| format!("resolving layout for slide {} (1-indexed)", i + 1))?;
-        let mut output = layout_slide_with_shrink(
-            &slide.blocks,
-            &geometry,
-            font_system,
-            base_dir,
-            &diagrams,
-            stylesheet,
-            &layout,
-            stylesheet.slides.min_scale,
-            i + 1,
-        );
+        let layout =
+            resolve_layout(slide.layout_name.as_deref(), &stylesheet.slides).with_context(|| format!("resolving layout for slide {} (1-indexed)", i + 1))?;
+        let mut output = layout_slide_with_shrink(&slide.blocks, font_system, &deck_context, &layout, i + 1);
 
         if layout.vertical_align == md2pdf_style::VerticalAlign::Center {
             let page_height_pt = output.page_height_pt;
