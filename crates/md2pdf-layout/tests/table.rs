@@ -9,7 +9,11 @@ fn test_font_system() -> FontSystem {
 }
 
 fn cell(text: &str) -> Vec<InlineNode> {
-    vec![InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size: 12.0, color: [0, 0, 0], font_family: "sans-serif".to_string() }, link_target: None }]
+    vec![InlineNode {
+        text: text.to_string(),
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size: 12.0, color: [0, 0, 0], font_family: "sans-serif".to_string() },
+        link_target: None,
+    }]
 }
 
 #[test]

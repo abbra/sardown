@@ -146,20 +146,37 @@ fn place_inline_content(
         }
 
         for shaped_run in group {
+            let source_style = &content[shaped_run.source_index].style;
             let link_target = content[shaped_run.source_index].link_target.clone();
+            let strikethrough = source_style.strikethrough;
+            let strikethrough_color = source_style.color;
             let mut element = shaped_run.element;
-            let rect = match &mut element {
+            let (rect, strike_line) = match &mut element {
                 PositionedElement::TextRun { x, y, glyphs, size, .. } => {
                     *x += margin_pt + indent_pt;
                     *y = placed_y;
                     let width: f32 = glyphs.iter().map(|g| g.x_advance).sum();
-                    Rect { x: *x, y: placed_y - *size, width, height: *size * 1.2 }
+                    let rect = Rect { x: *x, y: placed_y - *size, width, height: *size * 1.2 };
+                    // A strikethrough line conventionally sits roughly through the x-height, above
+                    // the baseline -- 0.3x the font size is a reasonable approximation without
+                    // needing the font's own strikethrough-position metric (not exposed by the
+                    // PositionedGlyph data this layer already works with).
+                    let line_y = *y - *size * 0.3;
+                    let line = strikethrough.then_some(([*x, line_y], [*x + width, line_y]));
+                    (rect, line)
                 }
                 _ => unreachable!("shape_rich_paragraph only ever produces TextRun elements"),
             };
             cursor.current.push(element);
             if let Some(destination) = link_target {
                 cursor.current.push(PositionedElement::LinkAnnotation { rect, destination });
+            }
+            if let Some((start, end)) = strike_line {
+                cursor.current.push(PositionedElement::Path {
+                    points: vec![PathCommand::MoveTo(start[0], start[1]), PathCommand::LineTo(end[0], end[1])],
+                    fill: None,
+                    stroke: Some(StrokeStyle { color: strikethrough_color, width: 1.0 }),
+                });
             }
         }
         cursor.y = placed_y + line_height;
@@ -368,7 +385,14 @@ fn render_block(
                 });
                 let label_node = md2pdf_ast::InlineNode {
                     text: resolved.label.clone(),
-                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt, color: resolved.label_color.0, font_family: resolved.font_family.clone() },
+                    style: md2pdf_ast::TextStyle {
+                        bold: false,
+                        italic: false,
+                        strikethrough: false,
+                        size: code_font_size_pt,
+                        color: resolved.label_color.0,
+                        font_family: resolved.font_family.clone(),
+                    },
                     link_target: None,
                 };
                 let mut label_elements = shape_paragraph(font_system, std::slice::from_ref(&label_node), cursor.content_width_pt);
@@ -389,13 +413,27 @@ fn render_block(
             if cursor.style.code_block.label_style == md2pdf_style::LabelStyle::Inline {
                 combined.push(md2pdf_ast::InlineNode {
                     text: format!("{}\n", resolved.label),
-                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt, color: resolved.label_color.0, font_family: resolved.font_family.clone() },
+                    style: md2pdf_ast::TextStyle {
+                        bold: false,
+                        italic: false,
+                        strikethrough: false,
+                        size: code_font_size_pt,
+                        color: resolved.label_color.0,
+                        font_family: resolved.font_family.clone(),
+                    },
                     link_target: None,
                 });
             }
             combined.extend(tokens.iter().map(|t| md2pdf_ast::InlineNode {
                 text: t.text.clone(),
-                style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt, color: t.color, font_family: resolved.font_family.clone() },
+                style: md2pdf_ast::TextStyle {
+                    bold: false,
+                    italic: false,
+                    strikethrough: false,
+                    size: code_font_size_pt,
+                    color: t.color,
+                    font_family: resolved.font_family.clone(),
+                },
                 link_target: None,
             }));
             // One rich-shaping call over all tokens so tokens on the same source line (e.g.
@@ -476,7 +514,14 @@ fn render_block(
             if label_style == md2pdf_style::LabelStyle::Corner {
                 let badge_node = md2pdf_ast::InlineNode {
                     text: resolved.label.clone(),
-                    style: md2pdf_ast::TextStyle { bold: false, italic: false, size: code_font_size_pt * 0.8, color: resolved.label_color.0, font_family: resolved.font_family.clone() },
+                    style: md2pdf_ast::TextStyle {
+                        bold: false,
+                        italic: false,
+                        strikethrough: false,
+                        size: code_font_size_pt * 0.8,
+                        color: resolved.label_color.0,
+                        font_family: resolved.font_family.clone(),
+                    },
                     link_target: None,
                 };
                 let badge_elements = shape_paragraph(font_system, std::slice::from_ref(&badge_node), content_width_pt);

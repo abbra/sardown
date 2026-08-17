@@ -55,11 +55,19 @@ fn heading_at_bottom_of_page_moves_with_its_first_line_of_body_text() {
 use md2pdf_ast::{HighlightedToken, InlineNode, TextStyle};
 
 fn plain_inline(text: &str) -> InlineNode {
-    InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size: 12.0, color: [0, 0, 0], font_family: "sans-serif".to_string() }, link_target: None }
+    InlineNode {
+        text: text.to_string(),
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size: 12.0, color: [0, 0, 0], font_family: "sans-serif".to_string() },
+        link_target: None,
+    }
 }
 
 fn sized_inline(text: &str, size: f32) -> InlineNode {
-    InlineNode { text: text.to_string(), style: TextStyle { bold: false, italic: false, size, color: [0, 0, 0], font_family: "sans-serif".to_string() }, link_target: None }
+    InlineNode {
+        text: text.to_string(),
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: "sans-serif".to_string() },
+        link_target: None,
+    }
 }
 
 #[test]
@@ -604,7 +612,7 @@ fn heading_after_mermaid_diagram_does_not_overlap_the_diagrams_bottom_edge() {
     let heading_size = 22.0;
     let heading_content = InlineNode {
         text: "Next".to_string(),
-        style: TextStyle { bold: false, italic: false, size: heading_size, color: [0, 0, 0], font_family: "sans-serif".to_string() },
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size: heading_size, color: [0, 0, 0], font_family: "sans-serif".to_string() },
         link_target: None,
     };
     let ast = vec![
@@ -1149,4 +1157,53 @@ fn headings_and_code_blocks_stay_left_aligned_even_under_a_justified_stylesheet(
         text_run_positions(&justified_output.pages),
         "expected heading and code block glyph positions to be identical regardless of typography.alignment"
     );
+}
+
+#[test]
+fn strikethrough_text_draws_a_horizontal_line_through_it() {
+    let mut plain = plain_inline("plain");
+    let mut struck = plain_inline("struck");
+    struck.style.strikethrough = true;
+    plain.style.strikethrough = false;
+    let ast = vec![BlockNode::Paragraph { content: vec![plain, struck] }];
+
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+
+    // `TextRun::text` holds the *whole shaped line's* text for every run on that line, not just
+    // that run's own substring (confirmed empirically -- both spans' TextRuns contain
+    // "plainstruck"), so runs can't be told apart by text content. "plain" and "struck" are
+    // adjacent with no space between them, so they land as two contiguous TextRuns in source
+    // order: the first (smaller x) is "plain", the second (larger x, picking up exactly where
+    // "plain" ends) is "struck".
+    let mut text_runs: Vec<(f32, f32, f32)> = pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            PositionedElement::TextRun { x, y, glyphs, .. } => Some((*x, *y, glyphs.iter().map(|g| g.x_advance).sum::<f32>())),
+            _ => None,
+        })
+        .collect();
+    text_runs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    assert_eq!(text_runs.len(), 2, "expected exactly one TextRun per span, got {text_runs:?}");
+    let plain_run_x = (text_runs[0].0, text_runs[0].1);
+    let struck_run = text_runs[1];
+
+    let (struck_x, struck_y, struck_width) = struck_run;
+    let strike_line = pages[0].elements.iter().find_map(|e| match e {
+        PositionedElement::Path { points, stroke: Some(_), .. } => match points.as_slice() {
+            [md2pdf_layout::PathCommand::MoveTo(x0, y0), md2pdf_layout::PathCommand::LineTo(x1, y1)] if y0 == y1 => Some((*x0, *y0, *x1)),
+            _ => None,
+        },
+        _ => None,
+    });
+
+    let (line_x0, line_y, line_x1) = strike_line.expect("expected a horizontal strikethrough line path");
+    assert!(
+        line_x0 >= struck_x - 0.5 && line_x1 <= struck_x + struck_width + 0.5,
+        "expected the line to span the struck-through run's own width, got {line_x0}..{line_x1} vs run {struck_x}..{}",
+        struck_x + struck_width
+    );
+    assert!(line_y < struck_y, "expected the strikethrough line to sit above the text baseline");
+    assert_ne!((line_x0, line_y), (plain_run_x.0, plain_run_x.1), "the line shouldn't be positioned at the plain run's own coordinates");
 }

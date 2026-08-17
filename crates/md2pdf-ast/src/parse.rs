@@ -20,6 +20,7 @@ struct InlineBuilder {
     runs: Vec<InlineNode>,
     bold_depth: u32,
     italic_depth: u32,
+    strikethrough_depth: u32,
     link_target: Option<LinkTarget>,
     base_size: f32,
     base_color: [u8; 3],
@@ -28,7 +29,7 @@ struct InlineBuilder {
 
 impl InlineBuilder {
     fn new(base_size: f32, base_color: [u8; 3], base_font_family: String) -> Self {
-        Self { runs: Vec::new(), bold_depth: 0, italic_depth: 0, link_target: None, base_size, base_color, base_font_family }
+        Self { runs: Vec::new(), bold_depth: 0, italic_depth: 0, strikethrough_depth: 0, link_target: None, base_size, base_color, base_font_family }
     }
 
     fn push_text(&mut self, text: String) {
@@ -47,6 +48,7 @@ impl InlineBuilder {
             style: TextStyle {
                 bold: self.bold_depth > 0,
                 italic: self.italic_depth > 0,
+                strikethrough: self.strikethrough_depth > 0,
                 size: self.base_size,
                 color: self.base_color,
                 font_family,
@@ -75,6 +77,8 @@ fn apply_inline_event(builder: &mut InlineBuilder, event: Event) {
         Event::End(TagEnd::Strong) => builder.bold_depth = builder.bold_depth.saturating_sub(1),
         Event::Start(Tag::Emphasis) => builder.italic_depth += 1,
         Event::End(TagEnd::Emphasis) => builder.italic_depth = builder.italic_depth.saturating_sub(1),
+        Event::Start(Tag::Strikethrough) => builder.strikethrough_depth += 1,
+        Event::End(TagEnd::Strikethrough) => builder.strikethrough_depth = builder.strikethrough_depth.saturating_sub(1),
         Event::Start(Tag::Link { dest_url, .. }) => {
             builder.link_target = Some(link_target_from_url(&dest_url));
         }
@@ -141,6 +145,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
             | Event::TaskListMarker(_)
             | Event::Start(Tag::Strong)
             | Event::Start(Tag::Emphasis)
+            | Event::Start(Tag::Strikethrough)
             | Event::Start(Tag::Link { .. }) => {
                 let mut builder = InlineBuilder::new(typo.body_size, typo.body_color, typo.body_font_family.clone());
                 apply_inline_event(&mut builder, event);
@@ -422,7 +427,7 @@ pub fn tag_diagram_origins(blocks: &mut [BlockNode], file: &std::path::Path) {
 /// `HEADING_SIZES`.
 pub fn heading_style_for_level(level: u8) -> TextStyle {
     let size = HEADING_SIZES[(level.clamp(1, 6) - 1) as usize];
-    TextStyle { bold: false, italic: false, size, color: DEFAULT_COLOR, font_family: md2pdf_style::HeadingStyle::default().font_family }
+    TextStyle { bold: false, italic: false, strikethrough: false, size, color: DEFAULT_COLOR, font_family: md2pdf_style::HeadingStyle::default().font_family }
 }
 
 fn heading_level_u8(level: HeadingLevel) -> u8 {

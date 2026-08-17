@@ -300,6 +300,20 @@ fn parse_with_slugs_shares_diagram_id_counter_across_calls() {
 }
 
 #[test]
+fn strikethrough_text_sets_the_strikethrough_style_flag() {
+    let ast = parse("Some ~~struck~~ text.\n");
+    match &ast[0] {
+        BlockNode::Paragraph { content } => {
+            let plain = content.iter().find(|n| n.text.contains("Some")).expect("missing plain text run");
+            let struck = content.iter().find(|n| n.text == "struck").expect("missing struck-through run");
+            assert!(!plain.style.strikethrough, "plain text should not be marked strikethrough");
+            assert!(struck.style.strikethrough, "expected the ~~struck~~ run to be marked strikethrough");
+        }
+        other => panic!("expected Paragraph, got {other:?}"),
+    }
+}
+
+#[test]
 fn inline_code_spans_use_a_monospace_font_distinct_from_surrounding_text() {
     let ast = parse("Some `inline code` here.\n");
     match &ast[0] {

@@ -127,7 +127,7 @@ fn prepend_chapter_start(blocks: &mut Vec<BlockNode>, title: &str, slugs: &mut S
             id,
             content: vec![InlineNode {
                 text: title.to_string(),
-                style: md2pdf_ast::TextStyle { bold: false, italic: false, size: resolved.size_pt, color: resolved.color.0, font_family: resolved.font_family.clone() },
+                style: md2pdf_ast::TextStyle { bold: false, italic: false, strikethrough: false, size: resolved.size_pt, color: resolved.color.0, font_family: resolved.font_family.clone() },
                 link_target: None,
             }],
         });

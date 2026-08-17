@@ -24,10 +24,9 @@ highlight box the way fenced code blocks do — that's a separate,
 not-yet-implemented rendering feature (drawing a background behind an
 individual run within a paragraph, rather than behind a whole block).
 
-`~~strikethrough~~` is parsed without leaving stray `~~` characters in the
-output, but the strikethrough line itself isn't drawn — the text renders
-as plain, unstruck text. Footnotes aren't specially handled; they render
-as their literal source text.
+`~~strikethrough~~` renders with a line drawn through the text, in the
+text's own color. Footnotes aren't specially handled; they render as
+their literal source text.
 
 Task list items (`- [ ]`/`- [x]`) render a checkbox glyph (☐/☑) in place
 of the literal brackets:

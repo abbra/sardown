@@ -39,6 +39,7 @@ pub struct InlineNode {
 pub struct TextStyle {
     pub bold: bool,
     pub italic: bool,
+    pub strikethrough: bool,
     pub size: f32,
     pub color: [u8; 3],
     pub font_family: String,
