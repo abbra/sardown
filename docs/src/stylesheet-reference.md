@@ -42,6 +42,19 @@ margins (both must be set together too) — see
 |---|---|---|
 | `format` | `"arabic"` \| `"roman_lower"` \| `"roman_upper"` | `"arabic"` |
 | `start_at` | integer | `1` |
+| `resets` | array of `[[page.numbering.resets]]` tables | `[]` |
+
+#### `[[page.numbering.resets]]`
+
+| Field | Type | Default |
+|---|---|---|
+| `at_heading` | string (a heading id) | required, no default |
+| `format` | `"arabic"` \| `"roman_lower"` \| `"roman_upper"` | `"arabic"` |
+| `start_at` | integer | `1` |
+
+Restarts numbering (with its own `format`/`start_at`) from `at_heading`'s
+page onward — see
+[Restarting numbering partway through](./styling/page.md#restarting-numbering-partway-through).
 
 ## `[typography]`
 

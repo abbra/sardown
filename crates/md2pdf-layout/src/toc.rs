@@ -90,6 +90,10 @@ pub fn insert_table_of_contents(output: &mut LayoutOutput, ast: &[BlockNode], st
         page.page_number += toc_page_count;
     }
 
+    // Resolved after the shift above, so a reset's `at_heading` looks up the same final,
+    // post-shift page numbers that `render_headers_footers` will later use for the same headings.
+    let numbering_segments = crate::header_footer::resolve_numbering_segments(&stylesheet.page.numbering, &output.anchors);
+
     let title_style = stylesheet.heading.resolve(1);
     let (_, dot_width) = shape_line(font_system, ".", body.body_size_pt, body.body_color.0, &body.font_family);
     let dot_width = dot_width.max(0.1);
@@ -114,7 +118,7 @@ pub fn insert_table_of_contents(output: &mut LayoutOutput, ast: &[BlockNode], st
 
         let indent_pt = entry.level.saturating_sub(1) as f32 * ENTRY_INDENT_PT;
         let final_page = output.anchors.get(&entry.id).map(|a| a.page).unwrap_or(0);
-        let page_number_text = crate::format_page_number(stylesheet.page.numbering.start_at + final_page as u32, stylesheet.page.numbering.format);
+        let page_number_text = crate::header_footer::display_number_for_page(final_page, &numbering_segments);
 
         let (heading_element, heading_width) = shape_line(font_system, &entry.text, body.body_size_pt, body.body_color.0, &body.font_family);
         let (page_number_element, page_number_width) = shape_line(font_system, &page_number_text, body.body_size_pt, body.body_color.0, &body.font_family);

@@ -1,7 +1,7 @@
-use crate::{PageContext, PageGeometry, PathCommand, PositionedElement, PositionedPage};
+use crate::{AnchorTable, PageContext, PageGeometry, PathCommand, PositionedElement, PositionedPage};
 use cosmic_text::FontSystem;
 use md2pdf_ast::{InlineNode, TextStyle};
-use md2pdf_style::{DocumentStyle, HeaderFooterMode, HeaderFooterStyle, HeaderZones, NumberingFormat, Stylesheet};
+use md2pdf_style::{DocumentStyle, HeaderFooterMode, HeaderFooterStyle, HeaderZones, NumberingFormat, PageNumbering, Stylesheet};
 
 // Mirrors paginate.rs's own PT_PER_MM: a fixed physical constant, not business logic, so a small
 // local duplicate is lower-risk than threading a cross-module import for it.
@@ -58,6 +58,46 @@ pub fn format_page_number(n: u32, format: NumberingFormat) -> String {
             }
         }
     }
+}
+
+/// A numbering config active from some physical page onward: either the document's own base
+/// `[page.numbering]` (`from_page: 0`), or a reset's config from its heading's resolved page.
+pub(crate) struct NumberingSegment {
+    from_page: usize,
+    format: NumberingFormat,
+    start_at: u32,
+}
+
+/// Resolves `numbering` and every configured reset into a page-ascending list of segments (always
+/// at least the base segment), skipping -- with a warning -- any reset whose `at_heading` doesn't
+/// match a real heading id. There's no validation-time way to know which heading ids will exist,
+/// so a typo'd `at_heading` would otherwise silently apply the base numbering for the rest of the
+/// document instead of signaling the mistake.
+pub(crate) fn resolve_numbering_segments(numbering: &PageNumbering, anchors: &AnchorTable) -> Vec<NumberingSegment> {
+    let mut segments = vec![NumberingSegment { from_page: 0, format: numbering.format, start_at: numbering.start_at }];
+    for reset in &numbering.resets {
+        match anchors.get(&reset.at_heading) {
+            Some(anchor) => segments.push(NumberingSegment { from_page: anchor.page, format: reset.format, start_at: reset.start_at }),
+            None => eprintln!(
+                "warning: [page.numbering] reset references unknown heading id {:?} -- ignoring this reset",
+                reset.at_heading
+            ),
+        }
+    }
+    segments.sort_by_key(|s| s.from_page);
+    segments
+}
+
+/// The formatted page-number text for `page_index` (0-indexed physical page), per whichever
+/// segment is active there -- the last segment (by page order) whose `from_page <= page_index`.
+pub(crate) fn display_number_for_page(page_index: usize, segments: &[NumberingSegment]) -> String {
+    let segment = segments
+        .iter()
+        .rev()
+        .find(|s| s.from_page <= page_index)
+        .expect("resolve_numbering_segments always includes a from_page: 0 base segment");
+    let offset_into_segment = (page_index - segment.from_page) as u32;
+    format_page_number(segment.start_at + offset_into_segment, segment.format)
 }
 
 /// Substitutes `{h1}`, `{h2}`, `{page}`, `{total_pages}`, `{title}`, and `{author}` in `template`.
@@ -162,6 +202,7 @@ fn render_band(
 pub fn render_headers_footers(
     pages: &mut [PositionedPage],
     contexts: &[PageContext],
+    anchors: &AnchorTable,
     stylesheet: &Stylesheet,
     geometry: &PageGeometry,
     font_system: &mut FontSystem,
@@ -173,10 +214,14 @@ pub fn render_headers_footers(
     let content_width_pt = geometry.page_width_mm * PT_PER_MM - geometry.horizontal_margin_budget_mm() * PT_PER_MM;
     let full_page_height_pt = geometry.page_height_mm * PT_PER_MM;
     let numbering = &stylesheet.page.numbering;
+    // "Total pages" is always the document's literal physical length in the base numbering
+    // format, regardless of any resets -- resets restart the *displayed* count partway through,
+    // but the document doesn't have multiple "totals".
     let total_pages_display = format_page_number(numbering.start_at + pages.len() as u32 - 1, numbering.format);
+    let segments = resolve_numbering_segments(numbering, anchors);
 
     for (i, (page, ctx)) in pages.iter_mut().zip(contexts.iter()).enumerate() {
-        let page_display = format_page_number(numbering.start_at + i as u32, numbering.format);
+        let page_display = display_number_for_page(i, &segments);
         let is_odd_physical_page = i % 2 == 0;
 
         if stylesheet.header.enabled && !(stylesheet.header.suppress_on_chapter_start && ctx.is_chapter_opener) {
@@ -278,7 +323,7 @@ pub fn layout_with_header_footer(
     };
     let mut output = crate::layout_impl(ast, &geometry, font_system, base_dir, diagrams, stylesheet);
     crate::toc::insert_table_of_contents(&mut output, ast, stylesheet, &geometry, font_system);
-    render_headers_footers(&mut output.pages, &output.page_contexts, stylesheet, &geometry, font_system);
+    render_headers_footers(&mut output.pages, &output.page_contexts, &output.anchors, stylesheet, &geometry, font_system);
     apply_asymmetric_margins(&mut output.pages, &geometry);
     output
 }

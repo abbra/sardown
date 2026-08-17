@@ -23,6 +23,14 @@ fn book_with_headings() -> Vec<BlockNode> {
     parse("# Chapter One\n\nBody one.\n\n## Section A\n\nBody two.\n\n# Chapter Two\n\nBody three.\n")
 }
 
+/// Same shape as `book_with_headings`, but with enough filler text under Chapter One that Chapter
+/// Two lands on a later physical page -- needed to test numbering resets, which only mean
+/// anything when two headings end up on different pages.
+fn book_with_headings_spanning_multiple_pages() -> Vec<BlockNode> {
+    let filler = "Filler text to push the next heading onto a new physical page. ".repeat(200);
+    parse(&format!("# Chapter One\n\n{filler}\n\n# Chapter Two\n\nBody after the break.\n"))
+}
+
 #[test]
 fn disabled_toc_leaves_layout_output_unchanged() {
     let ast = book_with_headings();
@@ -102,6 +110,33 @@ fn toc_entries_link_to_their_target_heading_position() {
     });
     assert!(link_targets_toc_page_zero, "expected a LinkAnnotation on the TOC page targeting chapter-one");
     assert!(chapter_one_anchor.page < output.pages.len());
+}
+
+#[test]
+fn toc_entries_reflect_configured_numbering_resets() {
+    let ast = book_with_headings_spanning_multiple_pages();
+    let mut style = Stylesheet::default();
+    style.toc.enabled = true;
+    style.page.numbering.format = md2pdf_style::NumberingFormat::RomanLower;
+    style.page.numbering.resets =
+        vec![md2pdf_style::PageNumberingReset { at_heading: "chapter-two".to_string(), format: md2pdf_style::NumberingFormat::Arabic, start_at: 1 }];
+    let mut fs = test_font_system();
+    let mut output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+    assert!(output.pages.len() >= 2, "expected the filler text to force Chapter Two onto a later physical page");
+    md2pdf_layout::insert_table_of_contents(&mut output, &ast, &style, &letter_geometry(), &mut fs);
+
+    let toc_texts: Vec<String> = output.pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            PositionedElement::TextRun { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    // Chapter One lands on physical page index 1 (page 0 is the TOC itself), so with the base
+    // numbering's start_at = 1 that's roman_lower "ii", not "i".
+    assert!(toc_texts.iter().any(|t| t == "ii"), "expected Chapter One's page number in roman_lower (before the reset): {toc_texts:?}");
+    assert!(toc_texts.iter().any(|t| t == "1"), "expected Chapter Two's page number reset to arabic 1: {toc_texts:?}");
 }
 
 #[test]

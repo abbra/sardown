@@ -422,6 +422,41 @@ fn asymmetric_margins_shift_recto_and_verso_pages_to_opposite_edges() {
 }
 
 #[test]
+fn a_numbering_reset_restarts_the_page_count_from_the_named_heading() {
+    let style_path = std::env::temp_dir().join("md2pdf-test-numbering-reset-style.toml");
+    std::fs::write(
+        &style_path,
+        "[page.numbering]\nformat = \"roman_lower\"\n\n[[page.numbering.resets]]\nat_heading = \"chapter-two\"\nformat = \"arabic\"\nstart_at = 1\n\n\
+         [footer]\nenabled = true\nsuppress_on_chapter_start = false\nuniform.center = \"PAGENUM:{page}\"\n",
+    )
+    .unwrap();
+
+    // Enough filler text under Chapter One that Chapter Two lands on a later physical page --
+    // a reset only means anything when the headings it separates are on different pages.
+    let md_path = std::env::temp_dir().join("md2pdf-test-numbering-reset-doc.md");
+    let filler = "Filler text to push the next heading onto a new physical page. ".repeat(200);
+    std::fs::write(&md_path, format!("# Chapter One\n\n{filler}\n\n# Chapter Two\n\nBody after the break.\n")).unwrap();
+
+    let out_path = std::env::temp_dir().join("md2pdf-test-numbering-reset-output.pdf");
+    let _ = std::fs::remove_file(&out_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(&md_path).arg("-o").arg(&out_path).arg("--style").arg(&style_path);
+    cmd.assert().success();
+
+    let doc = lopdf::Document::load_mem(&std::fs::read(&out_path).unwrap()).unwrap();
+    let page_count = doc.get_pages().len();
+    assert!(page_count >= 2, "expected Chapter Two to land on a later physical page, got {page_count} pages");
+    let first_page_text = doc.extract_text(&[1]).unwrap_or_default();
+    assert!(first_page_text.contains("PAGENUM:i"), "expected the first page's footer in roman_lower: {first_page_text}");
+    let last_page_text = doc.extract_text(&[page_count as u32]).unwrap_or_default();
+    assert!(last_page_text.contains("PAGENUM:1"), "expected the last page's footer reset to arabic starting at 1: {last_page_text}");
+
+    std::fs::remove_file(&style_path).unwrap();
+    std::fs::remove_file(&md_path).unwrap();
+    std::fs::remove_file(&out_path).unwrap();
+}
+
+#[test]
 fn title_and_author_flags_override_the_stylesheets_document_section_in_header_footer_templates() {
     let style_path = std::env::temp_dir().join("md2pdf-test-document-style.toml");
     std::fs::write(

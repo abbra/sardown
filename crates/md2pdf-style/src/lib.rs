@@ -17,7 +17,7 @@ pub use color::Color;
 pub use document::DocumentStyle;
 pub use header_footer::{HeaderFooterMode, HeaderFooterStyle, HeaderZones};
 pub use heading::{HeadingLevelStyle, HeadingStyle, ResolvedHeadingStyle};
-pub use numbering::{NumberingFormat, PageNumbering};
+pub use numbering::{NumberingFormat, PageNumbering, PageNumberingReset};
 pub use page::{PageFormat, PageStyle};
 pub use structural::{BlockquoteStyle, ListStyle, ThematicBreakStyle};
 pub use table::TableStyle;

@@ -64,3 +64,32 @@ This controls *how a page number is formatted* wherever `{page}`/
 effect unless a header or footer is also enabled. `start_at` lets the
 first page be numbered something other than 1 (e.g. for a document meant
 to be bound after a separately-numbered preface).
+
+## Restarting numbering partway through
+
+```toml
+[page.numbering]
+format = "roman_lower"   # front matter: i, ii, iii, ...
+
+[[page.numbering.resets]]
+at_heading = "chapter-one"
+format = "arabic"        # body restarts at 1, 2, 3, ...
+start_at = 1
+```
+
+A common convention for printed books: front matter (preface, table of
+contents) is numbered with lowercase roman numerals, then the main body
+restarts at arabic `1`. `[[page.numbering.resets]]` (an array — you can
+add more than one) restarts the displayed page count, and optionally the
+format, from a named heading's page onward. `at_heading` is the heading's
+id — the same slug used for cross-reference links (a heading's id is
+whatever `#heading-text` would resolve to; see
+[Cross-References](../books/cross-references.md) for how ids are derived).
+`format`/`start_at` each default to `"arabic"`/`1` if omitted, so
+`at_heading` is the only field you must set.
+
+A reset naming a heading id that doesn't exist in the document is ignored
+with a warning at render time — there's no way to validate heading ids
+before the document is parsed. `{total_pages}` is unaffected by resets: it
+always shows the document's literal physical page count, not a
+per-segment count.
