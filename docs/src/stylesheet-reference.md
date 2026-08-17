@@ -78,10 +78,14 @@ page onward — see
 | `space_before_factor` | number | `0.8` |
 | `color` | color | `"#000000"` |
 | `font_family` | string | `"sans-serif"` |
+| `underline_width_pt` | number | `0.0` (no underline) |
+| `underline_color` | color | `"#000000"` |
 
 Built-in per-level sizes (used when a level has no `[heading.levels.N]`
 override): H1 `28.0`, H2 `22.0`, H3 `18.0`, H4 `16.0`, H5 `14.0`, H6
-`12.0`.
+`12.0`. Setting `underline_width_pt` above `0.0` draws a rule spanning the
+heading's own rendered text width (not the full content width) just below
+its baseline.
 
 ### `[heading.levels.<1-6>]`
 
@@ -90,6 +94,8 @@ override): H1 `28.0`, H2 `22.0`, H3 `18.0`, H4 `16.0`, H5 `14.0`, H6
 | `size_pt` | number | that level's built-in size |
 | `color` | color | `[heading]`'s own `color` |
 | `font_family` | string | `[heading]`'s own `font_family` |
+| `underline_width_pt` | number | `[heading]`'s own `underline_width_pt` |
+| `underline_color` | color | `[heading]`'s own `underline_color` |
 
 ## `[blockquote]`
 
@@ -111,6 +117,14 @@ override): H1 `28.0`, H2 `22.0`, H3 `18.0`, H4 `16.0`, H5 `14.0`, H6
 | Field | Type | Default |
 |---|---|---|
 | `indent_pt` | number | `18.0` |
+
+## `[columns]`
+
+Only used by the `::columns` slide-deck syntax -- see [Slide Decks](./slides.md#columns).
+
+| Field | Type | Default |
+|---|---|---|
+| `gap_pt` | number | `24.0` |
 
 ## `[table]`
 
@@ -219,5 +233,19 @@ auto-shrink-to-fit scaling.
 | `body_size_pt` | number | (inherits `[typography]`) |
 | `background_color` | color | (none) |
 | `text_color` | color | (inherits `[typography]`/`[heading]`) |
+| `secondary_text_color` | color | falls back to `text_color` |
 | `suppress_header` | boolean | `false` |
 | `suppress_footer` | boolean | `false` |
+| `background_image` | path | (none) |
+| `background_image_corner` | `"top_left"` \| `"top_right"` \| `"bottom_left"` \| `"bottom_right"` | `"bottom_left"` |
+| `background_image_width_pt` | number | `60.0` |
+| `background_image_margin_pt` | number | `14.0` |
+
+`text_color` applies to headings and **bold** paragraph/list text;
+`secondary_text_color` applies to non-bold paragraph/list text only --
+lets a layout reproduce a "muted body text, bright bold/heading text"
+hierarchy (e.g. a byline's name staying bright while the rest of its own
+line is dimmed). `background_image` is drawn in one corner of every slide
+using the layout, on top of `background_color` and behind all slide
+content, at its natural aspect ratio scaled to `background_image_width_pt`
+wide.

@@ -36,8 +36,39 @@ background).
 
 ## Columns
 
-Use a Markdown table for side-by-side content -- there is no separate
-"columns" syntax.
+Wrap content in `::columns` / `::column` / `::end` sentinel lines to lay it
+out side by side:
+
+```markdown
+::columns
+
+::column
+
+**TMT + Testing Farm**
+
+- fmf -- Flexible Metadata Format
+- TMT -- Test Management Tool
+
+::column
+
+**Forgejo + Forgejo Actions**
+
+- Forgejo -- community-run soft fork of Gitea
+
+::end
+```
+
+`::columns` opens the block; the first `::column` starts collecting into
+column 0, each later `::column` starts a new column, and `::end` closes
+it. Any number of columns is allowed. A column can contain anything a
+normal slide can -- headings, lists, code blocks, images -- since each
+column is laid out with the same rendering pipeline as the rest of the
+document. Columns are top-aligned and never stretched to match each
+other's height; the gap between them is configurable via
+`[columns].gap_pt` (default `24.0`). A `::columns` block is treated as one
+atomic unit and doesn't split across a page break -- for slides this is
+rarely an issue, since auto-shrink-to-fit (below) already guarantees a
+slide's content fits one page before this ever matters.
 
 ## Auto-shrink-to-fit
 
@@ -51,9 +82,8 @@ prints a warning -- content is never silently dropped.
 
 ## Non-goals
 
-Table of contents generation, background images (only solid background
-colors are supported), and animations/transitions/speaker notes are not
-supported.
+Table of contents generation and animations/transitions/speaker notes are
+not supported.
 
 See the [Stylesheet Reference](./stylesheet-reference.md#slides) for every
 `[slides]`/`[slides.layouts.<name>]` field.
