@@ -1,0 +1,58 @@
+# Typography
+
+```toml
+[typography]
+font_family = "sans-serif"   # default
+font_dirs = []
+use_system_fonts = true
+body_size_pt = 12.0
+body_color = "#000000"
+alignment = "left"
+```
+
+This controls ordinary body text: paragraphs, list items, and blockquote
+text. (Headings have their own font/color/size settings — see
+[Headings](./headings.md) — and table cells reuse `font_family` from here
+but have their own text size — see [Tables](./tables.md).)
+
+## Font family
+
+`font_family` accepts either a generic keyword — `"serif"`, `"sans-serif"`
+(the default), `"monospace"`, `"cursive"`, `"fantasy"` — or a literal font
+name like `"Times New Roman"` or `"Georgia"`. A literal name only works if
+that font is actually loadable (installed as a system font, or found in
+one of `font_dirs`); see
+[Font Resolution](../troubleshooting.md#unknown-font-family-warnings) for
+what happens when it isn't.
+
+## Font discovery
+
+- `use_system_fonts` (default `true`): scan the machine's installed
+  system fonts.
+- `font_dirs`: a list of additional directories to scan for font files,
+  useful for bundling a specific font alongside your document instead of
+  depending on it being installed system-wide.
+
+## Body size and color
+
+`body_size_pt` is the font size in points (default `12.0`). `body_color`
+accepts either a 6-digit hex string (`"#1a1a1a"`, with or without the
+leading `#`) or an explicit `[r, g, b]` array (`[26, 26, 26]`) — use
+whichever is more natural for a given value; both forms are accepted
+everywhere a color field appears in a stylesheet.
+
+## Alignment
+
+`alignment` controls how paragraph, list, and blockquote text wraps:
+
+- `"left"` (default) — ragged-right, the conventional choice for English
+  and most Latin-script typesetting.
+- `"justify"` — flush on both sides (each wrapped line, except a
+  paragraph's last line, stretches to fill the full content width),
+  the conventional choice for Russian and much continental European
+  book typesetting.
+- `"right"`, `"center"` — also available, less commonly needed for body
+  text.
+
+Headings, code blocks, and table cells are always left-aligned regardless
+of this setting.
