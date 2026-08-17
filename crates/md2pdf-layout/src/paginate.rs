@@ -61,6 +61,28 @@ impl<'a> Cursor<'a> {
         }
     }
 
+    /// Builds a Cursor for laying out one `::columns` column in isolation: an unbounded page
+    /// height so `break_page`'s own height check can never fire (see the `BlockNode::Columns`
+    /// arm's own doc comment for why), starting at `y = 0.0` in the column's own local coordinate
+    /// space rather than a page margin. `current_h1`/`current_h2` are inherited from the parent
+    /// cursor (a column never starts a new chapter of its own).
+    fn isolated(content_width_pt: f32, style: &'a md2pdf_style::Stylesheet, current_h1: Option<String>, current_h2: Option<String>) -> Self {
+        Self {
+            y: 0.0,
+            page_height_pt: f32::MAX,
+            content_width_pt,
+            pages: Vec::new(),
+            current: Vec::new(),
+            page_number: 0,
+            anchors: AnchorTable::new(),
+            current_h1,
+            current_h2,
+            chapter_opener_pending: false,
+            page_contexts: Vec::new(),
+            style,
+        }
+    }
+
     fn remaining_height(&self) -> f32 {
         self.page_height_pt - self.y
     }
@@ -838,20 +860,7 @@ fn render_block(
             let mut max_height_pt: f32 = 0.0;
 
             for (i, column_blocks) in columns.iter().enumerate() {
-                let mut sub_cursor = Cursor {
-                    y: 0.0,
-                    page_height_pt: f32::MAX,
-                    content_width_pt: column_width_pt,
-                    pages: Vec::new(),
-                    current: Vec::new(),
-                    page_number: 0,
-                    anchors: AnchorTable::new(),
-                    current_h1: cursor.current_h1.clone(),
-                    current_h2: cursor.current_h2.clone(),
-                    chapter_opener_pending: false,
-                    page_contexts: Vec::new(),
-                    style: cursor.style,
-                };
+                let mut sub_cursor = Cursor::isolated(column_width_pt, cursor.style, cursor.current_h1.clone(), cursor.current_h2.clone());
                 for (j, block) in column_blocks.iter().enumerate() {
                     render_block(block, &mut sub_cursor, 0.0, 0.0, font_system, images, diagrams, hyphenator, column_blocks.get(j + 1));
                     sub_cursor.y += LINE_SPACING_PT;

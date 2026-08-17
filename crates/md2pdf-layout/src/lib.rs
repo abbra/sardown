@@ -75,11 +75,12 @@ pub struct PageContext {
     pub current_h1: Option<String>,
     pub current_h2: Option<String>,
     pub is_chapter_opener: bool,
-    /// Set by md2pdf-slides for a slide whose resolved layout has `suppress_header`/
-    /// `suppress_footer` set. Independent of `is_chapter_opener`: a book or single-document
-    /// render never sets these (always `false`), since `is_chapter_opener` already covers that
-    /// case and always suppresses header and footer together, which a slide layout must not be
-    /// forced to do.
+    /// Independent per-page suppression, orthogonal to `is_chapter_opener`: that flag always
+    /// suppresses header and footer together (the book/single-document heuristic), whereas a
+    /// caller that resolves suppression per page -- e.g. a slide deck honoring one layout's own
+    /// `suppress_header`/`suppress_footer` -- needs to set either one independently. Callers that
+    /// have no such per-page policy of their own (book/single-document rendering) always leave
+    /// both `false`.
     pub suppress_header: bool,
     pub suppress_footer: bool,
 }
@@ -106,6 +107,10 @@ pub struct StrokeStyle {
     pub width: f32,
 }
 
+/// Exhaustively matched outside this crate too, not just by `md2pdf-pdf`'s own renderer --
+/// `md2pdf-slides::postprocess` walks every variant to compute a page's vertical content extent.
+/// Adding a variant is a compile error at both sites until updated, which is the point: treat
+/// that failure as a checklist, not a nuisance.
 #[derive(Debug, Clone)]
 pub enum PositionedElement {
     TextRun {
