@@ -19,44 +19,51 @@ use md2pdf_style::{SlideLayoutStyle, Stylesheet};
 /// levels keep their own distinct sizes), a `Paragraph`'s or list item's target is
 /// `layout.body_size_pt` if the layout sets one, else `base.typography.body_size_pt`, and a table
 /// cell's target is always `base.table.text_size_pt` (`SlideLayoutStyle` has no table-text
-/// override). `layout.text_color`, if set, overwrites every category's color uniformly.
+/// override).
+///
+/// `layout.text_color`, if set, overwrites headings, table cells, and **bold** paragraph/list-item
+/// runs. Non-bold paragraph/list-item runs use `layout.secondary_text_color` instead (falling
+/// back to `text_color` when unset) -- reproducing a common "muted body text, bright bold/heading
+/// text" presentation hierarchy (e.g. a byline's name staying bright while the rest of its own
+/// line is dimmed) that a single flat color can't express.
 pub fn rescale_slide_content(blocks: &mut [BlockNode], base: &Stylesheet, layout: &SlideLayoutStyle, scale: f32) {
     let body_size_pt = layout.body_size_pt.unwrap_or(base.typography.body_size_pt) * scale;
     let table_cell_size_pt = base.table.text_size_pt * scale;
-    let text_color = layout.text_color.map(|c| c.0);
-    rescale_blocks(blocks, base, scale, body_size_pt, table_cell_size_pt, text_color);
+    let primary_color = layout.text_color.map(|c| c.0);
+    let secondary_color = layout.secondary_text_color.map(|c| c.0).or(primary_color);
+    rescale_blocks(blocks, base, scale, body_size_pt, table_cell_size_pt, primary_color, secondary_color);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn rescale_blocks(
     blocks: &mut [BlockNode],
     base: &Stylesheet,
     scale: f32,
     body_size_pt: f32,
     table_cell_size_pt: f32,
-    text_color: Option<[u8; 3]>,
+    primary_color: Option<[u8; 3]>,
+    secondary_color: Option<[u8; 3]>,
 ) {
     for block in blocks {
         match block {
             BlockNode::Heading { level, content, .. } => {
                 let size = base.heading.resolve(*level).size_pt * scale;
-                set_inline_style(content, size, text_color);
+                set_inline_style(content, size, primary_color, primary_color);
             }
-            BlockNode::Paragraph { content } => set_inline_style(content, body_size_pt, text_color),
-            BlockNode::Blockquote { content } => {
-                rescale_blocks(content, base, scale, body_size_pt, table_cell_size_pt, text_color)
-            }
+            BlockNode::Paragraph { content } => set_inline_style(content, body_size_pt, secondary_color, primary_color),
+            BlockNode::Blockquote { content } => rescale_blocks(content, base, scale, body_size_pt, table_cell_size_pt, primary_color, secondary_color),
             BlockNode::List { items, .. } => {
                 for item in items {
-                    rescale_blocks(item, base, scale, body_size_pt, table_cell_size_pt, text_color);
+                    rescale_blocks(item, base, scale, body_size_pt, table_cell_size_pt, primary_color, secondary_color);
                 }
             }
             BlockNode::Table { headers, rows, .. } => {
                 for cell in headers.iter_mut() {
-                    set_inline_style(cell, table_cell_size_pt, text_color);
+                    set_inline_style(cell, table_cell_size_pt, primary_color, primary_color);
                 }
                 for row in rows.iter_mut() {
                     for cell in row.iter_mut() {
-                        set_inline_style(cell, table_cell_size_pt, text_color);
+                        set_inline_style(cell, table_cell_size_pt, primary_color, primary_color);
                     }
                 }
             }
@@ -65,10 +72,13 @@ fn rescale_blocks(
     }
 }
 
-fn set_inline_style(nodes: &mut [InlineNode], size: f32, text_color: Option<[u8; 3]>) {
+/// `regular_color` applies to non-bold runs, `bold_color` to bold runs -- callers pass the same
+/// value for both when a block category (headings, table cells) has no muted/bright distinction.
+fn set_inline_style(nodes: &mut [InlineNode], size: f32, regular_color: Option<[u8; 3]>, bold_color: Option<[u8; 3]>) {
     for node in nodes {
         node.style.size = size;
-        if let Some(color) = text_color {
+        let color = if node.style.bold { bold_color } else { regular_color };
+        if let Some(color) = color {
             node.style.color = color;
         }
     }

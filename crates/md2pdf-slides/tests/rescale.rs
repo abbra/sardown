@@ -10,6 +10,14 @@ fn plain(text: &str, size: f32) -> InlineNode {
     }
 }
 
+fn bold(text: &str, size: f32) -> InlineNode {
+    InlineNode {
+        text: text.to_string(),
+        style: TextStyle { bold: true, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: "sans-serif".to_string() },
+        link_target: None,
+    }
+}
+
 fn sizes_in(blocks: &[BlockNode]) -> Vec<f32> {
     fn collect(blocks: &[BlockNode], out: &mut Vec<f32>) {
         for block in blocks {
@@ -106,6 +114,43 @@ fn a_text_color_override_applies_to_both_paragraph_and_heading_text() {
     let BlockNode::Paragraph { content: paragraph_content } = &blocks[1] else { unreachable!() };
     assert_eq!(heading_content[0].style.color, [255, 255, 255]);
     assert_eq!(paragraph_content[0].style.color, [255, 255, 255]);
+}
+
+#[test]
+fn secondary_text_color_applies_only_to_non_bold_paragraph_runs() {
+    let mut blocks = vec![BlockNode::Paragraph { content: vec![bold("Alexander Bokovoy", 12.0), plain(" · plain tail", 12.0)] }];
+    let base = Stylesheet::default();
+    let mut layout = SlideLayoutStyle::default();
+    layout.text_color = Some(Color([255, 255, 255]));
+    layout.secondary_text_color = Some(Color([155, 138, 180]));
+    rescale_slide_content(&mut blocks, &base, &layout, 1.0);
+    let BlockNode::Paragraph { content } = &blocks[0] else { unreachable!() };
+    assert_eq!(content[0].style.color, [255, 255, 255], "bold run keeps the primary text_color");
+    assert_eq!(content[1].style.color, [155, 138, 180], "non-bold run gets the muted secondary_text_color");
+}
+
+#[test]
+fn secondary_text_color_falls_back_to_text_color_when_unset() {
+    let mut blocks = vec![BlockNode::Paragraph { content: vec![plain("Body.", 12.0)] }];
+    let base = Stylesheet::default();
+    let mut layout = SlideLayoutStyle::default();
+    layout.text_color = Some(Color([255, 255, 255]));
+    // secondary_text_color deliberately left unset
+    rescale_slide_content(&mut blocks, &base, &layout, 1.0);
+    let BlockNode::Paragraph { content } = &blocks[0] else { unreachable!() };
+    assert_eq!(content[0].style.color, [255, 255, 255], "expected the plain run to fall back to text_color");
+}
+
+#[test]
+fn secondary_text_color_never_applies_to_headings_even_when_bold() {
+    let mut blocks = vec![BlockNode::Heading { level: 1, id: "h".to_string(), content: vec![plain("Title", 28.0)] }];
+    let base = Stylesheet::default();
+    let mut layout = SlideLayoutStyle::default();
+    layout.text_color = Some(Color([255, 255, 255]));
+    layout.secondary_text_color = Some(Color([155, 138, 180]));
+    rescale_slide_content(&mut blocks, &base, &layout, 1.0);
+    let BlockNode::Heading { content, .. } = &blocks[0] else { unreachable!() };
+    assert_eq!(content[0].style.color, [255, 255, 255], "headings always use text_color, never secondary_text_color");
 }
 
 #[test]
