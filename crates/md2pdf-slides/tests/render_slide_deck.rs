@@ -137,6 +137,61 @@ fn vertical_align_center_actually_shifts_content_away_from_the_top_margin() {
 }
 
 #[test]
+fn every_slidelayoutstyle_text_affecting_field_visibly_changes_rendered_output() {
+    // Checklist test, not just a regression test: a SlideLayoutStyle field that's meant to change
+    // rendered text is wired through one of two independent mechanisms -- build_slide_stylesheet
+    // (for fields md2pdf_layout::layout_impl reads fresh from the Stylesheet at render time) or
+    // rescale_slide_content (for fields already baked into each InlineNode's own TextStyle at
+    // parse time). Nothing enforces that a new field is wired into whichever mechanism actually
+    // owns it -- see Cursor's own doc comment in md2pdf-layout::paginate for the full split. If
+    // you add a text-affecting field to SlideLayoutStyle, add an assertion for it here too, so a
+    // silently-no-op wiring mistake fails a test instead of only showing up in a rendered PDF.
+    let mut sheet = small_page_stylesheet();
+    let mut layout = SlideLayoutStyle::default();
+    layout.alignment = Some(md2pdf_style::TextAlignment::Center);
+    layout.body_size_pt = Some(30.0);
+    layout.text_color = Some(md2pdf_style::Color([200, 0, 0]));
+    layout.secondary_text_color = Some(md2pdf_style::Color([0, 200, 0]));
+    sheet.slides.layouts.insert("title".to_string(), layout);
+    let markdown = "@layout: title\n\n# Heading\n\nRegular **Bold** text.\n";
+    let mut fs = test_font_system();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), std::path::Path::new("."), &mut fs, &sheet).unwrap();
+
+    // Every span-run on the same shaped line shares one `text` field (the whole line's text --
+    // see shape_rich_paragraph's own doc comment), so runs must be told apart by `size`/`color`,
+    // not by substring-matching `text`.
+    let text_runs: Vec<(f32, [u8; 3], f32)> = output.pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            md2pdf_layout::PositionedElement::TextRun { size, color, x, .. } => Some((*size, *color, *x)),
+            _ => None,
+        })
+        .collect();
+
+    // alignment: a centered run should not start flush against the left margin.
+    let margin_pt = sheet.page.margin_mm * 2.834645669;
+    assert!(
+        text_runs.iter().all(|(_, _, x)| *x > margin_pt + 1.0),
+        "expected the layout's centered alignment to shift every run away from the left margin: {text_runs:?}"
+    );
+    // body_size_pt: the paragraph's own runs should reflect the override (30.0), not typography's
+    // own default (12.0) -- headings are deliberately unaffected (their own size table governs
+    // them), so paragraph runs are identified by that distinct size.
+    let paragraph_runs: Vec<_> = text_runs.iter().filter(|(size, ..)| (*size - 30.0).abs() < 0.01).collect();
+    assert!(!paragraph_runs.is_empty(), "expected body_size_pt to produce at least one 30.0pt paragraph run, got {text_runs:?}");
+    // text_color: both bold paragraph runs and headings use text_color.
+    assert!(paragraph_runs.iter().any(|(_, color, _)| *color == [200, 0, 0]), "expected text_color to color the paragraph's bold run, got {paragraph_runs:?}");
+    let heading_run = text_runs.iter().find(|(size, ..)| (*size - 30.0).abs() >= 0.01).expect("expected a heading run at its own distinct size");
+    assert_eq!(heading_run.1, [200, 0, 0], "expected text_color to color heading text, got {heading_run:?}");
+    // secondary_text_color: non-bold paragraph runs use it instead of text_color.
+    assert!(
+        paragraph_runs.iter().any(|(_, color, _)| *color == [0, 200, 0]),
+        "expected secondary_text_color to color the paragraph's non-bold runs, got {paragraph_runs:?}"
+    );
+}
+
+#[test]
 fn a_layouts_background_image_is_drawn_and_decoded_into_the_final_images_table() {
     let mut sheet = small_page_stylesheet();
     let mut title = SlideLayoutStyle::default();

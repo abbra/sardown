@@ -9,6 +9,24 @@ use md2pdf_enrich::DiagramTable;
 const PT_PER_MM: f32 = 2.834645669;
 const LINE_SPACING_PT: f32 = 4.0; // gap after each block
 
+/// `style` is read fresh on every call into `render_block` -- but only *some* of its fields
+/// actually feed rendered output that way. `Heading`/`Paragraph`/`Table` text size and color come
+/// from each `InlineNode`'s own already-baked `TextStyle`, set once when the AST was originally
+/// parsed, and are never re-read from `style` here no matter what it contains. The fields that
+/// genuinely are read fresh, right here in this file, are: `typography.alignment` (heading/
+/// paragraph alignment), `typography.body_size_pt`/`.body_color` (list markers, via
+/// `marker_inline_node`), `table.text_size_pt` (row-height/padding math), `code_block`'s font
+/// sizes (via `CodeBlockStyle::resolve`), and `heading.levels.*.underline_color`/
+/// `.underline_width_pt` (via `HeadingStyle::resolve`).
+///
+/// This split matters most to `md2pdf-slides`, which swaps in a per-slide `Stylesheet` to make a
+/// layout override or an auto-shrink scale step visible: doing that for a baked-in field (body/
+/// heading/table-cell text size or color) requires directly mutating the AST's own `InlineNode`s
+/// instead (see `md2pdf_slides::rescale_slide_content`'s doc comment for the full mechanism). A
+/// new `SlideLayoutStyle` field that's meant to affect rendered text must be wired into whichever
+/// of the two mechanisms actually owns the underlying `Stylesheet` field -- wiring it into the
+/// wrong one (or only `build_slide_stylesheet`, when the field is actually baked-in) silently
+/// does nothing.
 struct Cursor<'a> {
     y: f32,
     page_height_pt: f32,
