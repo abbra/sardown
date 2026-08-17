@@ -123,3 +123,24 @@ fn vertical_align_center_actually_shifts_content_away_from_the_top_margin() {
     }).expect("expected a text run");
     assert!(first_y > margin_pt + 5.0, "expected centered content to sit well below the top margin ({margin_pt}), got {first_y}");
 }
+
+#[test]
+fn a_layouts_background_image_is_drawn_and_decoded_into_the_final_images_table() {
+    let mut sheet = small_page_stylesheet();
+    let mut title = SlideLayoutStyle::default();
+    title.background_image = Some(std::path::PathBuf::from("test-image.png"));
+    title.background_image_corner = md2pdf_style::ImageCorner::BottomRight;
+    title.background_image_width_pt = 20.0;
+    sheet.slides.layouts.insert("title".to_string(), title);
+    let markdown = "@layout: title\n\n# Cover\n\n---\n\n# Plain Slide\n";
+    let mut fs = test_font_system();
+    // test-image.png lives in md2pdf-layout's own fixtures -- reused here rather than duplicated.
+    let base_dir = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../md2pdf-layout/tests/fixtures"));
+    let output = render_slide_deck(markdown, &base_dir, &mut fs, &sheet).unwrap();
+
+    let has_background_image =
+        |page: &md2pdf_layout::PositionedPage| page.elements.iter().any(|e| matches!(e, md2pdf_layout::PositionedElement::RasterImage { .. }));
+    assert!(has_background_image(&output.pages[0]), "the title-layout slide should have a background image");
+    assert!(!has_background_image(&output.pages[1]), "the plain slide should have no background image");
+    assert!(output.images.contains_key("test-image.png"), "expected the background image to be decoded into the final images table");
+}

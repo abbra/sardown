@@ -1,6 +1,6 @@
 use md2pdf_layout::{PathCommand, PositionedElement, PositionedPage};
-use md2pdf_slides::{center_vertically, fill_background};
-use md2pdf_style::Color;
+use md2pdf_slides::{center_vertically, draw_background_image, fill_background};
+use md2pdf_style::{Color, ImageCorner};
 
 fn test_font_id() -> fontdb::ID {
     let mut db = fontdb::Database::new();
@@ -54,4 +54,44 @@ fn fill_background_prepends_a_full_page_filled_rectangle() {
     assert!(points.contains(&PathCommand::MoveTo(0.0, 0.0)));
     assert!(points.contains(&PathCommand::LineTo(300.0, 200.0)));
     assert!(matches!(page.elements[1], PositionedElement::TextRun { .. }), "the original text must still be present, drawn after the background");
+}
+
+fn image_position(corner: ImageCorner) -> (f32, f32) {
+    let mut page = PositionedPage { page_number: 0, elements: Vec::new() };
+    draw_background_image(&mut page, "logo.png", corner, 60.0, 40.0, 10.0, 300.0, 200.0);
+    match &page.elements[0] {
+        PositionedElement::RasterImage { x, y, .. } => (*x, *y),
+        other => panic!("expected RasterImage, got {other:?}"),
+    }
+}
+
+#[test]
+fn draw_background_image_positions_each_corner_correctly() {
+    // 300x200pt page, a 60x40pt image, 10pt margin from both nearest edges.
+    assert_eq!(image_position(ImageCorner::TopLeft), (10.0, 10.0));
+    assert_eq!(image_position(ImageCorner::TopRight), (300.0 - 10.0 - 60.0, 10.0));
+    assert_eq!(image_position(ImageCorner::BottomLeft), (10.0, 200.0 - 10.0 - 40.0));
+    assert_eq!(image_position(ImageCorner::BottomRight), (300.0 - 10.0 - 60.0, 200.0 - 10.0 - 40.0));
+}
+
+#[test]
+fn draw_background_image_inserts_before_existing_content() {
+    let mut page = PositionedPage { page_number: 0, elements: vec![text_run_at(20.0, 12.0)] };
+    draw_background_image(&mut page, "logo.png", ImageCorner::BottomRight, 60.0, 40.0, 10.0, 300.0, 200.0);
+    assert_eq!(page.elements.len(), 2);
+    assert!(matches!(page.elements[0], PositionedElement::RasterImage { .. }));
+    assert!(matches!(page.elements[1], PositionedElement::TextRun { .. }));
+}
+
+#[test]
+fn a_background_image_drawn_before_fill_background_ends_up_between_the_fill_and_content() {
+    // render_slide_deck calls draw_background_image *before* fill_background -- each inserts at
+    // index 0, so calling them in that order produces the correct final paint order: fill
+    // (bottom), then image, then whatever content was already on the page.
+    let mut page = PositionedPage { page_number: 0, elements: vec![text_run_at(20.0, 12.0)] };
+    draw_background_image(&mut page, "logo.png", ImageCorner::BottomRight, 60.0, 40.0, 10.0, 300.0, 200.0);
+    fill_background(&mut page, Color([27, 13, 51]), 300.0, 200.0);
+    assert!(matches!(page.elements[0], PositionedElement::Path { .. }), "background fill paints first (bottommost)");
+    assert!(matches!(page.elements[1], PositionedElement::RasterImage { .. }), "then the background image");
+    assert!(matches!(page.elements[2], PositionedElement::TextRun { .. }), "then the slide's own content");
 }
