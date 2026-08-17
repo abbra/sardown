@@ -246,6 +246,23 @@ fn estimate_next_block_ascent_pt(next_block: Option<&BlockNode>) -> f32 {
     size * 0.8
 }
 
+/// A list-item marker (bullet or "N.") in the document's own plain body style -- never inherits
+/// whatever inline formatting (bold/italic/link/color) the item's own first word happens to have.
+fn marker_inline_node(marker: &str, typography: &md2pdf_style::TypographyStyle) -> md2pdf_ast::InlineNode {
+    md2pdf_ast::InlineNode {
+        text: marker.to_string(),
+        style: md2pdf_ast::TextStyle {
+            bold: false,
+            italic: false,
+            strikethrough: false,
+            size: typography.body_size_pt,
+            color: typography.body_color.0,
+            font_family: typography.font_family.clone(),
+        },
+        link_target: None,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn render_block(
     block: &BlockNode,
@@ -354,14 +371,29 @@ fn render_block(
                 cursor.break_page(margin_pt);
             }
         }
-        BlockNode::List { items, .. } => {
+        BlockNode::List { ordered, start, items } => {
             let child_indent_pt = indent_pt + cursor.style.list.indent_pt;
             for (item_i, item) in items.iter().enumerate() {
+                let marker_text = if *ordered { format!("{}.  ", start.unwrap_or(1) + item_i as u64) } else { "\u{2022}  ".to_string() };
                 for (child_i, child) in item.iter().enumerate() {
-                    let child_next = item
-                        .get(child_i + 1)
-                        .or_else(|| items.get(item_i + 1).and_then(|next_item| next_item.first()))
-                        .or(next_block);
+                    let child_next = item.get(child_i + 1).or_else(|| items.get(item_i + 1).and_then(|next_item| next_item.first())).or(next_block);
+                    // The marker is prepended into the first child's own text, rather than drawn
+                    // as a separate gutter element, so it automatically inherits the paragraph's
+                    // own page-break handling for free -- see the design note on
+                    // BlockNode::List for the hanging-indent trade-off this implies. Only a
+                    // Paragraph first child gets one; a nested list/image/code block as the very
+                    // first thing in an item has no natural place to attach one without a
+                    // separate, page-break-synchronized gutter element, and is rare enough in
+                    // real Markdown not to be worth that complexity.
+                    if child_i == 0 {
+                        if let BlockNode::Paragraph { content } = child {
+                            let mut marked_content = vec![marker_inline_node(&marker_text, &cursor.style.typography)];
+                            marked_content.extend(content.iter().cloned());
+                            let marked = BlockNode::Paragraph { content: marked_content };
+                            render_block(&marked, cursor, margin_pt, child_indent_pt, font_system, images, diagrams, hyphenator, child_next);
+                            continue;
+                        }
+                    }
                     render_block(child, cursor, margin_pt, child_indent_pt, font_system, images, diagrams, hyphenator, child_next);
                 }
             }

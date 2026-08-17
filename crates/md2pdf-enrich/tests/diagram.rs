@@ -26,14 +26,8 @@ fn unsupported_or_invalid_diagram_source_is_skipped_not_panicking() {
 
 #[test]
 fn recurses_into_blockquotes_and_list_items() {
-    let inner = BlockNode::MermaidDiagram {
-        id: "nested".to_string(),
-        source: "flowchart TD\n    A --> B\n".to_string(),
-        line: 1,
-        column: 1,
-        file: None,
-    };
-    let ast = vec![BlockNode::List { ordered: false, items: vec![vec![inner]] }];
+    let inner = BlockNode::MermaidDiagram { id: "nested".to_string(), source: "flowchart TD\n    A --> B\n".to_string(), line: 1, column: 1, file: None };
+    let ast = vec![BlockNode::List { ordered: false, start: None, items: vec![vec![inner]] }];
     let table = compile_diagrams(&ast);
     assert!(table.contains_key("nested"));
 }

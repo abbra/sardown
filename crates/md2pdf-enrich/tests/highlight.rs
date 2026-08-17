@@ -32,14 +32,9 @@ fn leaves_non_code_blocks_unchanged() {
 
 #[test]
 fn recurses_into_blockquotes_and_list_items() {
-    let inner = BlockNode::CodeBlock {
-        language: Some("rust".to_string()),
-        tokens: vec![HighlightedToken { text: "let x = 1;\n".to_string(), color: [0, 0, 0] }],
-    };
-    let ast = vec![
-        BlockNode::Blockquote { content: vec![inner.clone()] },
-        BlockNode::List { ordered: false, items: vec![vec![inner]] },
-    ];
+    let inner =
+        BlockNode::CodeBlock { language: Some("rust".to_string()), tokens: vec![HighlightedToken { text: "let x = 1;\n".to_string(), color: [0, 0, 0] }] };
+    let ast = vec![BlockNode::Blockquote { content: vec![inner.clone()] }, BlockNode::List { ordered: false, start: None, items: vec![vec![inner]] }];
     let highlighter = Highlighter::new();
     let result = highlighter.highlight(ast);
 

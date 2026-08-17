@@ -243,7 +243,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                         _ => {}
                     }
                 }
-                blocks.push(BlockNode::List { ordered, items });
+                blocks.push(BlockNode::List { ordered, start, items });
             }
             Event::Start(Tag::Table(alignment_spec)) => {
                 let alignments = alignment_spec

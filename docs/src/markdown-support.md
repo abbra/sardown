@@ -39,7 +39,12 @@ of the literal brackets:
 ## Lists
 
 Both ordered (`1.`) and unordered (`-`/`*`) lists, tight or loose, nested
-to any depth.
+to any depth. An unordered item gets a "•" marker; an ordered item gets
+its own number, honoring a non-default start (`5. Fifth item` starts
+numbering at 5, not 1). A marker is only added when the item's own first
+line of content is a plain paragraph — the overwhelming common case; an
+item starting directly with a nested list, image, or code block renders
+without one.
 
 ## Tables
 

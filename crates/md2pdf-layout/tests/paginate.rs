@@ -223,15 +223,90 @@ fn thematic_break_produces_a_horizontal_line_path() {
 fn list_items_render_as_indented_text() {
     let ast = vec![BlockNode::List {
         ordered: false,
+        start: None,
+        items: vec![vec![BlockNode::Paragraph { content: vec![plain_inline("one")] }], vec![BlockNode::Paragraph { content: vec![plain_inline("two")] }]],
+    }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+    // Each item's own text and its bullet marker are shaped as separate spans (one TextRun per
+    // source InlineNode, even sharing the same style) -- 2 items x (1 marker + 1 text) = 4.
+    let text_runs: Vec<_> = pages[0].elements.iter().filter(|e| matches!(e, PositionedElement::TextRun { .. })).collect();
+    assert_eq!(text_runs.len(), 4);
+}
+
+fn list_line_texts(pages: &[md2pdf_layout::PositionedPage]) -> Vec<String> {
+    pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            PositionedElement::TextRun { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn unordered_list_items_get_a_bullet_marker() {
+    let ast = vec![BlockNode::List {
+        ordered: false,
+        start: None,
+        items: vec![vec![BlockNode::Paragraph { content: vec![plain_inline("one")] }], vec![BlockNode::Paragraph { content: vec![plain_inline("two")] }]],
+    }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+    let texts = list_line_texts(&pages);
+    assert!(texts.iter().any(|t| t.contains('\u{2022}') && t.contains("one")), "expected a bullet before the first item, got: {texts:?}");
+    assert!(texts.iter().any(|t| t.contains('\u{2022}') && t.contains("two")), "expected a bullet before the second item, got: {texts:?}");
+}
+
+#[test]
+fn ordered_list_items_are_numbered_sequentially() {
+    let ast = vec![BlockNode::List {
+        ordered: true,
+        start: Some(1),
         items: vec![
-            vec![BlockNode::Paragraph { content: vec![plain_inline("one")] }],
-            vec![BlockNode::Paragraph { content: vec![plain_inline("two")] }],
+            vec![BlockNode::Paragraph { content: vec![plain_inline("first")] }],
+            vec![BlockNode::Paragraph { content: vec![plain_inline("second")] }],
+            vec![BlockNode::Paragraph { content: vec![plain_inline("third")] }],
         ],
     }];
     let mut fs = test_font_system();
     let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
-    let text_runs: Vec<_> = pages[0].elements.iter().filter(|e| matches!(e, PositionedElement::TextRun { .. })).collect();
-    assert_eq!(text_runs.len(), 2);
+    let texts = list_line_texts(&pages);
+    assert!(texts.iter().any(|t| t.contains("1.") && t.contains("first")), "got: {texts:?}");
+    assert!(texts.iter().any(|t| t.contains("2.") && t.contains("second")), "got: {texts:?}");
+    assert!(texts.iter().any(|t| t.contains("3.") && t.contains("third")), "got: {texts:?}");
+}
+
+#[test]
+fn ordered_list_honors_a_non_default_start_number() {
+    let ast = vec![BlockNode::List {
+        ordered: true,
+        start: Some(5),
+        items: vec![vec![BlockNode::Paragraph { content: vec![plain_inline("fifth")] }], vec![BlockNode::Paragraph { content: vec![plain_inline("sixth")] }]],
+    }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+    let texts = list_line_texts(&pages);
+    assert!(texts.iter().any(|t| t.contains("5.") && t.contains("fifth")), "got: {texts:?}");
+    assert!(texts.iter().any(|t| t.contains("6.") && t.contains("sixth")), "got: {texts:?}");
+}
+
+#[test]
+fn a_list_item_whose_first_child_is_not_a_paragraph_is_left_without_a_marker() {
+    // Documented v1 limitation: a marker is only prepended when the item's first child is a
+    // Paragraph (the overwhelming common case for real-world Markdown lists). An item starting
+    // directly with a nested list has no natural place to attach one without extra machinery --
+    // it must not panic or drop the nested list's own content either.
+    let ast = vec![BlockNode::List {
+        ordered: false,
+        start: None,
+        items: vec![vec![BlockNode::List { ordered: false, start: None, items: vec![vec![BlockNode::Paragraph { content: vec![plain_inline("nested")] }]] }]],
+    }];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+    let texts = list_line_texts(&pages);
+    assert!(texts.iter().any(|t| t.contains("nested")), "expected the nested item's own text to still render, got: {texts:?}");
 }
 
 #[test]
@@ -861,13 +936,13 @@ fn list_indent_uses_the_configured_value() {
     let mut wide = Stylesheet::default();
     wide.list.indent_pt = 50.0;
 
-    let ast = vec![BlockNode::List { ordered: false, items: vec![vec![BlockNode::Paragraph { content: vec![plain_inline("Item")] }]] }];
+    let ast = vec![BlockNode::List { ordered: false, start: None, items: vec![vec![BlockNode::Paragraph { content: vec![plain_inline("Item")] }]] }];
     let x_of = |pages: &[md2pdf_layout::PositionedPage]| {
         pages[0]
             .elements
             .iter()
             .find_map(|e| match e {
-                PositionedElement::TextRun { x, text, .. } if text == "Item" => Some(*x),
+                PositionedElement::TextRun { x, text, .. } if text.contains("Item") => Some(*x),
                 _ => None,
             })
             .unwrap()

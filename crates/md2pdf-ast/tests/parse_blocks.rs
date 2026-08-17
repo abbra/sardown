@@ -67,7 +67,7 @@ fn parses_nested_unordered_list() {
     let md = "- one\n- two\n  - nested\n";
     let blocks = parse(md);
     match &blocks[0] {
-        BlockNode::List { ordered, items } => {
+        BlockNode::List { ordered, items, .. } => {
             assert!(!ordered);
             assert_eq!(items.len(), 2);
             let item0_text: String = items[0]
@@ -87,6 +87,44 @@ fn parses_nested_unordered_list() {
                 .collect();
             assert_eq!(item1_text, "two", "second item's own text should be present alongside its nested list");
             assert!(items[1].iter().any(|b| matches!(b, BlockNode::List { .. })), "second item should still have its nested List block");
+        }
+        other => panic!("expected List, got {other:?}"),
+    }
+}
+
+#[test]
+fn unordered_list_has_no_start_number() {
+    let blocks = parse("- one\n- two\n");
+    match &blocks[0] {
+        BlockNode::List { ordered, start, .. } => {
+            assert!(!ordered);
+            assert_eq!(*start, None);
+        }
+        other => panic!("expected List, got {other:?}"),
+    }
+}
+
+#[test]
+fn ordered_list_defaults_to_starting_at_one() {
+    let blocks = parse("1. one\n2. two\n");
+    match &blocks[0] {
+        BlockNode::List { ordered, start, .. } => {
+            assert!(ordered);
+            assert_eq!(*start, Some(1));
+        }
+        other => panic!("expected List, got {other:?}"),
+    }
+}
+
+#[test]
+fn ordered_list_captures_a_non_default_start_number() {
+    // CommonMark honors the literal number the first item is written with -- "5." should
+    // render starting at 5, not silently reset to 1.
+    let blocks = parse("5. fifth\n6. sixth\n");
+    match &blocks[0] {
+        BlockNode::List { ordered, start, .. } => {
+            assert!(ordered);
+            assert_eq!(*start, Some(5));
         }
         other => panic!("expected List, got {other:?}"),
     }

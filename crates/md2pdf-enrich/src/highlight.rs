@@ -38,12 +38,10 @@ impl Highlighter {
                 let highlighted = self.highlight_source(&raw, language.as_deref());
                 BlockNode::CodeBlock { language, tokens: highlighted }
             }
-            BlockNode::Blockquote { content } => {
-                BlockNode::Blockquote { content: self.highlight(content) }
-            }
-            BlockNode::List { ordered, items } => {
+            BlockNode::Blockquote { content } => BlockNode::Blockquote { content: self.highlight(content) },
+            BlockNode::List { ordered, start, items } => {
                 let items = items.into_iter().map(|item| self.highlight(item)).collect();
-                BlockNode::List { ordered, items }
+                BlockNode::List { ordered, start, items }
             }
             other => other,
         }

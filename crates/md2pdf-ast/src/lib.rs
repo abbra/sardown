@@ -22,10 +22,26 @@ pub enum BlockNode {
     },
     ThematicBreak,
     PageBreak,
-    MermaidDiagram { id: String, source: String, line: usize, column: usize, file: Option<std::path::PathBuf> },
-    Image { alt: String, title: Option<String>, source: ImageSource },
-    Table { headers: Vec<Vec<InlineNode>>, rows: Vec<Vec<Vec<InlineNode>>>, alignments: Vec<ColumnAlignment> },
-    List { ordered: bool, items: Vec<Vec<BlockNode>> },
+    MermaidDiagram {
+        id: String,
+        source: String,
+        line: usize,
+        column: usize,
+        file: Option<std::path::PathBuf>,
+    },
+    Image {
+        alt: String,
+        title: Option<String>,
+        source: ImageSource,
+    },
+    Table {
+        headers: Vec<Vec<InlineNode>>,
+        rows: Vec<Vec<Vec<InlineNode>>>,
+        alignments: Vec<ColumnAlignment>,
+    },
+    /// `start` is the literal number the list's first item was written with (CommonMark honors
+    /// this -- "5. Fifth" starts numbering at 5, not 1), and is `None` for an unordered list.
+    List { ordered: bool, start: Option<u64>, items: Vec<Vec<BlockNode>> },
 }
 
 #[derive(Debug, Clone, PartialEq)]
