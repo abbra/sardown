@@ -127,21 +127,6 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (if m <= 2 { y + 1 } else { y }, m as u32, d as u32)
 }
 
-#[cfg(test)]
-mod date_tests {
-    use super::civil_from_days;
-
-    #[test]
-    fn known_epoch_days_convert_to_the_correct_calendar_date() {
-        assert_eq!(civil_from_days(0), (1970, 1, 1));
-        assert_eq!(civil_from_days(1), (1970, 1, 2));
-        assert_eq!(civil_from_days(365), (1971, 1, 1)); // 1970 is not a leap year
-        assert_eq!(civil_from_days(10957), (2000, 1, 1));
-        assert_eq!(civil_from_days(19723), (2024, 1, 1));
-        assert_eq!(civil_from_days(20089), (2025, 1, 1));
-    }
-}
-
 /// The directory `input`'s own relative image references (and the SVG/security containment
 /// check in `decode_images`) should resolve against. `Path::parent()` returns `Some("")` -- an
 /// empty path, not `None` -- for a *bare* relative filename with no directory component (e.g.
@@ -265,5 +250,20 @@ fn main() -> anyhow::Result<()> {
             eprintln!("Wrote {} ({} slides)", output.display(), output_layout.pages.len());
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod date_tests {
+    use super::civil_from_days;
+
+    #[test]
+    fn known_epoch_days_convert_to_the_correct_calendar_date() {
+        assert_eq!(civil_from_days(0), (1970, 1, 1));
+        assert_eq!(civil_from_days(1), (1970, 1, 2));
+        assert_eq!(civil_from_days(365), (1971, 1, 1)); // 1970 is not a leap year
+        assert_eq!(civil_from_days(10957), (2000, 1, 1));
+        assert_eq!(civil_from_days(19723), (2024, 1, 1));
+        assert_eq!(civil_from_days(20089), (2025, 1, 1));
     }
 }
