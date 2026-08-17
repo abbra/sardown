@@ -51,7 +51,7 @@ pub struct BackgroundImageStyle {
 /// One named slide layout's overrides on top of the document's own `[typography]`/`[heading]`.
 /// Every field absent (the default) means "inherit the base document's own value" -- see
 /// `md2pdf-slides`' `build_slide_stylesheet`/`rescale_slide_content` for how these are applied.
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Deserialize)]
 #[serde(default)]
 pub struct SlideLayoutStyle {
     pub alignment: Option<TextAlignment>,
@@ -68,22 +68,6 @@ pub struct SlideLayoutStyle {
     /// Zero or more decorative images (raster or SVG), expressed in TOML as
     /// `[[slides.layouts.<name>.background_images]]` array-of-tables entries.
     pub background_images: Vec<BackgroundImageStyle>,
-}
-
-impl Default for SlideLayoutStyle {
-    fn default() -> Self {
-        SlideLayoutStyle {
-            alignment: None,
-            vertical_align: VerticalAlign::default(),
-            body_size_pt: None,
-            background_color: None,
-            text_color: None,
-            secondary_text_color: None,
-            suppress_header: false,
-            suppress_footer: false,
-            background_images: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
