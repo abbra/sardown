@@ -1,0 +1,8 @@
+[package]
+name = "sardown-ast"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+sardown-style = { version = "0.1.0", path = "../sardown-style" }
+pulldown-cmark = "0.13.4"

@@ -1,8 +1,8 @@
 # Style examples
 
-Reference `style.toml` files for md2pdf's stylesheet configuration (see
+Reference `style.toml` files for sardown's stylesheet configuration (see
 `docs/superpowers/specs/2026-08-16-stylesheet-configuration-design.md`). Pass one with
-`md2pdf render --style <path>` / `md2pdf render-book --style <path>`, or drop a copy named
+`sardown render --style <path>` / `sardown render-book --style <path>`, or drop a copy named
 `style.toml` at a book's root for `render-book` to pick up automatically.
 
 ## Regional traditions
@@ -32,9 +32,9 @@ Presets modeled on well-known document-type conventions, independent of region.
 
 ## Notes
 
-- These are parsed and validated against `md2pdf-style`'s `Stylesheet::load` in
-  `crates/md2pdf-style/tests/style_examples.rs`.
+- These are parsed and validated against `sardown-style`'s `Stylesheet::load` in
+  `crates/sardown-style/tests/style_examples.rs`.
 - `font_family` values throughout these files (e.g. "Times New Roman", "Helvetica",
   "Garamond") are rendered. If a named font isn't available as a loaded, matchable font on the
-  machine running md2pdf, it falls back to a generic sans-serif font with a warning on stderr
+  machine running sardown, it falls back to a generic sans-serif font with a warning on stderr
   rather than failing the render.

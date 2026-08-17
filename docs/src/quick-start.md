@@ -5,7 +5,7 @@
 Write a Markdown file:
 
 ```markdown
-# Hello, md2pdf
+# Hello, sardown
 
 This is a paragraph with **bold**, *italic*, and a [link](https://example.com).
 
@@ -22,11 +22,11 @@ This is a paragraph with **bold**, *italic*, and a [link](https://example.com).
 Render it:
 
 ```bash
-md2pdf render hello.md -o hello.pdf
+sardown render hello.md -o hello.pdf
 ```
 
 That's it — `hello.pdf` is a fully paginated PDF/A-2b document using
-md2pdf's built-in default styling (US Letter, sans-serif body text, black
+sardown's built-in default styling (US Letter, sans-serif body text, black
 headings).
 
 ## Rendering a book
@@ -36,7 +36,7 @@ If you have an existing mdBook-style source tree (a directory with
 combined PDF:
 
 ```bash
-md2pdf render-book path/to/my-book -o my-book.pdf
+sardown render-book path/to/my-book -o my-book.pdf
 ```
 
 Chapters are combined in `SUMMARY.md` order, each starting on its own page,
@@ -46,10 +46,10 @@ with cross-chapter links resolved to working internal PDF links. See
 ## Applying a stylesheet
 
 Both commands accept `--style <path>` to point at a stylesheet TOML file
-that overrides md2pdf's defaults:
+that overrides sardown's defaults:
 
 ```bash
-md2pdf render hello.md -o hello.pdf --style my-style.toml
+sardown render hello.md -o hello.pdf --style my-style.toml
 ```
 
 ```toml

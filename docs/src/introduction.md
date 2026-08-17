@@ -1,11 +1,11 @@
 # Introduction
 
-md2pdf is a native Rust engine that renders Markdown — either a single file
+sardown is a native Rust engine that renders Markdown — either a single file
 or a full mdBook source tree — directly to PDF, without going through an
 HTML/browser rendering step. It parses Markdown, lays out pages itself, and
 emits PDF/A-2b compliant output.
 
-## Why md2pdf
+## Why sardown
 
 - **No browser dependency.** Rendering is done directly against the PDF
   object model (via [krilla](https://github.com/typst/krilla)), so there's
@@ -26,7 +26,7 @@ emits PDF/A-2b compliant output.
 
 ## What it isn't
 
-md2pdf is not a general-purpose HTML-to-PDF converter and doesn't execute
+sardown is not a general-purpose HTML-to-PDF converter and doesn't execute
 JavaScript or apply CSS. It supports the Markdown feature set described in
 [Writing Markdown](./markdown-support.md) plus Mermaid diagrams — anything
 outside that (raw embedded HTML, custom CSS, browser-rendered widgets) is

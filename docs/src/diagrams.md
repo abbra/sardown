@@ -1,6 +1,6 @@
 # Diagrams
 
-md2pdf renders [Mermaid](https://mermaid.js.org) diagrams as real vector
+sardown renders [Mermaid](https://mermaid.js.org) diagrams as real vector
 graphics — not screenshots, and without launching a browser — using the
 pure-Rust [merman](https://github.com/zed-industries/merman) renderer.
 
@@ -17,18 +17,18 @@ flowchart TD
 ```
 ````
 
-md2pdf compiles this to an SVG internally and places it as a page element,
+sardown compiles this to an SVG internally and places it as a page element,
 sized to fit within the content width.
 
 ## Supported diagram types
 
 Diagram type support depends entirely on merman's own coverage. Flowcharts
-and sequence diagrams are exercised by md2pdf's own test suite and known to
+and sequence diagrams are exercised by sardown's own test suite and known to
 work; consult merman's documentation for its full supported diagram set.
 
 ## When a diagram fails to compile
 
-If a diagram's Mermaid source has a syntax error, md2pdf doesn't fail the
+If a diagram's Mermaid source has a syntax error, sardown doesn't fail the
 whole render — it prints a warning naming the file and the *exact* line
 and column inside the diagram's own source (not just the location of the
 opening ` ``` ` fence) and continues, leaving that one diagram out of the

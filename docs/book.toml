@@ -1,7 +1,7 @@
 [book]
-title = "md2pdf"
+title = "sardown"
 description = "A native Rust Markdown-to-PDF engine"
-authors = ["md2pdf contributors"]
+authors = ["sardown contributors"]
 src = "src"
 language = "en"
 

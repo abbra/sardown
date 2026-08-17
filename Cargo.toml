@@ -1,14 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/md2pdf-ast",
-    "crates/md2pdf-enrich",
-    "crates/md2pdf-layout",
-    "crates/md2pdf-pdf",
-    "crates/md2pdf-cli",
-    "crates/md2pdf-book",
-    "crates/md2pdf-style",
-    "crates/md2pdf-slides",
+    "crates/sardown-ast",
+    "crates/sardown-enrich",
+    "crates/sardown-layout",
+    "crates/sardown-pdf",
+    "crates/sardown-cli",
+    "crates/sardown-book",
+    "crates/sardown-style",
+    "crates/sardown-slides",
 ]
 
 [workspace.package]

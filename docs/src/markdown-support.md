@@ -1,6 +1,6 @@
 # Writing Markdown
 
-md2pdf parses CommonMark plus GitHub-style tables, via
+sardown parses CommonMark plus GitHub-style tables, via
 [pulldown-cmark](https://github.com/pulldown-cmark/pulldown-cmark). This
 page lists exactly what's supported and, just as importantly, what isn't.
 
@@ -90,7 +90,7 @@ percent-encoded one is skipped with a warning.
 
 ## What's out of scope
 
-md2pdf is not an HTML renderer: raw embedded HTML blocks/inline HTML,
+sardown is not an HTML renderer: raw embedded HTML blocks/inline HTML,
 custom CSS, and JavaScript have no effect. There's also no text-wrapping
 control beyond the stylesheet's own alignment setting (see
 [Typography](./styling/typography.md)) — no manual hyphenation, no

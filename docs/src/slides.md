@@ -1,12 +1,12 @@
 # Slide Decks
 
-`md2pdf render-slides` renders a Markdown file as a slide deck: one page per
+`sardown render-slides` renders a Markdown file as a slide deck: one page per
 slide, laid out on a fixed page size rather than flowing continuously like
 `render`/`render-book` do.
 
 This is **not** a Marp-compatible renderer. There is no HTML/CSS
 interpretation, no theme cascade, and no variable fonts -- a deck is
-written using md2pdf's own conventions below.
+written using sardown's own conventions below.
 
 ## Splitting a deck into slides
 
@@ -73,10 +73,10 @@ slide's content fits one page before this ever matters.
 ## Auto-shrink-to-fit
 
 If a slide's content doesn't fit the configured page size at its layout's
-normal font sizes, md2pdf automatically retries at smaller font sizes
+normal font sizes, sardown automatically retries at smaller font sizes
 (stepping down in 5% increments) until it fits one page, down to
 `[slides].min_scale` (default `0.5`, i.e. never below half size). If even
-the smallest allowed size still overflows, md2pdf renders all the overflow
+the smallest allowed size still overflows, sardown renders all the overflow
 content anyway (spanning more than one physical page for that slide) and
 prints a warning -- content is never silently dropped.
 

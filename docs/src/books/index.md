@@ -1,6 +1,6 @@
 # Rendering Books
 
-`md2pdf render-book <book_root> -o <output.pdf>` renders an entire
+`sardown render-book <book_root> -o <output.pdf>` renders an entire
 [mdBook](https://rust-lang.github.io/mdBook/)-style source tree as one
 combined PDF, rather than one file at a time.
 
@@ -18,7 +18,7 @@ my-book/
 
 - `book.toml` is optional. If present, `[book] src = "..."` overrides the
   source directory name (default `"src"`). Everything else in `book.toml`
-  is ignored by md2pdf today.
+  is ignored by sardown today.
 - `src/SUMMARY.md` is required — see
   [SUMMARY.md Format](./summary-format.md) for its exact structure.
 - `style.toml`, if present at the book's root, is used automatically

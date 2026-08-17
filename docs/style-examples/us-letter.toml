@@ -6,7 +6,7 @@
 # document isn't structured into book-style chapters with their own opening-page convention).
 #
 # font_family values are now rendered. If a named font (e.g. "Times New Roman", "Garamond")
-# isn't available as a loaded, matchable font on the machine running md2pdf, it falls back to a
+# isn't available as a loaded, matchable font on the machine running sardown, it falls back to a
 # generic sans-serif font with a warning on stderr, rather than failing the render.
 
 [page]

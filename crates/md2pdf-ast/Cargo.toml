@@ -1,8 +1,0 @@
-[package]
-name = "md2pdf-ast"
-version = "0.1.0"
-edition.workspace = true
-
-[dependencies]
-md2pdf-style = { version = "0.1.0", path = "../md2pdf-style" }
-pulldown-cmark = "0.13.4"

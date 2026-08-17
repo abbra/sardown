@@ -1,0 +1,11 @@
+[package]
+name = "sardown-enrich"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+sardown-ast = { version = "0.1.0", path = "../sardown-ast" }
+sardown-style = { version = "0.1.0", path = "../sardown-style" }
+merman = "0.8.0-alpha.5"
+syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
+usvg = "0.48.1"

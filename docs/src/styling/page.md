@@ -26,7 +26,7 @@ margin_mm = 20.0
 ```
 
 Setting only one of `width_mm`/`height_mm` (not both) is a validation
-error at load time — `md2pdf` will refuse to run with a stylesheet like
+error at load time — `sardown` will refuse to run with a stylesheet like
 that rather than silently guessing the other dimension.
 
 ## Asymmetric (two-sided binding) margins

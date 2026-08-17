@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# scripts/local-ci.sh — run the md2pdf CI pipeline locally
+# scripts/local-ci.sh — run the sardown CI pipeline locally
 #
 # Usage:
 #   ./scripts/local-ci.sh all              # run all jobs in order
 #   ./scripts/local-ci.sh build fmt clippy # run specific jobs
 #   ./scripts/local-ci.sh --list           # print available job names
 #   ./scripts/local-ci.sh --no-color all   # disable ANSI colours
-#   CARGO_TARGET_DIR=/tmp/md2pdf-ci ./scripts/local-ci.sh all
+#   CARGO_TARGET_DIR=/tmp/sardown-ci ./scripts/local-ci.sh all
 
 # Require bash 4+
 if [ "${BASH_VERSINFO:-0}" -lt 4 ]; then
@@ -293,7 +293,7 @@ print_help() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS] <job> [job ...]
 
-Run md2pdf CI jobs locally.
+Run sardown CI jobs locally.
 
 Special targets:
   all          Run every job in order
@@ -318,7 +318,7 @@ Examples:
   $(basename "$0") all
   $(basename "$0") build test
   $(basename "$0") --no-color all
-  CARGO_TARGET_DIR=/tmp/md2pdf-ci $(basename "$0") all
+  CARGO_TARGET_DIR=/tmp/sardown-ci $(basename "$0") all
 EOF
 }
 

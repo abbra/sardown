@@ -3,15 +3,15 @@
 Every visual aspect of a rendered document — page size and margins, fonts,
 heading sizes and colors, table padding, code block themes, running
 headers/footers — is controlled by a **stylesheet**: a TOML file you write
-and pass to md2pdf. With no stylesheet at all, md2pdf uses built-in
+and pass to sardown. With no stylesheet at all, sardown uses built-in
 defaults that reproduce a plain, sensible-looking document (US Letter,
 sans-serif body text, black headings, no header/footer).
 
 ## Applying a stylesheet
 
 ```bash
-md2pdf render document.md -o output.pdf --style my-style.toml
-md2pdf render-book my-book -o output.pdf --style my-style.toml
+sardown render document.md -o output.pdf --style my-style.toml
+sardown render-book my-book -o output.pdf --style my-style.toml
 ```
 
 `render-book` has one more option: if `--style` isn't given, it

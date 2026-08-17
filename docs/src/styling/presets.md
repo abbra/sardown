@@ -6,7 +6,7 @@ covering classic document-type conventions. Use one directly with
 `--style`, or copy and adapt it as a starting point.
 
 ```bash
-md2pdf render document.md -o output.pdf --style docs/style-examples/eu-a4.toml
+sardown render document.md -o output.pdf --style docs/style-examples/eu-a4.toml
 ```
 
 ## Regional traditions

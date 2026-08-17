@@ -1,6 +1,6 @@
 # Troubleshooting
 
-md2pdf's general philosophy is to keep rendering and produce output even
+sardown's general philosophy is to keep rendering and produce output even
 when something can't be handled perfectly, printing a warning on stderr
 and degrading gracefully rather than aborting the whole document. This
 page explains the warnings you're most likely to see.
@@ -14,7 +14,7 @@ warning: unknown font family "Times New Roman"; falling back to a sans-serif fon
 A `font_family` value (in `[typography]`, `[heading]`, `[code_block]`, or
 `[header]`/`[footer]`) that isn't one of the five generic keywords
 (`serif`, `sans-serif`, `monospace`, `cursive`, `fantasy`) is treated as a
-literal font name and checked against every font md2pdf can actually load.
+literal font name and checked against every font sardown can actually load.
 If it isn't found — not installed as a system font, and not present in any
 directory listed in `typography.font_dirs` — the render still succeeds,
 using a generic sans-serif font instead of aborting.
@@ -46,7 +46,7 @@ warning: character 'é' is not supported by any available font; dropping it from
 
 No loaded font has a glyph for that character. It's dropped from the
 output rather than rendered as a "tofu box" (`.notdef` glyph) — PDF/A
-(which md2pdf always produces) forbids emitting that glyph, and a strict
+(which sardown always produces) forbids emitting that glyph, and a strict
 PDF/A validator would reject the whole document if it appeared even once.
 
 **Fix:** load a font (via `font_dirs` or a system font) with actual
@@ -88,7 +88,7 @@ reference doesn't block rendering everything else.
 ## Invalid stylesheet errors
 
 Unlike the warnings above, these stop the render entirely — the input
-isn't something md2pdf can proceed with:
+isn't something sardown can proceed with:
 
 - Invalid TOML syntax.
 - `[page]` sets only one of `width_mm`/`height_mm` (both or neither is

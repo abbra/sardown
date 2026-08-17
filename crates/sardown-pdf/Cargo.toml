@@ -1,0 +1,17 @@
+[package]
+name = "sardown-pdf"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+fontdb = "0.23"
+krilla = "0.8.2"
+krilla-svg = "0.8.1"
+sardown-ast = { version = "0.1.0", path = "../sardown-ast" }
+sardown-enrich = { version = "0.1.0", path = "../sardown-enrich" }
+sardown-layout = { version = "0.1.0", path = "../sardown-layout" }
+usvg = "0.47"
+
+[dev-dependencies]
+lopdf = "0.44.0"

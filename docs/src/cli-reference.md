@@ -1,7 +1,7 @@
 # Command-Line Reference
 
 ```
-md2pdf <COMMAND>
+sardown <COMMAND>
 ```
 
 Two subcommands: `render` (a single Markdown file) and `render-book` (an
@@ -10,7 +10,7 @@ mdBook-style source tree).
 ## `render`
 
 ```
-md2pdf render [OPTIONS] --output <OUTPUT> <INPUT>
+sardown render [OPTIONS] --output <OUTPUT> <INPUT>
 ```
 
 | Argument/Option | Description |
@@ -26,13 +26,13 @@ md2pdf render [OPTIONS] --output <OUTPUT> <INPUT>
 Example:
 
 ```bash
-md2pdf render report.md -o report.pdf --style docs/style-examples/eu-a4.toml
+sardown render report.md -o report.pdf --style docs/style-examples/eu-a4.toml
 ```
 
 ## `render-book`
 
 ```
-md2pdf render-book [OPTIONS] --output <OUTPUT> <BOOK_ROOT>
+sardown render-book [OPTIONS] --output <OUTPUT> <BOOK_ROOT>
 ```
 
 | Argument/Option | Description |
@@ -48,13 +48,13 @@ md2pdf render-book [OPTIONS] --output <OUTPUT> <BOOK_ROOT>
 Example:
 
 ```bash
-md2pdf render-book my-book -o my-book.pdf
+sardown render-book my-book -o my-book.pdf
 ```
 
 ## `render-slides`
 
 ```
-md2pdf render-slides [OPTIONS] --output <OUTPUT> <INPUT>
+sardown render-slides [OPTIONS] --output <OUTPUT> <INPUT>
 ```
 
 | Argument/Option | Description |
@@ -70,7 +70,7 @@ md2pdf render-slides [OPTIONS] --output <OUTPUT> <INPUT>
 Example:
 
 ```bash
-md2pdf render-slides deck.md -o deck.pdf --style slides-style.toml
+sardown render-slides deck.md -o deck.pdf --style slides-style.toml
 ```
 
 ## Output and diagnostics

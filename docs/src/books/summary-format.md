@@ -67,7 +67,7 @@ preface that shouldn't be numbered like the rest of the chapters:
 - [Chapter One](chapter-1.md)
 ```
 
-md2pdf recognizes this the same way: `[Introduction](introduction.md)`
+sardown recognizes this the same way: `[Introduction](introduction.md)`
 above is included as its own chapter, positioned before `Chapter One`,
 exactly as written. This book's own `SUMMARY.md` uses exactly this
 pattern for its own introduction. One difference from a regular list-item
@@ -78,7 +78,7 @@ first list item instead.
 ## Chapters with no heading of their own
 
 If a chapter file's content doesn't start with a top-level (`#`) heading,
-md2pdf synthesizes one from the title given in `SUMMARY.md`, so the chapter
+sardown synthesizes one from the title given in `SUMMARY.md`, so the chapter
 still has a visible heading at the top of its page. If the chapter *does*
 start with its own `#` heading, that's used as-is and nothing is
 synthesized.

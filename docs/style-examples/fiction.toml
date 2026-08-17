@@ -9,7 +9,7 @@
 # opening page.
 #
 # font_family is now rendered. If a named font isn't available as a loaded, matchable font
-# on the machine running md2pdf, it falls back to a generic sans-serif font with a warning on
+# on the machine running sardown, it falls back to a generic sans-serif font with a warning on
 # stderr rather than failing the render.
 
 [page]

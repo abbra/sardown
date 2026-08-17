@@ -1,6 +1,6 @@
 # Installation
 
-md2pdf is a Cargo workspace; there's no published crate or prebuilt binary
+sardown is a Cargo workspace; there's no published crate or prebuilt binary
 yet, so it's built from source.
 
 ## Prerequisites
@@ -15,21 +15,21 @@ yet, so it's built from source.
 
 ```bash
 git clone <repository-url>
-cd md2pdf
+cd sardown
 cargo build --release
 ```
 
-The `md2pdf` binary is produced at `target/release/md2pdf`. Run it directly,
+The `sardown` binary is produced at `target/release/sardown`. Run it directly,
 or install it onto your `PATH`:
 
 ```bash
-cargo install --path crates/md2pdf-cli
+cargo install --path crates/sardown-cli
 ```
 
 ## Verifying the build
 
 ```bash
-md2pdf --help
+sardown --help
 ```
 
 should print the two subcommands, `render` and `render-book` (see the
@@ -37,7 +37,7 @@ should print the two subcommands, `render` and `render-book` (see the
 
 ## Fonts
 
-By default, md2pdf loads whatever fonts are already installed on your
+By default, sardown loads whatever fonts are already installed on your
 system (`use_system_fonts = true` in the default stylesheet) and shapes
 text with a generic sans-serif family. If you want to use a specific named
 font (e.g. `"Times New Roman"`), it needs to actually be installed as a
