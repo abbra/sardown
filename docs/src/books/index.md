@@ -29,7 +29,8 @@ my-book/
 
 - Every chapter listed in `SUMMARY.md`, concatenated in listing order
   (depth-first, following nested chapters), each starting on its own new
-  page.
+  page — including a [prefix chapter](./summary-format.md#prefix-chapters)
+  (a bare link before the first list item), if present.
 - If a chapter file has no top-level (`#`) heading of its own, one is
   synthesized from its `SUMMARY.md` title, so every chapter has *something*
   identifying it at the top of its page.
@@ -49,6 +50,3 @@ my-book/
 - `PartTitle` entries (headings in `SUMMARY.md` used as sidebar group
   labels in mdBook's own HTML output) are recognized during parsing but
   currently have no visual treatment in the combined PDF body.
-- mdBook's "prefix chapter" convention (a bare link listed before the
-  first list item, outside any list) isn't recognized — see
-  [Prefix chapters aren't supported](./summary-format.md#prefix-chapters-arent-supported).

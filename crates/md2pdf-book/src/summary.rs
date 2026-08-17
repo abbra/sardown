@@ -35,6 +35,14 @@ pub fn parse_summary(markdown: &str) -> BookSummary {
             BlockNode::List { items: list_items, .. } => {
                 items.extend(list_items.iter().map(|item| summary_item_from_list_item(item)));
             }
+            // A bare link paragraph outside any list -- real mdBook's "prefix chapter"
+            // convention, used for an introduction/preface that shouldn't be numbered like the
+            // rest of the chapters. Treated the same as a list-item chapter with no children;
+            // previously fell through to the catch-all below and was silently dropped entirely.
+            BlockNode::Paragraph { content } => {
+                let (title, path) = chapter_title_and_path(content);
+                items.push(SummaryItem::Chapter { title, path, children: Vec::new() });
+            }
             _ => {}
         }
     }
@@ -48,11 +56,7 @@ fn summary_item_from_list_item(blocks: &[BlockNode]) -> SummaryItem {
     for block in blocks {
         match block {
             BlockNode::Paragraph { content } => {
-                title = inline_text(content);
-                path = content.iter().find_map(|n| match &n.link_target {
-                    Some(LinkTarget::ExternalUrl(url)) if !url.is_empty() => Some(PathBuf::from(url)),
-                    _ => None,
-                });
+                (title, path) = chapter_title_and_path(content);
             }
             BlockNode::List { items: nested, .. } => {
                 children.extend(nested.iter().map(|item| summary_item_from_list_item(item)));
@@ -61,6 +65,15 @@ fn summary_item_from_list_item(blocks: &[BlockNode]) -> SummaryItem {
         }
     }
     SummaryItem::Chapter { title, path, children }
+}
+
+fn chapter_title_and_path(content: &[InlineNode]) -> (String, Option<PathBuf>) {
+    let title = inline_text(content);
+    let path = content.iter().find_map(|n| match &n.link_target {
+        Some(LinkTarget::ExternalUrl(url)) if !url.is_empty() => Some(PathBuf::from(url)),
+        _ => None,
+    });
+    (title, path)
 }
 
 fn inline_text(content: &[InlineNode]) -> String {

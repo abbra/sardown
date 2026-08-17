@@ -3,9 +3,7 @@
 `SUMMARY.md` is read as plain Markdown, and its list nesting/heading
 structure is interpreted as the book's chapter structure — the same basic
 model real mdBook uses, so there's no separate custom format to learn for
-the common case. One real mdBook feature isn't recognized, though: see
-[Prefix chapters aren't supported](#prefix-chapters-arent-supported) below
-before assuming every valid mdBook `SUMMARY.md` works unchanged.
+the common case, including [prefix chapters](#prefix-chapters).
 
 ## Basic structure
 
@@ -55,7 +53,7 @@ separator. Both are recognized during parsing today, but neither currently
 gets a visual treatment in the combined PDF body — chapters before and
 after one still concatenate normally.
 
-## Prefix chapters aren't supported
+## Prefix chapters
 
 Real mdBook lets a chapter appear *before* the first `-` list item, as a
 bare link with no list marker — commonly used for an introduction or
@@ -69,19 +67,13 @@ preface that shouldn't be numbered like the rest of the chapters:
 - [Chapter One](chapter-1.md)
 ```
 
-md2pdf's parser only recognizes chapters that are list items — a bare link
-outside the list, like `[Introduction](introduction.md)` above, is
-**silently dropped**, not included anywhere in the output (this was found
-by rendering this very documentation book and noticing the introduction
-chapter was missing from the output PDF). Write it as a regular first list
-item instead:
-
-```markdown
-# Summary
-
-- [Introduction](introduction.md)
-- [Chapter One](chapter-1.md)
-```
+md2pdf recognizes this the same way: `[Introduction](introduction.md)`
+above is included as its own chapter, positioned before `Chapter One`,
+exactly as written. This book's own `SUMMARY.md` uses exactly this
+pattern for its own introduction. One difference from a regular list-item
+chapter: a prefix chapter can't have nested sub-chapters (there's no list
+for them to nest under) — if you need nested children, use a regular
+first list item instead.
 
 ## Chapters with no heading of their own
 

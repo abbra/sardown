@@ -1,6 +1,7 @@
 # Summary
 
-- [Introduction](./introduction.md)
+[Introduction](./introduction.md)
+
 - [Installation](./installation.md)
 - [Quick Start](./quick-start.md)
 - [Writing Markdown](./markdown-support.md)

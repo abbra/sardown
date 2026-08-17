@@ -44,6 +44,24 @@ fn parses_part_titles_and_separators() {
 }
 
 #[test]
+fn a_bare_link_before_the_first_list_item_is_a_prefix_chapter() {
+    // Real mdBook lets an introduction/preface chapter appear as a bare link before the first
+    // `-` list item, outside any list, so it isn't numbered like the rest of the chapters.
+    let md = "# Summary\n\n[Introduction](introduction.md)\n\n- [Chapter One](chapter1.md)\n";
+    let summary = md2pdf_book::parse_summary(md);
+    assert_eq!(summary.items.len(), 2, "expected the prefix chapter plus one list chapter, got {:?}", summary.items);
+    match &summary.items[0] {
+        SummaryItem::Chapter { title, path, children } => {
+            assert_eq!(title, "Introduction");
+            assert_eq!(path.as_deref(), Some(std::path::Path::new("introduction.md")));
+            assert!(children.is_empty());
+        }
+        other => panic!("expected the prefix chapter, got {other:?}"),
+    }
+    assert!(matches!(&summary.items[1], SummaryItem::Chapter { title, .. } if title == "Chapter One"));
+}
+
+#[test]
 fn draft_chapters_have_no_path_but_are_still_walked_for_children() {
     let md = "- Draft One\n- [Draft Two]()\n- [Real](real.md)\n  - [Real Child](child.md)\n";
     let summary = md2pdf_book::parse_summary(md);
