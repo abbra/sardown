@@ -1,4 +1,4 @@
-use md2pdf_style::{BlockquoteStyle, Color, ListStyle, ThematicBreakStyle};
+use md2pdf_style::{BlockquoteStyle, Color, ColumnsStyle, ListStyle, ThematicBreakStyle};
 
 #[test]
 fn default_blockquote_style_matches_todays_hardcoded_border() {
@@ -18,6 +18,11 @@ fn default_thematic_break_style_matches_todays_hardcoded_rule() {
 #[test]
 fn default_list_style_matches_todays_hardcoded_indent() {
     assert_eq!(ListStyle::default().indent_pt, 18.0);
+}
+
+#[test]
+fn default_columns_style_has_a_24pt_gap() {
+    assert_eq!(ColumnsStyle::default().gap_pt, 24.0);
 }
 
 #[test]

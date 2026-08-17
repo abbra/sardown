@@ -38,3 +38,15 @@ impl Default for ListStyle {
         ListStyle { indent_pt: 18.0 }
     }
 }
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(default)]
+pub struct ColumnsStyle {
+    pub gap_pt: f32,
+}
+
+impl Default for ColumnsStyle {
+    fn default() -> Self {
+        ColumnsStyle { gap_pt: 24.0 }
+    }
+}

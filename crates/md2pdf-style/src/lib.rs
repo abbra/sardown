@@ -21,7 +21,7 @@ pub use heading::{HeadingLevelStyle, HeadingStyle, ResolvedHeadingStyle};
 pub use numbering::{NumberingFormat, PageNumbering, PageNumberingReset};
 pub use page::{PageFormat, PageStyle};
 pub use slides::{ImageCorner, SlideLayoutStyle, SlidesStyle, VerticalAlign};
-pub use structural::{BlockquoteStyle, ListStyle, ThematicBreakStyle};
+pub use structural::{BlockquoteStyle, ColumnsStyle, ListStyle, ThematicBreakStyle};
 pub use table::TableStyle;
 pub use toc::TocStyle;
 pub use typography::{TextAlignment, TypographyStyle};
@@ -36,6 +36,7 @@ pub struct Stylesheet {
     pub blockquote: BlockquoteStyle,
     pub thematic_break: ThematicBreakStyle,
     pub list: ListStyle,
+    pub columns: ColumnsStyle,
     pub table: TableStyle,
     pub code_block: CodeBlockStyle,
     pub header: HeaderFooterStyle,
