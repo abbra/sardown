@@ -1384,3 +1384,66 @@ fn a_raster_image_taller_than_the_page_is_capped_to_the_available_height() {
         other => panic!("expected RasterImage, got {other:?}"),
     }
 }
+
+#[test]
+fn a_heading_with_no_underline_configured_draws_no_extra_path() {
+    let ast = parse("# A Heading\n");
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+    let has_path = pages[0].elements.iter().any(|e| matches!(e, PositionedElement::Path { .. }));
+    assert!(!has_path, "default heading style has underline_width_pt = 0.0 -- expected no Path element");
+}
+
+#[test]
+fn a_heading_with_an_underline_configured_draws_a_stroked_path_using_its_color_and_width() {
+    let mut style = Stylesheet::default();
+    style.heading.underline_width_pt = 2.0;
+    style.heading.underline_color = md2pdf_style::Color([9, 9, 9]);
+    let ast = parse("# A Heading\n");
+    let mut fs = test_font_system();
+    let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    let (color, width) = output.pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::Path { stroke: Some(s), .. } => Some((s.color, s.width)),
+            _ => None,
+        })
+        .expect("expected an underline path under the heading");
+    assert_eq!(color, [9, 9, 9]);
+    assert_eq!(width, 2.0);
+}
+
+#[test]
+fn a_headings_underline_hugs_the_headings_own_text_width_not_the_full_content_width() {
+    use md2pdf_layout::PathCommand;
+    let mut style = Stylesheet::default();
+    style.heading.underline_width_pt = 2.0;
+    // A very short heading on a wide (letter-size) page: the underline must stop well short of
+    // the full content width, matching how a block-level heading sized to its own content (not
+    // stretched to fill its container) actually looks.
+    let ast = parse("# Hi\n");
+    let mut fs = test_font_system();
+    let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    let margin_pt = letter_geometry().margin_mm * 2.834645669;
+    let content_width_pt = letter_geometry().page_width_mm * 2.834645669 - 2.0 * margin_pt;
+
+    let underline_length_pt = output.pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::Path { points, stroke: Some(_), .. } => match points.as_slice() {
+                [PathCommand::MoveTo(x0, _), PathCommand::LineTo(x1, _)] => Some(x1 - x0),
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("expected an underline path under the heading");
+    assert!(
+        underline_length_pt < content_width_pt * 0.5,
+        "expected the underline to hug \"Hi\"'s own short width, not the full content width \
+         ({content_width_pt}pt); got {underline_length_pt}pt"
+    );
+}

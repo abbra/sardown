@@ -312,11 +312,23 @@ fn render_block(
             }
             let anchor_y = cursor.y;
             let max_width_pt = cursor.content_width_pt - indent_pt;
-            place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, cosmic_text::Align::Left, None, font_system);
-            cursor.anchors.insert(
-                id.clone(),
-                AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: anchor_y },
-            );
+            let heading_width_pt =
+                place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, cosmic_text::Align::Left, None, font_system);
+            let resolved_heading = cursor.style.heading.resolve(*level);
+            if resolved_heading.underline_width_pt > 0.0 {
+                // Approximates the last line's baseline plus a little clearance for descenders --
+                // exact for the overwhelmingly common single-line heading; a multi-line heading
+                // (rare) gets an underline positioned from this same estimate, not its own
+                // measured last-line baseline.
+                let underline_y = cursor.y - estimate_line_height(heading_size) + heading_size * 0.25;
+                let start_x = margin_pt + indent_pt;
+                cursor.current.push(PositionedElement::Path {
+                    points: vec![PathCommand::MoveTo(start_x, underline_y), PathCommand::LineTo(start_x + heading_width_pt, underline_y)],
+                    fill: None,
+                    stroke: Some(StrokeStyle { color: resolved_heading.underline_color.0, width: resolved_heading.underline_width_pt }),
+                });
+            }
+            cursor.anchors.insert(id.clone(), AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: anchor_y });
         }
         BlockNode::Paragraph { content } => {
             let max_width_pt = cursor.content_width_pt - indent_pt;
