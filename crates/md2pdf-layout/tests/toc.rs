@@ -1,8 +1,20 @@
 use cosmic_text::FontSystem;
-use md2pdf_ast::{parse, BlockNode};
+use md2pdf_ast::{parse, BlockNode, InlineNode, TextStyle};
 use md2pdf_enrich::DiagramTable;
 use md2pdf_layout::{layout_impl, PageGeometry, PositionedElement};
 use md2pdf_style::Stylesheet;
+
+fn plain_inline(text: &str) -> InlineNode {
+    InlineNode {
+        text: text.to_string(),
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size: 12.0, color: [0, 0, 0], font_family: "sans-serif".to_string() },
+        link_target: None,
+    }
+}
+
+fn heading(level: u8, id: &str, text: &str) -> BlockNode {
+    BlockNode::Heading { level, id: id.to_string(), content: vec![plain_inline(text)] }
+}
 
 fn test_font_system() -> FontSystem {
     let mut db = fontdb::Database::new();
@@ -90,6 +102,27 @@ fn a_document_with_no_matching_headings_gets_no_toc_page() {
     let pages_before = output.pages.len();
     md2pdf_layout::insert_table_of_contents(&mut output, &ast, &style, &letter_geometry(), &mut fs);
     assert_eq!(output.pages.len(), pages_before, "expected no TOC page when there are no matching headings");
+}
+
+#[test]
+fn toc_entries_include_headings_nested_inside_blockquotes_lists_and_columns() {
+    let ast = vec![
+        heading(1, "top", "Top Level"),
+        BlockNode::Blockquote { content: vec![heading(2, "in-quote", "In A Blockquote")] },
+        BlockNode::List { ordered: false, start: None, items: vec![vec![heading(2, "in-list", "In A List Item")]] },
+        BlockNode::Columns(vec![vec![heading(2, "in-column", "In A Column")]]),
+    ];
+    let mut style = Stylesheet::default();
+    style.toc.enabled = true;
+    let mut fs = test_font_system();
+    let mut output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+    md2pdf_layout::insert_table_of_contents(&mut output, &ast, &style, &letter_geometry(), &mut fs);
+
+    let ids: Vec<&str> = output.toc_entries.iter().map(|e| e.id.as_str()).collect();
+    assert!(ids.contains(&"top"), "expected the top-level heading in the TOC, got {ids:?}");
+    assert!(ids.contains(&"in-quote"), "expected the blockquote-nested heading in the TOC, got {ids:?}");
+    assert!(ids.contains(&"in-list"), "expected the list-nested heading in the TOC, got {ids:?}");
+    assert!(ids.contains(&"in-column"), "expected the column-nested heading in the TOC, got {ids:?}");
 }
 
 #[test]

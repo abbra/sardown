@@ -15,16 +15,35 @@ pub struct TocEntry {
 }
 
 fn collect_entries(ast: &[BlockNode], depth: u8) -> Vec<TocEntry> {
-    ast.iter()
-        .filter_map(|block| match block {
-            BlockNode::Heading { level, id, content } if *level <= depth => Some(TocEntry {
-                level: *level,
-                id: id.clone(),
-                text: content.iter().map(|n| n.text.as_str()).collect(),
-            }),
-            _ => None,
-        })
-        .collect()
+    let mut entries = Vec::new();
+    collect_entries_into(ast, depth, &mut entries);
+    entries
+}
+
+/// Recurses into every container `BlockNode` can nest a heading inside, matching the recursion
+/// this crate's other AST-walking functions (e.g. `md2pdf_ast::tag_diagram_origins`) already use
+/// -- a heading inside a blockquote, list item, or `::columns` column previously never made it
+/// into the table of contents at all.
+fn collect_entries_into(ast: &[BlockNode], depth: u8, entries: &mut Vec<TocEntry>) {
+    for block in ast {
+        match block {
+            BlockNode::Heading { level, id, content } if *level <= depth => {
+                entries.push(TocEntry { level: *level, id: id.clone(), text: content.iter().map(|n| n.text.as_str()).collect() })
+            }
+            BlockNode::Blockquote { content } => collect_entries_into(content, depth, entries),
+            BlockNode::List { items, .. } => {
+                for item in items {
+                    collect_entries_into(item, depth, entries);
+                }
+            }
+            BlockNode::Columns(columns) => {
+                for column in columns {
+                    collect_entries_into(column, depth, entries);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Shapes `text` as a single line and returns both the positioned element (with `x`/`y` set to
