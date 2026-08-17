@@ -1,3 +1,4 @@
+mod concat;
 mod postprocess;
 mod rescale;
 mod resolve;
@@ -5,6 +6,7 @@ mod shrink;
 mod split;
 mod stylesheet_for_slide;
 
+pub use concat::concat_slide_layouts;
 pub use postprocess::{center_vertically, fill_background};
 pub use rescale::rescale_slide_content;
 pub use resolve::resolve_layout;
