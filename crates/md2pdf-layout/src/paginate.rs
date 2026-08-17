@@ -6,7 +6,7 @@ use cosmic_text::FontSystem;
 use md2pdf_ast::BlockNode;
 use md2pdf_enrich::DiagramTable;
 
-const PT_PER_MM: f32 = 2.834645669;
+const PT_PER_MM: f32 = 2.834_645_7;
 const LINE_SPACING_PT: f32 = 4.0; // gap after each block
 
 /// `style` is read fresh on every call into `render_block` -- but only *some* of its fields

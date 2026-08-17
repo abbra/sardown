@@ -1,7 +1,7 @@
 use md2pdf_ast::LinkTarget;
 use md2pdf_layout::{apply_asymmetric_margins, PageGeometry, PathCommand, PositionedElement, PositionedPage, Rect};
 
-const PT_PER_MM: f32 = 2.834645669;
+const PT_PER_MM: f32 = 2.834_645_7;
 
 fn geometry(inner_margin_mm: Option<f32>, outer_margin_mm: Option<f32>) -> PageGeometry {
     PageGeometry { page_width_mm: 215.9, page_height_mm: 279.4, margin_mm: 25.4, inner_margin_mm, outer_margin_mm }

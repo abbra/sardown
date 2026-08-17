@@ -6,7 +6,7 @@ use md2pdf_style::{DocumentStyle, HeaderFooterMode, HeaderFooterStyle, HeaderZon
 
 // Mirrors paginate.rs's own PT_PER_MM: a fixed physical constant, not business logic, so a small
 // local duplicate is lower-risk than threading a cross-module import for it.
-const PT_PER_MM: f32 = 2.834645669;
+const PT_PER_MM: f32 = 2.834_645_7;
 
 /// Substitutes `{h1}`, `{h2}`, `{page}`, `{total_pages}`, `{title}`, `{author}`, and `{date}` in
 /// `template`.

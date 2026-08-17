@@ -151,7 +151,7 @@ fn left_zone_is_positioned_at_the_margin() {
     let contexts = vec![ctx(None, false)];
     let mut fs = test_font_system();
     render_headers_footers(&mut pages, &contexts, &AnchorTable::new(), &sheet, &geometry(), &mut fs);
-    let margin_pt = 25.4 * 2.834645669;
+    let margin_pt = 25.4 * 2.834_645_7;
     let x = pages[0]
         .elements
         .iter()
@@ -172,8 +172,8 @@ fn right_zone_is_right_aligned_to_the_content_edge() {
     let contexts = vec![ctx(None, false)];
     let mut fs = test_font_system();
     render_headers_footers(&mut pages, &contexts, &AnchorTable::new(), &sheet, &geometry(), &mut fs);
-    let margin_pt = 25.4 * 2.834645669;
-    let content_width_pt = 215.9 * 2.834645669 - 2.0 * margin_pt;
+    let margin_pt = 25.4 * 2.834_645_7;
+    let content_width_pt = 215.9 * 2.834_645_7 - 2.0 * margin_pt;
     let right_edge = margin_pt + content_width_pt;
     let (x, glyphs_width) = pages[0]
         .elements

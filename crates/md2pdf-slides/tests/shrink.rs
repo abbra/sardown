@@ -53,7 +53,7 @@ fn content_that_overflows_at_full_scale_shrinks_until_it_fits() {
     // per paragraph, with no line-wrapping math to guess at.
     //
     // Usable height on this 60mm-tall, 5mm-margin page is
-    // `60 * 2.834645669 - 2 * (5 * 2.834645669)` ~= 141.7pt. With 8 paragraphs:
+    // `60 * 2.834_645_7 - 2 * (5 * 2.834_645_7)` ~= 141.7pt. With 8 paragraphs:
     //   scale 1.0: 8 * (12.0*1.4 + 8.0)  = 8 * 24.8 = 198.4pt  (overflows 141.7pt)
     //   scale 0.5: 8 * (6.0*1.4  + 8.0)  = 8 * 16.4 = 131.2pt  (fits within 141.7pt, ~10.5pt to spare)
     // so the shrink loop is guaranteed to find *some* fitting scale at or before the 0.5 floor.

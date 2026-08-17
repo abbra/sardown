@@ -3,7 +3,7 @@ use cosmic_text::FontSystem;
 use md2pdf_ast::{BlockNode, InlineNode, LinkTarget, TextStyle};
 use md2pdf_style::Stylesheet;
 
-const PT_PER_MM: f32 = 2.834645669;
+const PT_PER_MM: f32 = 2.834_645_7;
 const ENTRY_INDENT_PT: f32 = 18.0;
 const DOT_GAP_PADDING_PT: f32 = 4.0;
 

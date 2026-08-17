@@ -475,7 +475,7 @@ fn table_cell_text_has_horizontal_padding_from_the_column_edges() {
     let mut fs = test_font_system();
     let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
 
-    let margin_pt = 25.4 * 2.834645669; // matches Cursor's own mm-to-pt conversion
+    let margin_pt = 25.4 * 2.834_645_7; // matches Cursor's own mm-to-pt conversion
     let first_col_text_x = pages[0]
         .elements
         .iter()
