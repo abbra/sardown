@@ -676,6 +676,24 @@ fn mermaid_diagram_taller_than_a_full_page_is_scaled_down_to_fit_one_page() {
 }
 
 #[test]
+fn a_base64_data_uri_image_produces_a_raster_image_element_with_no_base_dir_needed() {
+    let uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAGUlEQVR4AQEOAPH/AP8AAP8AAAD/AAD/AAAf7gP9ii433QAAAABJRU5ErkJggg==";
+    let ast = vec![BlockNode::Image { alt: "test".to_string(), title: None, source: md2pdf_ast::ImageSource::DataUri(uri.to_string()) }];
+    let mut fs = test_font_system();
+    // A deliberately nonexistent base_dir: a data URI is fully self-contained and must not need
+    // any filesystem access to render.
+    let output = layout(&ast, &letter_geometry(), &mut fs, std::path::Path::new("/nonexistent"), &DiagramTable::new());
+
+    match &output.pages[0].elements[0] {
+        PositionedElement::RasterImage { image_id, width, height, .. } => {
+            assert_eq!(image_id, uri);
+            assert!(*width > 0.0 && *height > 0.0);
+        }
+        other => panic!("expected RasterImage, got {other:?}"),
+    }
+}
+
+#[test]
 fn an_embedded_svg_image_produces_a_vector_graphic_element() {
     let ast =
         vec![BlockNode::Image { alt: "test".to_string(), title: None, source: md2pdf_ast::ImageSource::Embedded(std::path::PathBuf::from("test-vector.svg")) }];

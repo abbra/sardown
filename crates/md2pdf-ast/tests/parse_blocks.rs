@@ -248,6 +248,19 @@ fn parses_external_and_relative_images() {
 }
 
 #[test]
+fn parses_a_base64_data_uri_image_as_a_data_uri_source_not_an_embedded_path() {
+    let md = "![alt text](data:image/png;base64,iVBORw0KGgo=)\n";
+    let blocks = parse(md);
+    match &blocks[0] {
+        BlockNode::Image { alt, source, .. } => {
+            assert_eq!(alt, "alt text");
+            assert_eq!(source, &ImageSource::DataUri("data:image/png;base64,iVBORw0KGgo=".to_string()));
+        }
+        other => panic!("expected Image, got {other:?}"),
+    }
+}
+
+#[test]
 fn parses_mermaid_fenced_code_block_as_diagram_not_code_block() {
     let md = "```mermaid\nflowchart TD\n    A --> B\n```\n";
     let blocks = parse(md);

@@ -831,28 +831,10 @@ fn render_block(
             }
         }
         BlockNode::Image { source: md2pdf_ast::ImageSource::Embedded(path), .. } => {
-            let key = path.to_string_lossy().to_string();
-            if let Some(decoded) = images.get(&key) {
-                let max_width = cursor.content_width_pt - indent_pt;
-                let max_height = cursor.page_height_pt - margin_pt;
-                let (width, height) = fit_vector_graphic(decoded.width as f32, decoded.height as f32, max_width, max_height);
-                if cursor.remaining_height() < height && !cursor.current.is_empty() {
-                    cursor.break_page(margin_pt);
-                }
-                cursor.current.push(PositionedElement::RasterImage { x: margin_pt + indent_pt, y: cursor.y, width, height, image_id: key });
-                cursor.y += height;
-            } else if let Some(diagram) = diagrams.get(&key) {
-                // An embedded .svg file (collect_svg_diagrams) rather than a raster image --
-                // rendered through the exact same VectorGraphic path Mermaid diagrams use.
-                let max_width = cursor.content_width_pt - indent_pt;
-                let max_height = cursor.page_height_pt - margin_pt;
-                let (width, height) = fit_vector_graphic(diagram.width, diagram.height, max_width, max_height);
-                if cursor.remaining_height() < height && !cursor.current.is_empty() {
-                    cursor.break_page(margin_pt);
-                }
-                cursor.current.push(PositionedElement::VectorGraphic { x: margin_pt + indent_pt, y: cursor.y, width, height, diagram_id: key });
-                cursor.y += height;
-            }
+            render_keyed_image(cursor, margin_pt, indent_pt, path.to_string_lossy().to_string(), images, diagrams);
+        }
+        BlockNode::Image { source: md2pdf_ast::ImageSource::DataUri(uri), .. } => {
+            render_keyed_image(cursor, margin_pt, indent_pt, uri.clone(), images, diagrams);
         }
         BlockNode::Image { source: md2pdf_ast::ImageSource::External(_), .. } => {} // skipped, see decode_images
         BlockNode::MermaidDiagram { id, .. } => {
@@ -929,6 +911,34 @@ fn render_block(
             }
             cursor.y = outer_y + max_height_pt;
         }
+    }
+}
+
+/// Renders whichever of `images`/`diagrams` actually has an entry for `key` -- shared by
+/// `ImageSource::Embedded` and `ImageSource::DataUri`, which differ only in how `key` is derived
+/// (a file path vs. the raw `data:` URI string) but are otherwise decoded into the exact same two
+/// tables by `decode_images`/`collect_svg_diagrams`.
+fn render_keyed_image(cursor: &mut Cursor, margin_pt: f32, indent_pt: f32, key: String, images: &ImageTable, diagrams: &DiagramTable) {
+    if let Some(decoded) = images.get(&key) {
+        let max_width = cursor.content_width_pt - indent_pt;
+        let max_height = cursor.page_height_pt - margin_pt;
+        let (width, height) = fit_vector_graphic(decoded.width as f32, decoded.height as f32, max_width, max_height);
+        if cursor.remaining_height() < height && !cursor.current.is_empty() {
+            cursor.break_page(margin_pt);
+        }
+        cursor.current.push(PositionedElement::RasterImage { x: margin_pt + indent_pt, y: cursor.y, width, height, image_id: key });
+        cursor.y += height;
+    } else if let Some(diagram) = diagrams.get(&key) {
+        // An embedded .svg file/data URI (collect_svg_diagrams) rather than a raster image --
+        // rendered through the exact same VectorGraphic path Mermaid diagrams use.
+        let max_width = cursor.content_width_pt - indent_pt;
+        let max_height = cursor.page_height_pt - margin_pt;
+        let (width, height) = fit_vector_graphic(diagram.width, diagram.height, max_width, max_height);
+        if cursor.remaining_height() < height && !cursor.current.is_empty() {
+            cursor.break_page(margin_pt);
+        }
+        cursor.current.push(PositionedElement::VectorGraphic { x: margin_pt + indent_pt, y: cursor.y, width, height, diagram_id: key });
+        cursor.y += height;
     }
 }
 

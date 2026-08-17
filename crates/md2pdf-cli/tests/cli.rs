@@ -180,6 +180,37 @@ fn renders_an_embedded_svg_image_as_vector_content_not_a_raster_image() {
 }
 
 #[test]
+fn renders_a_base64_data_uri_image_as_a_raster_image_with_no_warning() {
+    // Regression test: `![](data:image/png;base64,...)` previously fell through to the same
+    // `ImageSource::Embedded` path as a file reference, and `warning: refusing to load image` (the
+    // data URI's canonicalize() failing, since it's not a real path) was printed instead of
+    // decoding the image.
+    let base64_png = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAGUlEQVR4AQEOAPH/AP8AAP8AAAD/AAD/AAAf7gP9ii433QAAAABJRU5ErkJggg==";
+    let md_path = std::env::temp_dir().join("md2pdf-test-base64-image-doc.md");
+    std::fs::write(&md_path, format!("# Test\n\n![pic](data:image/png;base64,{base64_png})\n")).unwrap();
+
+    let out_path = std::env::temp_dir().join("md2pdf-test-base64-image-output.pdf");
+    let _ = std::fs::remove_file(&out_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(&md_path).arg("-o").arg(&out_path);
+    let output = cmd.output().expect("failed to run md2pdf");
+    assert!(output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("refusing to load"), "expected the base64 image to decode, got stderr:\n{stderr}");
+    assert!(!stderr.contains("warning"), "expected no warnings at all, got stderr:\n{stderr}");
+
+    let bytes = std::fs::read(&out_path).expect("output PDF was not written");
+    let doc = lopdf::Document::load_mem(&bytes).expect("output is not a valid PDF");
+    let has_image_xobject =
+        doc.objects.values().any(|obj| obj.as_stream().ok().and_then(|s| s.dict.get(b"Subtype").ok()).and_then(|s| s.as_name().ok()) == Some(b"Image"));
+    assert!(has_image_xobject, "expected the base64 PNG to render as a raster Image XObject");
+
+    std::fs::remove_file(&md_path).unwrap();
+    std::fs::remove_file(&out_path).unwrap();
+}
+
+#[test]
 fn embedded_svg_text_labels_render_using_the_documents_own_configured_fonts() {
     // Regression test: SVG diagrams (e.g. Graphviz output, which commonly emits
     // font-family="Helvetica,sans-Serif" -- note the capital S, which is not the lowercase

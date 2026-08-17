@@ -112,6 +112,8 @@ fn lower_inline_events<'a, I: Iterator<Item = Event<'a>>>(
 fn image_source_from_url(url: &str) -> ImageSource {
     if url.starts_with("http://") || url.starts_with("https://") {
         ImageSource::External(url.to_string())
+    } else if url.starts_with("data:") {
+        ImageSource::DataUri(url.to_string())
     } else {
         ImageSource::Embedded(std::path::PathBuf::from(url))
     }

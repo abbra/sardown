@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use md2pdf_ast::{BlockNode, ImageSource};
 use md2pdf_enrich::{CompiledDiagram, DiagramTable};
 use std::collections::HashMap;
@@ -40,6 +41,32 @@ fn is_svg_path(path: &Path) -> bool {
     path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
 }
 
+/// The declared MIME type of a `data:` URI (e.g. `"image/png"`), or a generic fallback if the
+/// header doesn't parse -- used only for warning messages, never the raw base64 payload, which
+/// could be megabytes of noise dumped to stderr for one broken image.
+fn data_uri_label(uri: &str) -> &str {
+    uri.strip_prefix("data:").and_then(|rest| rest.split([',', ';']).next()).filter(|mime| !mime.is_empty()).unwrap_or("data URI")
+}
+
+fn is_svg_data_uri(uri: &str) -> bool {
+    data_uri_label(uri).eq_ignore_ascii_case("image/svg+xml")
+}
+
+/// Decodes a `data:<mime>;base64,<data>` URI into its raw bytes. Only the base64-encoded form is
+/// supported -- Markdown-embedded images are essentially always produced this way by editors and
+/// export tools; the rarer percent-encoded form is left unsupported rather than silently
+/// mis-decoded. Tolerates embedded whitespace/newlines in the base64 payload, since some tools
+/// wrap it at a fixed column width.
+fn decode_data_uri(uri: &str) -> Result<Vec<u8>, String> {
+    let rest = uri.strip_prefix("data:").ok_or("not a data: URI")?;
+    let (header, data) = rest.split_once(',').ok_or("data: URI has no ',' separator")?;
+    if !header.ends_with(";base64") {
+        return Err("only base64-encoded data: URIs are supported".to_string());
+    }
+    let cleaned: String = data.chars().filter(|c| !c.is_whitespace()).collect();
+    STANDARD.decode(&cleaned).map_err(|e| format!("invalid base64 data: {e}"))
+}
+
 fn collect(ast: &[BlockNode], base_dir: &Path, table: &mut ImageTable) {
     for block in ast {
         match block {
@@ -63,6 +90,26 @@ fn collect(ast: &[BlockNode], base_dir: &Path, table: &mut ImageTable) {
                         Err(e) => eprintln!("warning: failed to decode image {key}: {e}"),
                     },
                     Err(e) => eprintln!("warning: refusing to load image {key}: {e}"),
+                }
+            }
+            BlockNode::Image { source: ImageSource::DataUri(uri), .. } => {
+                // SVG data URIs are collected separately by collect_svg_diagrams, same reasoning
+                // as is_svg_path above: the `image` crate has no SVG decoder.
+                if is_svg_data_uri(uri) {
+                    continue;
+                }
+                if table.contains_key(uri) {
+                    continue;
+                }
+                match decode_data_uri(uri) {
+                    Ok(bytes) => match image::load_from_memory(&bytes) {
+                        Ok(img) => {
+                            let rgba = img.to_rgba8();
+                            table.insert(uri.clone(), DecodedImage { width: rgba.width(), height: rgba.height(), rgba8: rgba.into_raw() });
+                        }
+                        Err(e) => eprintln!("warning: failed to decode embedded {} image: {e}", data_uri_label(uri)),
+                    },
+                    Err(e) => eprintln!("warning: refusing to load embedded {} image: {e}", data_uri_label(uri)),
                 }
             }
             BlockNode::Image { source: ImageSource::External(url), .. } => {
@@ -116,6 +163,24 @@ fn collect_svgs(ast: &[BlockNode], base_dir: &Path, table: &mut DiagramTable) {
                         Err(e) => eprintln!("warning: failed to read SVG image {key}: {e}"),
                     },
                     Err(e) => eprintln!("warning: refusing to load image {key}: {e}"),
+                }
+            }
+            BlockNode::Image { source: ImageSource::DataUri(uri), .. } if is_svg_data_uri(uri) => {
+                if table.contains_key(uri) {
+                    continue;
+                }
+                match decode_data_uri(uri) {
+                    Ok(bytes) => match String::from_utf8(bytes) {
+                        Ok(svg) => match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
+                            Ok(tree) => {
+                                let size = tree.size();
+                                table.insert(uri.clone(), CompiledDiagram { svg, width: size.width(), height: size.height() });
+                            }
+                            Err(e) => eprintln!("warning: failed to parse embedded {} image: {e}", data_uri_label(uri)),
+                        },
+                        Err(e) => eprintln!("warning: embedded {} image is not valid UTF-8: {e}", data_uri_label(uri)),
+                    },
+                    Err(e) => eprintln!("warning: refusing to load embedded {} image: {e}", data_uri_label(uri)),
                 }
             }
             BlockNode::Blockquote { content } => collect_svgs(content, base_dir, table),

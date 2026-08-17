@@ -90,6 +90,11 @@ pub enum LinkTarget {
 pub enum ImageSource {
     Embedded(std::path::PathBuf),
     External(String),
+    /// A `data:` URI with the image bytes inlined directly in the document (e.g.
+    /// `data:image/png;base64,...`), rather than referencing a file or a remote URL. Stored as
+    /// the raw URI string; decoding happens in `md2pdf-layout`, matching how `Embedded`'s path is
+    /// only resolved/decoded later rather than eagerly here.
+    DataUri(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]

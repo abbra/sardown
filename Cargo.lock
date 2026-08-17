@@ -1723,6 +1723,7 @@ dependencies = [
 name = "md2pdf-layout"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "cosmic-text",
  "fontdb 0.23.0",
  "hyphenation",
