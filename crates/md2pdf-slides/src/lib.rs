@@ -6,6 +6,7 @@ mod shrink;
 mod split;
 mod stylesheet_for_slide;
 
+use anyhow::Context;
 pub use concat::concat_slide_layouts;
 pub use postprocess::{center_vertically, draw_background_diagram, draw_background_image, fill_background};
 use md2pdf_ast::{BlockNode, ImageSource};
@@ -47,9 +48,18 @@ pub fn render_slide_deck(
         outer_margin_mm: stylesheet.page.outer_margin_mm,
     };
 
+    // Decoding is cached across the whole deck, keyed by path: multiple slides commonly share one
+    // layout's own logo/watermark, and without this a deck of N slides using the same background
+    // image decoded it from disk N times. `attempted` also dedupes the decode-failure warning for
+    // a broken path down to once per deck, instead of once per slide that references it.
+    let mut background_images = md2pdf_layout::ImageTable::new();
+    let mut background_diagrams = md2pdf_enrich::DiagramTable::new();
+    let mut attempted_background_paths = std::collections::HashSet::new();
+
     let mut slide_outputs = Vec::with_capacity(slides.len());
     for (i, slide) in slides.iter().enumerate() {
-        let layout = resolve_layout(slide.layout_name.as_deref(), &stylesheet.slides)?;
+        let layout = resolve_layout(slide.layout_name.as_deref(), &stylesheet.slides)
+            .with_context(|| format!("resolving layout for slide {} (1-indexed)", i + 1))?;
         let mut output = layout_slide_with_shrink(
             &slide.blocks,
             &geometry,
@@ -74,27 +84,33 @@ pub fn render_slide_deck(
         // table -- whichever one actually decoded the path determines which element kind gets
         // drawn, the same dual-table check `render_block`'s own `BlockNode::Image` arm uses.
         for image in &layout.background_images {
-            let synthetic_ast = [BlockNode::Image { alt: String::new(), title: None, source: ImageSource::Embedded(image.path.clone()) }];
             let key = image.path.to_string_lossy().to_string();
-            let decoded_table = md2pdf_layout::decode_images(&synthetic_ast, base_dir);
-            let diagram_table = md2pdf_layout::collect_svg_diagrams(&synthetic_ast, base_dir);
+            if attempted_background_paths.insert(key.clone()) {
+                let synthetic_ast = [BlockNode::Image { alt: String::new(), title: None, source: ImageSource::Embedded(image.path.clone()) }];
+                background_images.extend(md2pdf_layout::decode_images(&synthetic_ast, base_dir));
+                background_diagrams.extend(md2pdf_layout::collect_svg_diagrams(&synthetic_ast, base_dir));
+                // If decoding failed, decode_images/collect_svg_diagrams already printed a
+                // warning -- matches this project's "skip the one broken piece, don't fail the
+                // whole render" convention.
+            }
             let (page_width_pt, page_height_pt) = (output.page_width_pt, output.page_height_pt);
-            if let Some(decoded) = decoded_table.get(&key) {
-                let height_pt = image.width_pt * (decoded.height as f32 / decoded.width as f32);
-                for page in &mut output.pages {
-                    draw_background_image(page, &key, image.corner, image.width_pt, height_pt, image.margin_pt, page_width_pt, page_height_pt);
+            if let Some(decoded) = background_images.get(&key) {
+                // A zero-width source image would otherwise divide-by-zero into a NaN/infinite
+                // height_pt; only reachable via a pathological (empty or corrupt) source file.
+                if decoded.width > 0 {
+                    let height_pt = image.width_pt * (decoded.height as f32 / decoded.width as f32);
+                    for page in &mut output.pages {
+                        draw_background_image(page, &key, image.corner, image.width_pt, height_pt, image.margin_pt, page_width_pt, page_height_pt);
+                    }
                 }
-            } else if let Some(diagram) = diagram_table.get(&key) {
-                let height_pt = image.width_pt * (diagram.height / diagram.width);
-                for page in &mut output.pages {
-                    draw_background_diagram(page, &key, image.corner, image.width_pt, height_pt, image.margin_pt, page_width_pt, page_height_pt);
+            } else if let Some(diagram) = background_diagrams.get(&key) {
+                if diagram.width > 0.0 {
+                    let height_pt = image.width_pt * (diagram.height / diagram.width);
+                    for page in &mut output.pages {
+                        draw_background_diagram(page, &key, image.corner, image.width_pt, height_pt, image.margin_pt, page_width_pt, page_height_pt);
+                    }
                 }
             }
-            // If decoding failed, decode_images/collect_svg_diagrams already printed a warning --
-            // matches this project's "skip the one broken piece, don't fail the whole render"
-            // convention.
-            output.images.extend(decoded_table);
-            output.diagrams.extend(diagram_table);
         }
         if let Some(color) = layout.background_color {
             let (page_width_pt, page_height_pt) = (output.page_width_pt, output.page_height_pt);
@@ -119,6 +135,8 @@ pub fn render_slide_deck(
     }
 
     let mut combined = concat_slide_layouts(slide_outputs);
+    combined.images.extend(background_images);
+    combined.diagrams.extend(background_diagrams);
     md2pdf_layout::render_headers_footers(&mut combined.pages, &combined.page_contexts, &combined.anchors, stylesheet, &geometry, font_system);
     md2pdf_layout::apply_asymmetric_margins(&mut combined.pages, &geometry);
     Ok(combined)

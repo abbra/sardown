@@ -46,7 +46,19 @@ fn an_unresolvable_layout_directive_is_a_load_time_error() {
     let markdown = "@layout: nonexistent\n\n# Cover\n";
     let mut fs = test_font_system();
     match render_slide_deck(markdown, std::path::Path::new("."), &mut fs, &small_page_stylesheet()) {
-        Err(err) => assert!(format!("{err}").contains("nonexistent")),
+        // `{err:#}` (the full chain) rather than plain `{err}` (only the outermost context)
+        // since resolve_layout's own message is now wrapped in a per-slide context.
+        Err(err) => assert!(format!("{err:#}").contains("nonexistent")),
+        Ok(_) => panic!("expected an unresolvable @layout: directive to be a load-time error"),
+    }
+}
+
+#[test]
+fn an_unresolvable_layout_directives_error_names_which_slide_it_was_on() {
+    let markdown = "# One\n\n---\n\n@layout: nonexistent\n\n# Two\n";
+    let mut fs = test_font_system();
+    match render_slide_deck(markdown, std::path::Path::new("."), &mut fs, &small_page_stylesheet()) {
+        Err(err) => assert!(format!("{err:#}").contains("slide 2"), "expected the error to name slide 2, got: {err:#}"),
         Ok(_) => panic!("expected an unresolvable @layout: directive to be a load-time error"),
     }
 }
@@ -168,6 +180,55 @@ fn a_layouts_svg_background_image_is_drawn_as_a_vector_graphic() {
         |page: &md2pdf_layout::PositionedPage| page.elements.iter().any(|e| matches!(e, md2pdf_layout::PositionedElement::VectorGraphic { .. }));
     assert!(has_background_diagram(&output.pages[0]), "expected an SVG background image to render as a VectorGraphic");
     assert!(output.diagrams.contains_key("test-vector.svg"), "expected the SVG background image to be compiled into the final diagrams table");
+}
+
+#[test]
+fn three_slides_sharing_one_layouts_background_image_all_render_it() {
+    // Regression coverage for the background-image decode cache in render_slide_deck: decoding
+    // is now keyed by path and shared across every slide that uses the same layout, rather than
+    // repeated per slide -- this locks in that sharing the cache doesn't break drawing it on
+    // every slide that actually needs it.
+    let mut sheet = small_page_stylesheet();
+    let mut title = SlideLayoutStyle::default();
+    title.background_images.push(md2pdf_style::BackgroundImageStyle {
+        path: std::path::PathBuf::from("test-image.png"),
+        corner: md2pdf_style::ImageCorner::BottomRight,
+        width_pt: 20.0,
+        margin_pt: 14.0,
+    });
+    sheet.slides.layouts.insert("title".to_string(), title);
+    let markdown = "@layout: title\n\n# One\n\n---\n\n@layout: title\n\n# Two\n\n---\n\n@layout: title\n\n# Three\n";
+    let mut fs = test_font_system();
+    let base_dir = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../md2pdf-layout/tests/fixtures"));
+    let output = render_slide_deck(markdown, &base_dir, &mut fs, &sheet).unwrap();
+
+    let has_background_image =
+        |page: &md2pdf_layout::PositionedPage| page.elements.iter().any(|e| matches!(e, md2pdf_layout::PositionedElement::RasterImage { .. }));
+    for page in &output.pages {
+        assert!(has_background_image(page), "every slide sharing the title layout should have its background image drawn");
+    }
+    assert!(output.images.contains_key("test-image.png"));
+}
+
+#[test]
+fn a_zero_width_svg_background_image_is_skipped_instead_of_dividing_by_zero() {
+    let mut sheet = small_page_stylesheet();
+    let mut title = SlideLayoutStyle::default();
+    title.background_images.push(md2pdf_style::BackgroundImageStyle {
+        path: std::path::PathBuf::from("zero-width.svg"),
+        corner: md2pdf_style::ImageCorner::TopLeft,
+        width_pt: 20.0,
+        margin_pt: 14.0,
+    });
+    sheet.slides.layouts.insert("title".to_string(), title);
+    let markdown = "@layout: title\n\n# Cover\n";
+    let mut fs = test_font_system();
+    let base_dir = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"));
+    let output = render_slide_deck(markdown, &base_dir, &mut fs, &sheet).unwrap();
+
+    let has_background_diagram =
+        |page: &md2pdf_layout::PositionedPage| page.elements.iter().any(|e| matches!(e, md2pdf_layout::PositionedElement::VectorGraphic { .. }));
+    assert!(!has_background_diagram(&output.pages[0]), "a zero-width source should be skipped, not drawn as a NaN-sized element");
 }
 
 #[test]
