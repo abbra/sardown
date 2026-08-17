@@ -1385,6 +1385,103 @@ fn a_raster_image_taller_than_the_page_is_capped_to_the_available_height() {
     }
 }
 
+fn text_run_x_positions(page: &md2pdf_layout::PositionedPage) -> Vec<f32> {
+    page.elements
+        .iter()
+        .filter_map(|e| match e {
+            PositionedElement::TextRun { x, .. } => Some(*x),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn two_columns_render_at_non_overlapping_x_offsets() {
+    let ast = vec![BlockNode::Columns(vec![
+        vec![BlockNode::Paragraph { content: vec![plain_inline("Left")] }],
+        vec![BlockNode::Paragraph { content: vec![plain_inline("Right")] }],
+    ])];
+    let mut fs = test_font_system();
+    let output = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new());
+    let xs = text_run_x_positions(&output.pages[0]);
+    assert_eq!(xs.len(), 2, "expected one text run per column");
+    assert!(xs[1] > xs[0], "expected the right column's text to start further right than the left column's, got {xs:?}");
+
+    let margin_pt = letter_geometry().margin_mm * 2.834645669;
+    let content_width_pt = letter_geometry().page_width_mm * 2.834645669 - 2.0 * margin_pt;
+    let expected_column_width_pt = (content_width_pt - 24.0) / 2.0; // default columns.gap_pt = 24.0
+    assert!(
+        (xs[1] - xs[0] - (expected_column_width_pt + 24.0)).abs() < 1.0,
+        "expected the right column to start one column-width-plus-gap after the left column, got left={} right={}",
+        xs[0],
+        xs[1]
+    );
+}
+
+#[test]
+fn columns_block_height_is_the_tallest_column_not_the_sum() {
+    let ast = vec![
+        BlockNode::Columns(vec![
+            vec![BlockNode::Paragraph { content: vec![plain_inline("One short line.")] }],
+            vec![
+                BlockNode::Paragraph { content: vec![plain_inline("Line one.")] },
+                BlockNode::Paragraph { content: vec![plain_inline("Line two.")] },
+                BlockNode::Paragraph { content: vec![plain_inline("Line three.")] },
+            ],
+        ]),
+        BlockNode::Paragraph { content: vec![plain_inline("After the columns.")] },
+    ];
+    let mut fs = test_font_system();
+    let output = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new());
+    // Every paragraph fits comfortably on one Letter page -- if height were wrongly summed
+    // instead of maxed, this would still likely fit on one page too, so the real assertion is
+    // on the "After the columns." paragraph's own y position, checked against the taller
+    // column's own last line, not against a summed height further down below.
+    let after_y = output.pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { y, text, .. } if text.contains("After the columns.") => Some(*y),
+            _ => None,
+        })
+        .expect("expected to find the trailing paragraph's own text run");
+    let column_ys: Vec<f32> = output.pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            PositionedElement::TextRun { y, text, .. } if !text.contains("After the columns.") => Some(*y),
+            _ => None,
+        })
+        .collect();
+    let max_column_y = column_ys.iter().cloned().fold(f32::MIN, f32::max);
+    assert!(after_y > max_column_y, "expected the trailing paragraph to sit below every column's own text");
+}
+
+#[test]
+fn a_column_can_contain_a_list_and_another_a_code_block_full_block_type_reuse() {
+    let ast = vec![BlockNode::Columns(vec![
+        vec![BlockNode::List { ordered: false, start: None, items: vec![vec![BlockNode::Paragraph { content: vec![plain_inline("Bullet")] }]] }],
+        vec![BlockNode::CodeBlock { language: None, tokens: vec![HighlightedToken { text: "code".to_string(), color: [0, 0, 0] }] }],
+    ])];
+    let mut fs = test_font_system();
+    let output = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new());
+    let has_bullet_marker = output.pages[0].elements.iter().any(|e| matches!(e, PositionedElement::TextRun { text, .. } if text.contains('\u{2022}')));
+    let has_code_background = output.pages[0].elements.iter().any(|e| matches!(e, PositionedElement::Path { fill: Some(_), .. }));
+    assert!(has_bullet_marker, "expected the list's own bullet marker to render inside its column");
+    assert!(has_code_background, "expected the code block's own background to render inside its column");
+}
+
+#[test]
+fn an_anchor_inside_a_column_resolves_to_the_columns_own_page() {
+    let ast =
+        vec![BlockNode::Columns(vec![vec![BlockNode::Heading { level: 2, id: "in-column".to_string(), content: vec![sized_inline("In Column", 22.0)] }]])];
+    let mut fs = test_font_system();
+    let output = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new());
+    let anchor = output.anchors.get("in-column").expect("expected the heading anchor to be recorded");
+    assert_eq!(anchor.page, 0);
+    assert!(anchor.x > 0.0 && anchor.y > 0.0);
+}
+
 #[test]
 fn a_heading_with_no_underline_configured_draws_no_extra_path() {
     let ast = parse("# A Heading\n");

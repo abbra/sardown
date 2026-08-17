@@ -789,6 +789,60 @@ fn render_block(
                 cursor.y += (next_ascent_pt - LINE_SPACING_PT).max(0.0);
             }
         }
+        BlockNode::Columns(columns) => {
+            // Lays out each column against an *isolated* Cursor with an unbounded page height
+            // (`f32::MAX`), so break_page's own `remaining_height() < needed` check can never
+            // fire -- the column's entire content always renders as one continuous stream, which
+            // `Cursor::finish()` always returns as exactly one PositionedPage. Reusing the real
+            // render_block loop this way gets every existing block type (lists, code blocks,
+            // images, links) working inside a column for free, with no new per-block-type code.
+            // A `::columns` block is treated as atomic: it isn't page-broken internally here (see
+            // the design spec's own "no mid-block page break" non-goal) -- if it doesn't fit in
+            // the remaining space, it renders anyway rather than splitting a column's content
+            // across two pages.
+            let gap_pt = cursor.style.columns.gap_pt;
+            let n = columns.len().max(1) as f32;
+            let available_width_pt = cursor.content_width_pt - indent_pt;
+            let column_width_pt = ((available_width_pt - gap_pt * (n - 1.0)) / n).max(1.0);
+            let outer_y = cursor.y;
+            let mut max_height_pt: f32 = 0.0;
+
+            for (i, column_blocks) in columns.iter().enumerate() {
+                let mut sub_cursor = Cursor {
+                    y: 0.0,
+                    page_height_pt: f32::MAX,
+                    content_width_pt: column_width_pt,
+                    pages: Vec::new(),
+                    current: Vec::new(),
+                    page_number: 0,
+                    anchors: AnchorTable::new(),
+                    current_h1: cursor.current_h1.clone(),
+                    current_h2: cursor.current_h2.clone(),
+                    chapter_opener_pending: false,
+                    page_contexts: Vec::new(),
+                    style: cursor.style,
+                };
+                for (j, block) in column_blocks.iter().enumerate() {
+                    render_block(block, &mut sub_cursor, 0.0, 0.0, font_system, images, diagrams, hyphenator, column_blocks.get(j + 1));
+                    sub_cursor.y += LINE_SPACING_PT;
+                }
+                let column_height_pt = sub_cursor.y;
+                let (sub_pages, sub_anchors, _) = sub_cursor.finish();
+                let column_x_offset_pt = margin_pt + indent_pt + i as f32 * (column_width_pt + gap_pt);
+
+                if let Some(page) = sub_pages.into_iter().next() {
+                    for mut element in page.elements {
+                        crate::shift_element(&mut element, column_x_offset_pt, outer_y);
+                        cursor.current.push(element);
+                    }
+                }
+                for (id, anchor) in sub_anchors {
+                    cursor.anchors.insert(id, AnchorPosition { page: cursor.page_number, x: anchor.x + column_x_offset_pt, y: anchor.y + outer_y });
+                }
+                max_height_pt = max_height_pt.max(column_height_pt);
+            }
+            cursor.y = outer_y + max_height_pt;
+        }
     }
 }
 
