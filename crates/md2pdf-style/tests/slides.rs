@@ -118,3 +118,39 @@ fn default_layout_naming_a_defined_layout_loads_successfully() {
     assert_eq!(sheet.slides.default_layout, Some("content".to_string()));
     std::fs::remove_file(&path).unwrap();
 }
+
+#[test]
+fn a_zero_min_scale_is_a_validation_error() {
+    let path = std::env::temp_dir().join("md2pdf-test-slides-zero-min-scale.toml");
+    std::fs::write(&path, "[slides]\nmin_scale = 0.0\n").unwrap();
+    let err = Stylesheet::load(&path).unwrap_err();
+    assert!(format!("{err:?}").contains("min_scale"), "expected the error to name min_scale, got {err:?}");
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn a_negative_min_scale_is_a_validation_error() {
+    let path = std::env::temp_dir().join("md2pdf-test-slides-negative-min-scale.toml");
+    std::fs::write(&path, "[slides]\nmin_scale = -0.5\n").unwrap();
+    let err = Stylesheet::load(&path).unwrap_err();
+    assert!(format!("{err:?}").contains("min_scale"), "expected the error to name min_scale, got {err:?}");
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn a_min_scale_above_one_is_a_validation_error() {
+    let path = std::env::temp_dir().join("md2pdf-test-slides-min-scale-above-one.toml");
+    std::fs::write(&path, "[slides]\nmin_scale = 1.5\n").unwrap();
+    let err = Stylesheet::load(&path).unwrap_err();
+    assert!(format!("{err:?}").contains("min_scale"), "expected the error to name min_scale, got {err:?}");
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn a_min_scale_of_exactly_one_loads_successfully() {
+    let path = std::env::temp_dir().join("md2pdf-test-slides-min-scale-one.toml");
+    std::fs::write(&path, "[slides]\nmin_scale = 1.0\n").unwrap();
+    let sheet = Stylesheet::load(&path).unwrap();
+    assert_eq!(sheet.slides.min_scale, 1.0);
+    std::fs::remove_file(&path).unwrap();
+}

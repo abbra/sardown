@@ -87,6 +87,9 @@ impl Stylesheet {
                 anyhow::bail!("[slides] default_layout = {name:?} has no matching [slides.layouts.{name}] table");
             }
         }
+        if self.slides.min_scale <= 0.0 || self.slides.min_scale > 1.0 {
+            anyhow::bail!("[slides] min_scale must be greater than 0.0 and at most 1.0, got {}", self.slides.min_scale);
+        }
         Ok(())
     }
 }
