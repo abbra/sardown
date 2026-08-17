@@ -140,20 +140,23 @@ fn to_cosmic_align(alignment: md2pdf_style::TextAlignment) -> cosmic_text::Align
     }
 }
 
+/// Groups `place_inline_content`'s plain placement/formatting parameters (as opposed to `cursor`/
+/// `font_system`, which are shared mutable context, and `content`, the data being placed) into one
+/// value instead of five separate scalar arguments.
+struct InlinePlacement<'a> {
+    margin_pt: f32,
+    indent_pt: f32,
+    max_width_pt: f32,
+    align: cosmic_text::Align,
+    hyphenator: Option<&'a crate::Hyphenator>,
+}
+
 /// Returns `(leftmost_x, rightmost_x)` in points -- the actual rendered horizontal extent of the
 /// widest line placed. Used by the `Heading` arm to draw an underline hugging the heading's own
 /// text (both its width *and* its actual start position, which shifts under `Align::Center`/
 /// `Align::Right`) rather than assuming it always starts at `margin_pt + indent_pt`.
-fn place_inline_content(
-    cursor: &mut Cursor,
-    margin_pt: f32,
-    indent_pt: f32,
-    max_width_pt: f32,
-    content: &[md2pdf_ast::InlineNode],
-    align: cosmic_text::Align,
-    hyphenator: Option<&crate::Hyphenator>,
-    font_system: &mut FontSystem,
-) -> (f32, f32) {
+fn place_inline_content(cursor: &mut Cursor, content: &[md2pdf_ast::InlineNode], placement: InlinePlacement, font_system: &mut FontSystem) -> (f32, f32) {
+    let InlinePlacement { margin_pt, indent_pt, max_width_pt, align, hyphenator } = placement;
     let hyphenated;
     let content = match hyphenator {
         Some(h) => {
@@ -365,8 +368,12 @@ fn render_block(
                 md2pdf_style::TextAlignment::Justify => cosmic_text::Align::Left,
                 other => to_cosmic_align(other),
             };
-            let (heading_start_x, heading_end_x) =
-                place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, heading_align, None, font_system);
+            let (heading_start_x, heading_end_x) = place_inline_content(
+                cursor,
+                content,
+                InlinePlacement { margin_pt, indent_pt, max_width_pt, align: heading_align, hyphenator: None },
+                font_system,
+            );
             let resolved_heading = cursor.style.heading.resolve(*level);
             if resolved_heading.underline_width_pt > 0.0 {
                 // Approximates the last line's baseline plus a little clearance for descenders --
@@ -384,7 +391,12 @@ fn render_block(
         }
         BlockNode::Paragraph { content } => {
             let max_width_pt = cursor.content_width_pt - indent_pt;
-            place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, to_cosmic_align(cursor.style.typography.alignment), hyphenator, font_system);
+            place_inline_content(
+                cursor,
+                content,
+                InlinePlacement { margin_pt, indent_pt, max_width_pt, align: to_cosmic_align(cursor.style.typography.alignment), hyphenator },
+                font_system,
+            );
         }
         BlockNode::Blockquote { content } => {
             let start_y = cursor.y;
@@ -559,7 +571,12 @@ fn render_block(
             // syntect leaves at the end of each source line's tokens.
             let code_indent_pt = indent_pt + 8.0;
             let max_width_pt = cursor.content_width_pt - code_indent_pt;
-            place_inline_content(cursor, margin_pt, code_indent_pt, max_width_pt, &combined, cosmic_text::Align::Left, None, font_system);
+            place_inline_content(
+                cursor,
+                &combined,
+                InlinePlacement { margin_pt, indent_pt: code_indent_pt, max_width_pt, align: cosmic_text::Align::Left, hyphenator: None },
+                font_system,
+            );
             let end_y = cursor.y;
             let end_page = cursor.page_number;
             let content_width_pt = cursor.content_width_pt;
@@ -737,7 +754,18 @@ fn render_block(
                 // parameter is normally "wrap at the right margin," which is wrong for a cell —
                 // it let long text bleed across into the next column's space instead of wrapping.
                 let cell_max_width_pt = (width - cell_padding_pt).max(MIN_CELL_WRAP_WIDTH_PT);
-                place_inline_content(cursor, margin_pt, col_x - margin_pt + cell_padding_x_pt, cell_max_width_pt, header, cosmic_text::Align::Left, None, font_system);
+                place_inline_content(
+                    cursor,
+                    header,
+                    InlinePlacement {
+                        margin_pt,
+                        indent_pt: col_x - margin_pt + cell_padding_x_pt,
+                        max_width_pt: cell_max_width_pt,
+                        align: cosmic_text::Align::Left,
+                        hyphenator: None,
+                    },
+                    font_system,
+                );
                 header_bottom_y = header_bottom_y.max(cursor.y);
                 col_x += width;
             }
@@ -774,7 +802,18 @@ fn render_block(
                 for (cell, width) in row.iter().zip(&widths) {
                     cursor.y = row_top_y;
                     let cell_max_width_pt = (width - cell_padding_pt).max(MIN_CELL_WRAP_WIDTH_PT);
-                    place_inline_content(cursor, margin_pt, col_x - margin_pt + cell_padding_x_pt, cell_max_width_pt, cell, cosmic_text::Align::Left, None, font_system);
+                    place_inline_content(
+                        cursor,
+                        cell,
+                        InlinePlacement {
+                            margin_pt,
+                            indent_pt: col_x - margin_pt + cell_padding_x_pt,
+                            max_width_pt: cell_max_width_pt,
+                            align: cosmic_text::Align::Left,
+                            hyphenator: None,
+                        },
+                        font_system,
+                    );
                     row_bottom_y = row_bottom_y.max(cursor.y);
                     col_x += width;
                 }
