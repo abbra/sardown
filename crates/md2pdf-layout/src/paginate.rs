@@ -842,6 +842,20 @@ fn render_block(
                 let (sub_pages, sub_anchors, _) = sub_cursor.finish();
                 let column_x_offset_pt = margin_pt + indent_pt + i as f32 * (column_width_pt + gap_pt);
 
+                // A column is documented as always producing exactly one internal page (an
+                // unbounded page height means break_page's height check can never fire) -- the
+                // only way to violate that today would be a BlockNode::PageBreak inside a
+                // column, which no current producer of PageBreak/group_columns combination can
+                // create. Warn loudly rather than silently dropping the extra page(s) if that
+                // ever changes.
+                if sub_pages.len() > 1 {
+                    eprintln!(
+                        "warning: a `::columns` column produced {} internal pages; only the \
+                         first is kept and the rest is dropped, since columns render as one \
+                         atomic block",
+                        sub_pages.len()
+                    );
+                }
                 if let Some(page) = sub_pages.into_iter().next() {
                     for mut element in page.elements {
                         crate::shift_element(&mut element, column_x_offset_pt, outer_y);

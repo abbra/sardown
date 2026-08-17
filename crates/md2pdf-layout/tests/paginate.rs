@@ -1527,6 +1527,39 @@ fn an_anchor_inside_a_column_resolves_to_the_columns_own_page() {
 }
 
 #[test]
+fn a_page_break_inside_a_column_keeps_only_the_first_internal_page_without_panicking() {
+    // A `::columns` column is rendered against an isolated Cursor on the documented assumption
+    // that it always produces exactly one internal page (see the Columns arm's own doc comment).
+    // A BlockNode::PageBreak inside a column violates that assumption (break_page is unconditional,
+    // independent of remaining height) -- not reachable via any current producer of PageBreak
+    // (only md2pdf-book's chapter-combination inserts it, and md2pdf-book never calls
+    // group_columns), but BlockNode::Columns/group_columns are general-purpose AST/layout API,
+    // not gated to slides-only use. This locks in the documented, non-silent fallback: the first
+    // internal page's content is kept, content after the break is dropped, and this must never
+    // panic.
+    let ast = vec![BlockNode::Columns(vec![vec![
+        BlockNode::Paragraph { content: vec![plain_inline("Before the break.")] },
+        BlockNode::PageBreak,
+        BlockNode::Paragraph { content: vec![plain_inline("After the break.")] },
+    ]])];
+    let mut fs = test_font_system();
+    let output = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new());
+    let text_of = |page: &md2pdf_layout::PositionedPage| {
+        page.elements
+            .iter()
+            .filter_map(|e| match e {
+                PositionedElement::TextRun { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let full_text = text_of(&output.pages[0]);
+    assert!(full_text.contains("Before the break."), "expected the first internal page's content to survive: {full_text}");
+    assert!(!full_text.contains("After the break."), "content after an internal page break inside a column is documented as dropped, not stacked: {full_text}");
+}
+
+#[test]
 fn a_heading_with_no_underline_configured_draws_no_extra_path() {
     let ast = parse("# A Heading\n");
     let mut fs = test_font_system();
