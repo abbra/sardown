@@ -43,11 +43,13 @@ my-book/
   opaque internal ID — see [Diagrams](../diagrams.md).
 - A generated table of contents, if `[toc].enabled = true` — see
   [Table of Contents](../styling/table-of-contents.md).
+- Part titles — a heading line in `SUMMARY.md` used to group chapters
+  (mdBook's own sidebar-grouping convention) — get their own page in the
+  combined PDF, styled the same as a chapter heading, and show up
+  alongside real chapters in the generated table of contents and PDF
+  bookmarks.
 
 ## What's not yet supported
 
 - `\{{#include ...}}` and other mdBook preprocessor directives are not
   processed — chapter files are read as plain Markdown.
-- `PartTitle` entries (headings in `SUMMARY.md` used as sidebar group
-  labels in mdBook's own HTML output) are recognized during parsing but
-  currently have no visual treatment in the combined PDF body.
