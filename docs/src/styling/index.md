@@ -39,6 +39,7 @@ they control:
 
 | Section | Controls |
 |---|---|
+| `[document]` | Title/author, available to header/footer templates as `{title}`/`{author}` — see [Headers and Footers](./headers-and-footers.md#zones-and-templates) |
 | `[page]` | [Page format, margins, page numbering](./page.md) |
 | `[typography]` | [Body font, size, color, alignment](./typography.md) |
 | `[heading]` | [Heading sizes, color, font, per-level overrides](./headings.md) |

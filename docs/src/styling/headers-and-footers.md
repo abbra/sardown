@@ -31,6 +31,24 @@ A template can mix literal text with placeholders:
 | `{total_pages}` | The document's total page count |
 | `{h1}` | The most recent level-1 heading text before this page |
 | `{h2}` | The most recent level-2 heading text before this page |
+| `{title}` | `[document].title`, or the `--title` CLI flag if given |
+| `{author}` | `[document].author`, or the `--author` CLI flag if given |
+
+`{title}`/`{author}` come from a `[document]` section:
+
+```toml
+[document]
+title = "My Book"
+author = "Jane Doe"
+
+[header]
+enabled = true
+uniform.center = "{title}"
+```
+
+`--title`/`--author` on the command line override `[document].title`/
+`.author` if both are given — see the
+[Command-Line Reference](../cli-reference.md).
 
 ```toml
 [footer.uniform]

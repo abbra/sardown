@@ -9,6 +9,16 @@ Every field is optional — an absent field always falls back to the default
 value shown here. A color field accepts either a 6-digit hex string
 (`"#rrggbb"`, with or without the `#`) or an `[r, g, b]` byte array.
 
+## `[document]`
+
+| Field | Type | Default |
+|---|---|---|
+| `title` | string | `""` |
+| `author` | string | `""` |
+
+Available to `[header]`/`[footer]` templates as `{title}`/`{author}`. The
+`--title`/`--author` CLI flags override these if both are given.
+
 ## `[page]`
 
 | Field | Type | Default |
@@ -146,7 +156,8 @@ nothing shown in that zone):
 
 `.uniform` is used when `mode = "uniform"`; `.odd`/`.even` are used when
 `mode = "two_sided"`, selected by physical page parity. Valid placeholders
-in a template string: `{page}`, `{total_pages}`, `{h1}`, `{h2}` — see
+in a template string: `{page}`, `{total_pages}`, `{h1}`, `{h2}`, `{title}`,
+`{author}` — see
 [Headers and Footers](./styling/headers-and-footers.md#zones-and-templates).
 
 ## `[toc]`

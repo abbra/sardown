@@ -2,6 +2,7 @@ use anyhow::Context;
 
 mod code_block;
 mod color;
+mod document;
 mod header_footer;
 mod heading;
 mod numbering;
@@ -13,6 +14,7 @@ mod typography;
 
 pub use code_block::{CodeBlockDefaultStyle, CodeBlockStyle, CodeLanguageStyle, LabelStyle, ResolvedCodeBlockStyle};
 pub use color::Color;
+pub use document::DocumentStyle;
 pub use header_footer::{HeaderFooterMode, HeaderFooterStyle, HeaderZones};
 pub use heading::{HeadingLevelStyle, HeadingStyle, ResolvedHeadingStyle};
 pub use numbering::{NumberingFormat, PageNumbering};
@@ -25,6 +27,7 @@ pub use typography::{TextAlignment, TypographyStyle};
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 #[serde(default)]
 pub struct Stylesheet {
+    pub document: DocumentStyle,
     pub page: PageStyle,
     pub typography: TypographyStyle,
     pub heading: HeadingStyle,

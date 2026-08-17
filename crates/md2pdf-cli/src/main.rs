@@ -19,6 +19,14 @@ enum Commands {
         /// Path to a stylesheet TOML file. Falls back to built-in defaults if omitted.
         #[arg(long)]
         style: Option<PathBuf>,
+        /// Document title, available to header/footer templates as {title}. Overrides
+        /// [document].title from the stylesheet if both are given.
+        #[arg(long)]
+        title: Option<String>,
+        /// Document author, available to header/footer templates as {author}. Overrides
+        /// [document].author from the stylesheet if both are given.
+        #[arg(long)]
+        author: Option<String>,
     },
     /// Render an mdBook source tree (a directory containing book.toml and/or src/SUMMARY.md) to
     /// one combined PDF
@@ -30,7 +38,27 @@ enum Commands {
         /// then to built-in defaults.
         #[arg(long)]
         style: Option<PathBuf>,
+        /// Document title, available to header/footer templates as {title}. Overrides
+        /// [document].title from the stylesheet if both are given.
+        #[arg(long)]
+        title: Option<String>,
+        /// Document author, available to header/footer templates as {author}. Overrides
+        /// [document].author from the stylesheet if both are given.
+        #[arg(long)]
+        author: Option<String>,
     },
+}
+
+/// Applies `--title`/`--author` on top of the stylesheet's own `[document]` section, in place --
+/// the CLI flag wins if both are given, otherwise the stylesheet's value (including its default
+/// of "") passes through unchanged.
+fn apply_document_overrides(stylesheet: &mut md2pdf_style::Stylesheet, title: Option<String>, author: Option<String>) {
+    if let Some(title) = title {
+        stylesheet.document.title = title;
+    }
+    if let Some(author) = author {
+        stylesheet.document.author = author;
+    }
 }
 
 fn build_font_system(typography: &md2pdf_style::TypographyStyle) -> cosmic_text::FontSystem {
@@ -58,9 +86,10 @@ fn timed_stage<T>(label: &str, f: impl FnOnce() -> T) -> T {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Render { input, output, style } => {
-            let stylesheet =
+        Commands::Render { input, output, style, title, author } => {
+            let mut stylesheet =
                 timed_stage("Resolving stylesheet", || md2pdf_style::Stylesheet::resolve(style.as_deref(), None))?;
+            apply_document_overrides(&mut stylesheet, title, author);
 
             let markdown = std::fs::read_to_string(&input)?;
             let mut slugs = md2pdf_ast::SlugGenerator::new();
@@ -88,10 +117,11 @@ fn main() -> anyhow::Result<()> {
             eprintln!("Wrote {} ({} pages)", output.display(), output_layout.pages.len());
             Ok(())
         }
-        Commands::RenderBook { book_root, output, style } => {
-            let stylesheet = timed_stage("Resolving stylesheet", || {
+        Commands::RenderBook { book_root, output, style, title, author } => {
+            let mut stylesheet = timed_stage("Resolving stylesheet", || {
                 md2pdf_style::Stylesheet::resolve(style.as_deref(), Some(&book_root))
             })?;
+            apply_document_overrides(&mut stylesheet, title, author);
 
             let ast = timed_stage("Loading book", || md2pdf_book::load_book(&book_root, &stylesheet))?;
 

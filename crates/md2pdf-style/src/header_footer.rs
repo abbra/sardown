@@ -46,7 +46,7 @@ impl Default for HeaderFooterStyle {
     }
 }
 
-const VALID_PLACEHOLDERS: [&str; 4] = ["h1", "h2", "page", "total_pages"];
+const VALID_PLACEHOLDERS: [&str; 6] = ["h1", "h2", "page", "total_pages", "title", "author"];
 
 /// Checks every `{...}` token in `template` against `VALID_PLACEHOLDERS`, so a typo'd placeholder
 /// name is a load-time error naming the bad token rather than silently rendering as literal text
@@ -61,7 +61,7 @@ fn validate_template(template: &str, field_name: &str) -> anyhow::Result<()> {
         let name = &after_open[..end];
         if !VALID_PLACEHOLDERS.contains(&name) {
             anyhow::bail!(
-                "{field_name} uses unknown placeholder {{{name}}} in template {template:?} -- valid placeholders are {{h1}}, {{h2}}, {{page}}, {{total_pages}}"
+                "{field_name} uses unknown placeholder {{{name}}} in template {template:?} -- valid placeholders are {{h1}}, {{h2}}, {{page}}, {{total_pages}}, {{title}}, {{author}}"
             );
         }
         rest = &after_open[end + 1..];

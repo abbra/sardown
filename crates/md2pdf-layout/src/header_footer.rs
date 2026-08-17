@@ -1,7 +1,7 @@
 use crate::{PageContext, PageGeometry, PositionedElement, PositionedPage};
 use cosmic_text::FontSystem;
 use md2pdf_ast::{InlineNode, TextStyle};
-use md2pdf_style::{HeaderFooterMode, HeaderFooterStyle, HeaderZones, NumberingFormat, Stylesheet};
+use md2pdf_style::{DocumentStyle, HeaderFooterMode, HeaderFooterStyle, HeaderZones, NumberingFormat, Stylesheet};
 
 // Mirrors paginate.rs's own PT_PER_MM: a fixed physical constant, not business logic, so a small
 // local duplicate is lower-risk than threading a cross-module import for it.
@@ -60,12 +60,12 @@ pub fn format_page_number(n: u32, format: NumberingFormat) -> String {
     }
 }
 
-/// Substitutes `{h1}`, `{h2}`, `{page}`, and `{total_pages}` in `template`. Assumes `template`
-/// was already validated by `md2pdf_style::Stylesheet::validate` (built in this feature's Phase
-/// 1) -- an unknown placeholder or unterminated `{` here indicates a caller bypassed that
-/// validation, so this panics rather than silently producing wrong output or duplicating
-/// validation logic that already lives in `md2pdf-style`.
-pub fn resolve_template(template: &str, ctx: &PageContext, page_display: &str, total_pages_display: &str) -> String {
+/// Substitutes `{h1}`, `{h2}`, `{page}`, `{total_pages}`, `{title}`, and `{author}` in `template`.
+/// Assumes `template` was already validated by `md2pdf_style::Stylesheet::validate` (built in
+/// this feature's Phase 1) -- an unknown placeholder or unterminated `{` here indicates a caller
+/// bypassed that validation, so this panics rather than silently producing wrong output or
+/// duplicating validation logic that already lives in `md2pdf-style`.
+pub fn resolve_template(template: &str, ctx: &PageContext, page_display: &str, total_pages_display: &str, document: &DocumentStyle) -> String {
     let mut result = String::new();
     let mut rest = template;
     while let Some(start) = rest.find('{') {
@@ -78,6 +78,8 @@ pub fn resolve_template(template: &str, ctx: &PageContext, page_display: &str, t
             "h2" => ctx.current_h2.as_deref().unwrap_or(""),
             "page" => page_display,
             "total_pages" => total_pages_display,
+            "title" => document.title.as_str(),
+            "author" => document.author.as_str(),
             other => panic!("unknown placeholder {{{other}}} should have been rejected by Stylesheet::validate"),
         };
         result.push_str(value);
@@ -113,6 +115,7 @@ fn render_band(
     ctx: &PageContext,
     page_display: &str,
     total_pages_display: &str,
+    document: &DocumentStyle,
     margin_pt: f32,
     content_width_pt: f32,
     baseline_y: f32,
@@ -121,7 +124,7 @@ fn render_band(
 ) {
     let zones = zones_for(style, is_odd_physical_page);
     for (template, align) in [(&zones.left, Align::Left), (&zones.center, Align::Center), (&zones.right, Align::Right)] {
-        let resolved = resolve_template(template, ctx, page_display, total_pages_display);
+        let resolved = resolve_template(template, ctx, page_display, total_pages_display, document);
         if resolved.is_empty() {
             continue;
         }
@@ -183,6 +186,7 @@ pub fn render_headers_footers(
                 ctx,
                 &page_display,
                 &total_pages_display,
+                &stylesheet.document,
                 margin_pt,
                 content_width_pt,
                 margin_pt * 0.6,
@@ -197,6 +201,7 @@ pub fn render_headers_footers(
                 ctx,
                 &page_display,
                 &total_pages_display,
+                &stylesheet.document,
                 margin_pt,
                 content_width_pt,
                 full_page_height_pt - margin_pt * 0.6,

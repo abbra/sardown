@@ -392,3 +392,33 @@ fn explicit_style_flag_generates_a_toc_page_with_working_links() {
     std::fs::remove_file(&md_path).unwrap();
     std::fs::remove_file(&out_path).unwrap();
 }
+
+#[test]
+fn title_and_author_flags_override_the_stylesheets_document_section_in_header_footer_templates() {
+    let style_path = std::env::temp_dir().join("md2pdf-test-document-style.toml");
+    std::fs::write(
+        &style_path,
+        "[document]\ntitle = \"Stylesheet Title\"\nauthor = \"Stylesheet Author\"\n\n\
+         [header]\nenabled = true\nsuppress_on_chapter_start = false\nuniform.left = \"{title}\"\nuniform.right = \"{author}\"\n",
+    )
+    .unwrap();
+
+    let md_path = std::env::temp_dir().join("md2pdf-test-document-doc.md");
+    std::fs::write(&md_path, "# Chapter One\n\nBody.\n").unwrap();
+
+    let out_path = std::env::temp_dir().join("md2pdf-test-document-output.pdf");
+    let _ = std::fs::remove_file(&out_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(&md_path).arg("-o").arg(&out_path).arg("--style").arg(&style_path).arg("--title").arg("CLI Title").arg("--author").arg("CLI Author");
+    cmd.assert().success();
+
+    let doc = lopdf::Document::load_mem(&std::fs::read(&out_path).unwrap()).unwrap();
+    let text = doc.extract_text(&[1]).unwrap_or_default();
+    assert!(text.contains("CLI Title"), "expected the --title flag to override the stylesheet's title: {text}");
+    assert!(text.contains("CLI Author"), "expected the --author flag to override the stylesheet's author: {text}");
+    assert!(!text.contains("Stylesheet Title"), "expected the CLI flag to win over the stylesheet value: {text}");
+
+    std::fs::remove_file(&style_path).unwrap();
+    std::fs::remove_file(&md_path).unwrap();
+    std::fs::remove_file(&out_path).unwrap();
+}

@@ -46,6 +46,23 @@ fn uniform_header_renders_the_resolved_center_template() {
 }
 
 #[test]
+fn header_renders_the_document_title_and_author() {
+    let mut sheet = Stylesheet::default();
+    sheet.document.title = "My Book".to_string();
+    sheet.document.author = "Jane Doe".to_string();
+    sheet.header.enabled = true;
+    sheet.header.uniform.left = "{title}".to_string();
+    sheet.header.uniform.right = "{author}".to_string();
+    let mut pages = vec![empty_page(0)];
+    let contexts = vec![ctx(None, false)];
+    let mut fs = test_font_system();
+    render_headers_footers(&mut pages, &contexts, &sheet, &geometry(), &mut fs);
+    let text = text_of(&pages[0]);
+    assert!(text.contains(&"My Book".to_string()));
+    assert!(text.contains(&"Jane Doe".to_string()));
+}
+
+#[test]
 fn footer_renders_page_number_and_total() {
     let mut sheet = Stylesheet::default();
     sheet.footer.enabled = true;

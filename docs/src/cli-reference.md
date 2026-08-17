@@ -18,6 +18,8 @@ md2pdf render [OPTIONS] --output <OUTPUT> <INPUT>
 | `<INPUT>` | Path to the Markdown file to render |
 | `-o, --output <OUTPUT>` | Path to write the output PDF (required) |
 | `--style <STYLE>` | Path to a stylesheet TOML file. Falls back to built-in defaults if omitted — see [Styling Your Documents](./styling/index.md) |
+| `--title <TITLE>` | Document title, available to header/footer templates as `{title}`. Overrides `[document].title` from the stylesheet if both are given |
+| `--author <AUTHOR>` | Document author, available to header/footer templates as `{author}`. Overrides `[document].author` from the stylesheet if both are given |
 | `-h, --help` | Print help |
 
 Example:
@@ -37,6 +39,8 @@ md2pdf render-book [OPTIONS] --output <OUTPUT> <BOOK_ROOT>
 | `<BOOK_ROOT>` | Path to the book's root directory (containing `book.toml` and/or `src/SUMMARY.md`) |
 | `-o, --output <OUTPUT>` | Path to write the output PDF (required) |
 | `--style <STYLE>` | Path to a stylesheet TOML file. Falls back to `<book_root>/style.toml` if present, then to built-in defaults — see [Rendering Books](./books/index.md) |
+| `--title <TITLE>` | Document title, available to header/footer templates as `{title}`. Overrides `[document].title` from the stylesheet if both are given |
+| `--author <AUTHOR>` | Document author, available to header/footer templates as `{author}`. Overrides `[document].author` from the stylesheet if both are given |
 | `-h, --help` | Print help |
 
 Example:

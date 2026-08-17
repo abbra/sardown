@@ -1,8 +1,12 @@
 use md2pdf_layout::{format_page_number, resolve_template, PageContext};
-use md2pdf_style::NumberingFormat;
+use md2pdf_style::{DocumentStyle, NumberingFormat};
 
 fn ctx(h1: Option<&str>, h2: Option<&str>) -> PageContext {
     PageContext { current_h1: h1.map(String::from), current_h2: h2.map(String::from), is_chapter_opener: false }
+}
+
+fn no_document() -> DocumentStyle {
+    DocumentStyle::default()
 }
 
 #[test]
@@ -37,29 +41,36 @@ fn roman_format_of_zero_falls_back_to_arabic() {
 #[test]
 fn substitutes_h1_and_h2() {
     let context = ctx(Some("Chapter One"), Some("Section A"));
-    assert_eq!(resolve_template("{h1} / {h2}", &context, "3", "10"), "Chapter One / Section A");
+    assert_eq!(resolve_template("{h1} / {h2}", &context, "3", "10", &no_document()), "Chapter One / Section A");
 }
 
 #[test]
 fn missing_h1_or_h2_resolves_to_an_empty_string() {
     let context = ctx(None, None);
-    assert_eq!(resolve_template("[{h1}]", &context, "3", "10"), "[]");
+    assert_eq!(resolve_template("[{h1}]", &context, "3", "10", &no_document()), "[]");
 }
 
 #[test]
 fn substitutes_page_and_total_pages() {
     let context = ctx(None, None);
-    assert_eq!(resolve_template("Page {page} of {total_pages}", &context, "3", "10"), "Page 3 of 10");
+    assert_eq!(resolve_template("Page {page} of {total_pages}", &context, "3", "10", &no_document()), "Page 3 of 10");
 }
 
 #[test]
 fn a_template_with_no_placeholders_is_returned_unchanged() {
     let context = ctx(None, None);
-    assert_eq!(resolve_template("My Book", &context, "3", "10"), "My Book");
+    assert_eq!(resolve_template("My Book", &context, "3", "10", &no_document()), "My Book");
 }
 
 #[test]
 fn mixes_literal_text_and_placeholders_in_one_template() {
     let context = ctx(Some("Intro"), None);
-    assert_eq!(resolve_template("-- {h1} --", &context, "1", "1"), "-- Intro --");
+    assert_eq!(resolve_template("-- {h1} --", &context, "1", "1", &no_document()), "-- Intro --");
+}
+
+#[test]
+fn substitutes_title_and_author() {
+    let context = ctx(None, None);
+    let document = DocumentStyle { title: "My Book".to_string(), author: "Jane Doe".to_string() };
+    assert_eq!(resolve_template("{title} by {author}", &context, "1", "1", &document), "My Book by Jane Doe");
 }
