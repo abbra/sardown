@@ -31,3 +31,11 @@ fn recurses_into_blockquotes_and_list_items() {
     let table = compile_diagrams(&ast);
     assert!(table.contains_key("nested"));
 }
+
+#[test]
+fn recurses_into_columns() {
+    let inner = BlockNode::MermaidDiagram { id: "in-column".to_string(), source: "flowchart TD\n    A --> B\n".to_string(), line: 1, column: 1, file: None };
+    let ast = vec![BlockNode::Columns(vec![vec![inner]])];
+    let table = compile_diagrams(&ast);
+    assert!(table.contains_key("in-column"));
+}

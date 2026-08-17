@@ -78,3 +78,27 @@ fn external_images_are_skipped_not_errored() {
     let table = decode_images(&ast, std::path::Path::new("."));
     assert!(table.is_empty());
 }
+
+#[test]
+fn decode_images_recurses_into_columns() {
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let ast = vec![BlockNode::Columns(vec![vec![BlockNode::Image {
+        alt: "test".to_string(),
+        title: None,
+        source: ImageSource::Embedded(std::path::PathBuf::from("test-image.png")),
+    }]])];
+    let table = decode_images(&ast, &base_dir);
+    assert!(table.contains_key("test-image.png"), "expected the image inside the column to be decoded");
+}
+
+#[test]
+fn collect_svg_diagrams_recurses_into_columns() {
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let ast = vec![BlockNode::Columns(vec![vec![BlockNode::Image {
+        alt: "test".to_string(),
+        title: None,
+        source: ImageSource::Embedded(std::path::PathBuf::from("test-vector.svg")),
+    }]])];
+    let table = collect_svg_diagrams(&ast, &base_dir);
+    assert!(table.contains_key("test-vector.svg"), "expected the SVG inside the column to be collected");
+}

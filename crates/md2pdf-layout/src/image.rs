@@ -74,6 +74,11 @@ fn collect(ast: &[BlockNode], base_dir: &Path, table: &mut ImageTable) {
                     collect(item, base_dir, table);
                 }
             }
+            BlockNode::Columns(columns) => {
+                for column in columns {
+                    collect(column, base_dir, table);
+                }
+            }
             _ => {}
         }
     }
@@ -117,6 +122,11 @@ fn collect_svgs(ast: &[BlockNode], base_dir: &Path, table: &mut DiagramTable) {
             BlockNode::List { items, .. } => {
                 for item in items {
                     collect_svgs(item, base_dir, table);
+                }
+            }
+            BlockNode::Columns(columns) => {
+                for column in columns {
+                    collect_svgs(column, base_dir, table);
                 }
             }
             _ => {}

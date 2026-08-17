@@ -43,6 +43,7 @@ impl Highlighter {
                 let items = items.into_iter().map(|item| self.highlight(item)).collect();
                 BlockNode::List { ordered, start, items }
             }
+            BlockNode::Columns(columns) => BlockNode::Columns(columns.into_iter().map(|column| self.highlight(column)).collect()),
             other => other,
         }
     }

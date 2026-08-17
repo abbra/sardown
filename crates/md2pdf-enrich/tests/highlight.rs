@@ -101,3 +101,17 @@ fn new_matches_with_style_using_stylesheet_defaults() {
     let result_b = Highlighter::with_style(&Stylesheet::default()).highlight(ast);
     assert_eq!(result_a, result_b);
 }
+
+#[test]
+fn recurses_into_columns() {
+    let ast = vec![BlockNode::Columns(vec![vec![BlockNode::CodeBlock {
+        language: Some("rust".to_string()),
+        tokens: vec![HighlightedToken { text: "fn main() {}\n".to_string(), color: [0, 0, 0] }],
+    }]])];
+    let result = Highlighter::new().highlight(ast);
+    let BlockNode::Columns(columns) = &result[0] else { panic!("expected Columns") };
+    match &columns[0][0] {
+        BlockNode::CodeBlock { tokens, .. } => assert!(tokens.len() > 1, "expected the code block inside the column to be highlighted"),
+        other => panic!("expected CodeBlock, got {other:?}"),
+    }
+}

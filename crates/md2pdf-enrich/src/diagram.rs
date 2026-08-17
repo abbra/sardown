@@ -62,6 +62,11 @@ fn collect(ast: &[BlockNode], renderer: &HeadlessRenderer, table: &mut DiagramTa
                     collect(item, renderer, table);
                 }
             }
+            BlockNode::Columns(columns) => {
+                for column in columns {
+                    collect(column, renderer, table);
+                }
+            }
             _ => {}
         }
     }
