@@ -112,16 +112,24 @@ fn path_extent(points: &[PathCommand]) -> Option<(f32, f32)> {
     let mut min_y = f32::MAX;
     let mut max_y = f32::MIN;
     let mut found = false;
+    let mut include = |y: f32| {
+        min_y = min_y.min(y);
+        max_y = max_y.max(y);
+        found = true;
+    };
     for point in points {
-        let y = match point {
-            PathCommand::MoveTo(_, y) | PathCommand::LineTo(_, y) => Some(*y),
-            PathCommand::CubicTo(_, _, _, _, _, y3) => Some(*y3),
-            PathCommand::Close => None,
-        };
-        if let Some(y) = y {
-            min_y = min_y.min(y);
-            max_y = max_y.max(y);
-            found = true;
+        match point {
+            PathCommand::MoveTo(_, y) | PathCommand::LineTo(_, y) => include(*y),
+            // A cubic curve never extends past the convex hull of its control points, so
+            // including both control points' y's (not just the endpoint's) is a safe, if
+            // slightly loose, bound -- the exact tight extent would need solving the curve's
+            // derivative for its true extrema, which no caller here needs.
+            PathCommand::CubicTo(_, y1, _, y2, _, y3) => {
+                include(*y1);
+                include(*y2);
+                include(*y3);
+            }
+            PathCommand::Close => {}
         }
     }
     found.then_some((min_y, max_y))

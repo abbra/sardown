@@ -27,6 +27,25 @@ fn centering_shifts_content_so_its_midpoint_matches_the_pages_midpoint() {
 }
 
 #[test]
+fn centering_accounts_for_a_cubic_curves_control_points_not_just_its_endpoint() {
+    // A cubic curve starting and ending at y = 100 but bulging up to y = 10/20 via its control
+    // points: the curve's own visual extent reaches those control points, not just its endpoint.
+    let path = PositionedElement::Path {
+        points: vec![PathCommand::MoveTo(0.0, 100.0), PathCommand::CubicTo(10.0, 10.0, 20.0, 20.0, 30.0, 100.0)],
+        fill: None,
+        stroke: Some(md2pdf_layout::StrokeStyle { color: [0, 0, 0], width: 1.0 }),
+    };
+    let mut page = PositionedPage { page_number: 0, elements: vec![path] };
+    center_vertically(&mut page, 200.0);
+    let PositionedElement::Path { points, .. } = &page.elements[0] else { unreachable!() };
+    let PathCommand::MoveTo(_, shifted_y) = points[0] else { unreachable!() };
+    // Ignoring the control points would see a zero-height span at y=100 on a 200pt page and
+    // treat it as already filling more than half (a same-as-page-height span), leaving it
+    // unshifted. Accounting for the control points' true [10, 100] extent yields a real shift.
+    assert!((shifted_y - 100.0).abs() > 1.0, "expected centering to actually move the curve, got shifted_y={shifted_y}");
+}
+
+#[test]
 fn centering_a_page_with_no_elements_does_nothing() {
     let mut page = PositionedPage { page_number: 0, elements: Vec::new() };
     center_vertically(&mut page, 200.0);
