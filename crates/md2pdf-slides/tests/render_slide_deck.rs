@@ -146,6 +146,44 @@ fn a_layouts_background_image_is_drawn_and_decoded_into_the_final_images_table()
 }
 
 #[test]
+fn a_columns_block_renders_both_columns_side_by_side() {
+    let markdown = "::columns\n\n::column\n\n- Left one\n- Left two\n\n::column\n\n- Right one\n\n::end\n";
+    let mut fs = test_font_system();
+    let output = render_slide_deck(markdown, std::path::Path::new("."), &mut fs, &small_page_stylesheet()).unwrap();
+    let text_of = |page: &md2pdf_layout::PositionedPage| {
+        page.elements
+            .iter()
+            .filter_map(|e| match e {
+                md2pdf_layout::PositionedElement::TextRun { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let full_text = text_of(&output.pages[0]);
+    assert!(full_text.contains("Left one") && full_text.contains("Left two"), "expected the left column's own bullets: {full_text}");
+    assert!(full_text.contains("Right one"), "expected the right column's own bullet: {full_text}");
+
+    let xs: Vec<f32> = output.pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            md2pdf_layout::PositionedElement::TextRun { x, text, .. } if text.contains("Right one") => Some(*x),
+            _ => None,
+        })
+        .collect();
+    let left_xs: Vec<f32> = output.pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            md2pdf_layout::PositionedElement::TextRun { x, text, .. } if text.contains("Left one") => Some(*x),
+            _ => None,
+        })
+        .collect();
+    assert!(xs[0] > left_xs[0], "expected the right column's text to start further right than the left column's");
+}
+
+#[test]
 fn code_blocks_are_syntax_highlighted() {
     // Regression test: render_slide_deck never called the syntax highlighter at all -- every
     // code block rendered in one flat color regardless of language, unlike render/render-book

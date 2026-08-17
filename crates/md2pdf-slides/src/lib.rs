@@ -31,7 +31,12 @@ pub fn render_slide_deck(
     let ast = md2pdf_ast::parse_with_style(markdown, &mut slugs, &mut next_diagram_id, stylesheet);
     let ast = md2pdf_enrich::Highlighter::with_style(stylesheet).highlight(ast);
     let diagrams = md2pdf_enrich::compile_diagrams(&ast);
-    let slides = split_into_slides(ast);
+    // group_columns runs per-slide, not once on the whole deck before splitting: doing it before
+    // splitting would let a deck author's forgotten `::end` silently swallow every remaining
+    // block in the *entire rest of the deck*, including slides after the next `---`, instead of
+    // just the rest of the one slide it appears on.
+    let slides: Vec<Slide> =
+        split_into_slides(ast).into_iter().map(|slide| Slide { layout_name: slide.layout_name, blocks: md2pdf_ast::group_columns(slide.blocks) }).collect();
 
     let (width_mm, height_mm) = stylesheet.page.dimensions_mm();
     let geometry = md2pdf_layout::PageGeometry {
