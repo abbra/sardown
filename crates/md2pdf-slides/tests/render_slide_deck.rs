@@ -144,3 +144,22 @@ fn a_layouts_background_image_is_drawn_and_decoded_into_the_final_images_table()
     assert!(!has_background_image(&output.pages[1]), "the plain slide should have no background image");
     assert!(output.images.contains_key("test-image.png"), "expected the background image to be decoded into the final images table");
 }
+
+#[test]
+fn code_blocks_are_syntax_highlighted() {
+    // Regression test: render_slide_deck never called the syntax highlighter at all -- every
+    // code block rendered in one flat color regardless of language, unlike render/render-book
+    // which both call Highlighter::with_style before layout.
+    let markdown = "```rust\nfn main() {\n    let x = \"hello\";\n}\n```\n";
+    let mut fs = test_font_system();
+    let output = render_slide_deck(markdown, std::path::Path::new("."), &mut fs, &small_page_stylesheet()).unwrap();
+    let colors: std::collections::HashSet<[u8; 3]> = output.pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            md2pdf_layout::PositionedElement::TextRun { color, .. } => Some(*color),
+            _ => None,
+        })
+        .collect();
+    assert!(colors.len() > 1, "expected multiple distinct token colors from real syntax highlighting, got {colors:?}");
+}

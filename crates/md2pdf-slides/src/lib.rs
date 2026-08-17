@@ -29,6 +29,7 @@ pub fn render_slide_deck(
     let mut slugs = md2pdf_ast::SlugGenerator::new();
     let mut next_diagram_id = 0usize;
     let ast = md2pdf_ast::parse_with_style(markdown, &mut slugs, &mut next_diagram_id, stylesheet);
+    let ast = md2pdf_enrich::Highlighter::with_style(stylesheet).highlight(ast);
     let diagrams = md2pdf_enrich::compile_diagrams(&ast);
     let slides = split_into_slides(ast);
 
