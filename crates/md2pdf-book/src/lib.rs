@@ -1,6 +1,7 @@
 mod book_toml;
 mod combine;
 mod crossref;
+mod include;
 mod summary;
 
 pub use book_toml::resolve_src_dir;

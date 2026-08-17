@@ -8,8 +8,8 @@ use crate::summary::{parse_summary, SummaryItem};
 /// chapter listed in `SUMMARY.md`, depth-first in listing order, each starting with a
 /// `BlockNode::PageBreak` and (if the chapter file has no top-level heading of its own) a
 /// heading synthesized from its `SUMMARY.md` title, with relative links between chapters
-/// resolved into working internal anchors. The table of contents and `{{#include}}` are later
-/// phases.
+/// resolved into working internal anchors and `{{#include ...}}` directives resolved before
+/// parsing.
 pub fn load_book(book_root: &Path, style: &md2pdf_style::Stylesheet) -> anyhow::Result<Vec<BlockNode>> {
     let src_dir = crate::book_toml::resolve_src_dir(book_root);
     let summary_path = src_dir.join("SUMMARY.md");
@@ -47,12 +47,13 @@ fn collect_chapters(
                     let chapter_path = src_dir.join(rel_path);
                     match std::fs::read_to_string(&chapter_path) {
                         Ok(text) => {
+                            let chapter_dir = chapter_path.parent().unwrap_or(src_dir).to_path_buf();
+                            let text = crate::include::resolve_includes(&text, &chapter_dir, src_dir);
                             let mut blocks = md2pdf_ast::parse_with_style(&text, slugs, next_diagram_id, style);
                             // Tagged with the same relative path SUMMARY.md itself names this
                             // chapter by, not the full absolute filesystem path -- that's what
                             // the book's author will actually recognize in a diagram warning.
                             md2pdf_ast::tag_diagram_origins(&mut blocks, rel_path);
-                            let chapter_dir = chapter_path.parent().unwrap_or(src_dir).to_path_buf();
                             absolutize_image_paths(&mut blocks, &chapter_dir);
                             crate::crossref::classify_links(&mut blocks, &chapter_dir, known_files);
                             prepend_chapter_start(&mut blocks, title, slugs, style);
