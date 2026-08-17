@@ -1702,6 +1702,7 @@ dependencies = [
  "md2pdf-enrich",
  "md2pdf-layout",
  "md2pdf-pdf",
+ "md2pdf-slides",
  "md2pdf-style",
  "pdfium-render",
  "proptest",
