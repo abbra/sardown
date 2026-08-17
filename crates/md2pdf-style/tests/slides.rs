@@ -1,4 +1,4 @@
-use md2pdf_style::{Color, Stylesheet, TextAlignment, VerticalAlign};
+use md2pdf_style::{Color, ImageCorner, Stylesheet, TextAlignment, VerticalAlign};
 
 #[test]
 fn default_slides_style_has_no_default_layout_and_a_half_scale_floor() {
@@ -45,8 +45,33 @@ fn a_layout_with_no_fields_set_leaves_every_override_absent() {
     assert_eq!(layout.body_size_pt, None);
     assert_eq!(layout.background_color, None);
     assert_eq!(layout.text_color, None);
+    assert_eq!(layout.secondary_text_color, None);
     assert!(!layout.suppress_header);
     assert!(!layout.suppress_footer);
+    assert_eq!(layout.background_image, None);
+    assert_eq!(layout.background_image_corner, ImageCorner::BottomLeft);
+    assert_eq!(layout.background_image_width_pt, 60.0);
+    assert_eq!(layout.background_image_margin_pt, 14.0);
+}
+
+#[test]
+fn a_layout_can_configure_a_secondary_text_color() {
+    let toml_text = "[slides.layouts.title]\ntext_color = \"#ffffff\"\nsecondary_text_color = \"#9b8ab4\"\n";
+    let sheet: Stylesheet = toml::from_str(toml_text).unwrap();
+    let layout = sheet.slides.layouts.get("title").unwrap();
+    assert_eq!(layout.text_color, Some(Color([255, 255, 255])));
+    assert_eq!(layout.secondary_text_color, Some(Color([155, 138, 180])));
+}
+
+#[test]
+fn a_layout_can_configure_a_background_image() {
+    let toml_text = "[slides.layouts.title]\nbackground_image = \"logo.png\"\nbackground_image_corner = \"top_right\"\nbackground_image_width_pt = 80.0\nbackground_image_margin_pt = 20.0\n";
+    let sheet: Stylesheet = toml::from_str(toml_text).unwrap();
+    let layout = sheet.slides.layouts.get("title").unwrap();
+    assert_eq!(layout.background_image, Some(std::path::PathBuf::from("logo.png")));
+    assert_eq!(layout.background_image_corner, ImageCorner::TopRight);
+    assert_eq!(layout.background_image_width_pt, 80.0);
+    assert_eq!(layout.background_image_margin_pt, 20.0);
 }
 
 #[test]

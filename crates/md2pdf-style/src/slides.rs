@@ -9,10 +9,20 @@ pub enum VerticalAlign {
     Center,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImageCorner {
+    TopLeft,
+    TopRight,
+    #[default]
+    BottomLeft,
+    BottomRight,
+}
+
 /// One named slide layout's overrides on top of the document's own `[typography]`/`[heading]`.
 /// Every field absent (the default) means "inherit the base document's own value" -- see
-/// `md2pdf-slides`' `build_slide_stylesheet` for how these are applied.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
+/// `md2pdf-slides`' `build_slide_stylesheet`/`rescale_slide_content` for how these are applied.
+#[derive(Debug, Clone, serde::Deserialize)]
 #[serde(default)]
 pub struct SlideLayoutStyle {
     pub alignment: Option<TextAlignment>,
@@ -20,8 +30,41 @@ pub struct SlideLayoutStyle {
     pub body_size_pt: Option<f32>,
     pub background_color: Option<Color>,
     pub text_color: Option<Color>,
+    /// Applied to non-bold paragraph/list-item text only -- headings and **bold** runs always use
+    /// `text_color`. Falls back to `text_color` when unset, so a layout that only sets
+    /// `text_color` behaves exactly as before this field existed.
+    pub secondary_text_color: Option<Color>,
     pub suppress_header: bool,
     pub suppress_footer: bool,
+    /// Path to an image (resolved the same way embedded Markdown images are, relative to the
+    /// input file and constrained to stay within its directory), drawn in one corner of every
+    /// slide using this layout, on top of `background_color` and behind all slide content.
+    pub background_image: Option<std::path::PathBuf>,
+    pub background_image_corner: ImageCorner,
+    pub background_image_width_pt: f32,
+    pub background_image_margin_pt: f32,
+}
+
+impl Default for SlideLayoutStyle {
+    fn default() -> Self {
+        SlideLayoutStyle {
+            alignment: None,
+            vertical_align: VerticalAlign::default(),
+            body_size_pt: None,
+            background_color: None,
+            text_color: None,
+            secondary_text_color: None,
+            suppress_header: false,
+            suppress_footer: false,
+            background_image: None,
+            background_image_corner: ImageCorner::default(),
+            // Only meaningful once `background_image` is set -- chosen as reasonable defaults for
+            // a small corner logo/watermark, not zero (which `#[derive(Default)]` would otherwise
+            // give an untouched f32 field, silently drawing the image at zero size).
+            background_image_width_pt: 60.0,
+            background_image_margin_pt: 14.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
