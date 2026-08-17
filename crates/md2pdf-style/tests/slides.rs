@@ -48,10 +48,7 @@ fn a_layout_with_no_fields_set_leaves_every_override_absent() {
     assert_eq!(layout.secondary_text_color, None);
     assert!(!layout.suppress_header);
     assert!(!layout.suppress_footer);
-    assert_eq!(layout.background_image, None);
-    assert_eq!(layout.background_image_corner, ImageCorner::BottomLeft);
-    assert_eq!(layout.background_image_width_pt, 60.0);
-    assert_eq!(layout.background_image_margin_pt, 14.0);
+    assert!(layout.background_images.is_empty());
 }
 
 #[test]
@@ -65,13 +62,43 @@ fn a_layout_can_configure_a_secondary_text_color() {
 
 #[test]
 fn a_layout_can_configure_a_background_image() {
-    let toml_text = "[slides.layouts.title]\nbackground_image = \"logo.png\"\nbackground_image_corner = \"top_right\"\nbackground_image_width_pt = 80.0\nbackground_image_margin_pt = 20.0\n";
+    let toml_text = "[[slides.layouts.title.background_images]]\npath = \"logo.png\"\ncorner = \"top_right\"\nwidth_pt = 80.0\nmargin_pt = 20.0\n";
     let sheet: Stylesheet = toml::from_str(toml_text).unwrap();
     let layout = sheet.slides.layouts.get("title").unwrap();
-    assert_eq!(layout.background_image, Some(std::path::PathBuf::from("logo.png")));
-    assert_eq!(layout.background_image_corner, ImageCorner::TopRight);
-    assert_eq!(layout.background_image_width_pt, 80.0);
-    assert_eq!(layout.background_image_margin_pt, 20.0);
+    assert_eq!(layout.background_images.len(), 1);
+    let image = &layout.background_images[0];
+    assert_eq!(image.path, std::path::PathBuf::from("logo.png"));
+    assert_eq!(image.corner, ImageCorner::TopRight);
+    assert_eq!(image.width_pt, 80.0);
+    assert_eq!(image.margin_pt, 20.0);
+}
+
+#[test]
+fn a_background_image_with_no_corner_width_or_margin_gets_the_documented_defaults() {
+    let toml_text = "[[slides.layouts.title.background_images]]\npath = \"logo.png\"\n";
+    let sheet: Stylesheet = toml::from_str(toml_text).unwrap();
+    let image = &sheet.slides.layouts.get("title").unwrap().background_images[0];
+    assert_eq!(image.corner, ImageCorner::BottomLeft);
+    assert_eq!(image.width_pt, 60.0);
+    assert_eq!(image.margin_pt, 14.0);
+}
+
+#[test]
+fn a_layout_can_configure_multiple_background_images() {
+    let toml_text = "[[slides.layouts.title.background_images]]\npath = \"logo.png\"\ncorner = \"top_left\"\n\n[[slides.layouts.title.background_images]]\npath = \"logo.svg\"\ncorner = \"bottom_right\"\n";
+    let sheet: Stylesheet = toml::from_str(toml_text).unwrap();
+    let images = &sheet.slides.layouts.get("title").unwrap().background_images;
+    assert_eq!(images.len(), 2);
+    assert_eq!(images[0].path, std::path::PathBuf::from("logo.png"));
+    assert_eq!(images[0].corner, ImageCorner::TopLeft);
+    assert_eq!(images[1].path, std::path::PathBuf::from("logo.svg"));
+    assert_eq!(images[1].corner, ImageCorner::BottomRight);
+}
+
+#[test]
+fn a_background_image_missing_its_path_is_a_deserialization_error() {
+    let toml_text = "[[slides.layouts.title.background_images]]\ncorner = \"top_right\"\n";
+    assert!(toml::from_str::<Stylesheet>(toml_text).is_err());
 }
 
 #[test]

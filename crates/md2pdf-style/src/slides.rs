@@ -19,6 +19,35 @@ pub enum ImageCorner {
     BottomRight,
 }
 
+fn default_background_image_width_pt() -> f32 {
+    60.0
+}
+
+fn default_background_image_margin_pt() -> f32 {
+    14.0
+}
+
+/// One decorative image drawn in a corner of every slide using a given layout, on top of
+/// `background_color` and behind all slide content. `path` is resolved the same way embedded
+/// Markdown images are -- relative to the input file, constrained to stay within its directory --
+/// and may point at either a raster image or an `.svg` file; `render_slide_deck` checks both
+/// tables and draws whichever one actually decoded. `path` has no default: a background image
+/// entry with no path makes no sense, so TOML omitting it is a deserialization error rather than a
+/// silently broken empty path.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct BackgroundImageStyle {
+    pub path: std::path::PathBuf,
+    #[serde(default)]
+    pub corner: ImageCorner,
+    // Chosen as reasonable defaults for a small corner logo/watermark, not zero (which
+    // `#[derive(Default)]` would otherwise give an untouched f32 field, silently drawing the
+    // image at zero size).
+    #[serde(default = "default_background_image_width_pt")]
+    pub width_pt: f32,
+    #[serde(default = "default_background_image_margin_pt")]
+    pub margin_pt: f32,
+}
+
 /// One named slide layout's overrides on top of the document's own `[typography]`/`[heading]`.
 /// Every field absent (the default) means "inherit the base document's own value" -- see
 /// `md2pdf-slides`' `build_slide_stylesheet`/`rescale_slide_content` for how these are applied.
@@ -36,13 +65,9 @@ pub struct SlideLayoutStyle {
     pub secondary_text_color: Option<Color>,
     pub suppress_header: bool,
     pub suppress_footer: bool,
-    /// Path to an image (resolved the same way embedded Markdown images are, relative to the
-    /// input file and constrained to stay within its directory), drawn in one corner of every
-    /// slide using this layout, on top of `background_color` and behind all slide content.
-    pub background_image: Option<std::path::PathBuf>,
-    pub background_image_corner: ImageCorner,
-    pub background_image_width_pt: f32,
-    pub background_image_margin_pt: f32,
+    /// Zero or more decorative images (raster or SVG), expressed in TOML as
+    /// `[[slides.layouts.<name>.background_images]]` array-of-tables entries.
+    pub background_images: Vec<BackgroundImageStyle>,
 }
 
 impl Default for SlideLayoutStyle {
@@ -56,13 +81,7 @@ impl Default for SlideLayoutStyle {
             secondary_text_color: None,
             suppress_header: false,
             suppress_footer: false,
-            background_image: None,
-            background_image_corner: ImageCorner::default(),
-            // Only meaningful once `background_image` is set -- chosen as reasonable defaults for
-            // a small corner logo/watermark, not zero (which `#[derive(Default)]` would otherwise
-            // give an untouched f32 field, silently drawing the image at zero size).
-            background_image_width_pt: 60.0,
-            background_image_margin_pt: 14.0,
+            background_images: Vec::new(),
         }
     }
 }

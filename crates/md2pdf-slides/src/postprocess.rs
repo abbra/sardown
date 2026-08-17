@@ -37,6 +37,15 @@ pub fn fill_background(page: &mut PositionedPage, color: Color, page_width_pt: f
     page.elements.insert(0, rect);
 }
 
+fn corner_position(corner: ImageCorner, width_pt: f32, height_pt: f32, margin_pt: f32, page_width_pt: f32, page_height_pt: f32) -> (f32, f32) {
+    match corner {
+        ImageCorner::TopLeft => (margin_pt, margin_pt),
+        ImageCorner::TopRight => (page_width_pt - margin_pt - width_pt, margin_pt),
+        ImageCorner::BottomLeft => (margin_pt, page_height_pt - margin_pt - height_pt),
+        ImageCorner::BottomRight => (page_width_pt - margin_pt - width_pt, page_height_pt - margin_pt - height_pt),
+    }
+}
+
 /// Prepends a positioned raster image (already decoded and present in the deck's own `ImageTable`
 /// under `image_id`) anchored to one corner of the page, `margin_pt` from both nearest edges.
 /// Inserted the same way `fill_background` is (index 0) -- call this *before* `fill_background`
@@ -54,13 +63,28 @@ pub fn draw_background_image(
     page_width_pt: f32,
     page_height_pt: f32,
 ) {
-    let (x, y) = match corner {
-        ImageCorner::TopLeft => (margin_pt, margin_pt),
-        ImageCorner::TopRight => (page_width_pt - margin_pt - width_pt, margin_pt),
-        ImageCorner::BottomLeft => (margin_pt, page_height_pt - margin_pt - height_pt),
-        ImageCorner::BottomRight => (page_width_pt - margin_pt - width_pt, page_height_pt - margin_pt - height_pt),
-    };
+    let (x, y) = corner_position(corner, width_pt, height_pt, margin_pt, page_width_pt, page_height_pt);
     page.elements.insert(0, PositionedElement::RasterImage { x, y, width: width_pt, height: height_pt, image_id: image_id.to_string() });
+}
+
+/// The SVG sibling of `draw_background_image`, for a background image whose path ends in `.svg`
+/// -- draws through `PositionedElement::VectorGraphic` (the same element Mermaid diagrams and
+/// embedded SVG images use) instead of `RasterImage`, using an already-compiled entry from the
+/// deck's own `DiagramTable`. Same corner math, same insert-before-`fill_background` ordering
+/// contract as `draw_background_image`.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_background_diagram(
+    page: &mut PositionedPage,
+    diagram_id: &str,
+    corner: ImageCorner,
+    width_pt: f32,
+    height_pt: f32,
+    margin_pt: f32,
+    page_width_pt: f32,
+    page_height_pt: f32,
+) {
+    let (x, y) = corner_position(corner, width_pt, height_pt, margin_pt, page_width_pt, page_height_pt);
+    page.elements.insert(0, PositionedElement::VectorGraphic { x, y, width: width_pt, height: height_pt, diagram_id: diagram_id.to_string() });
 }
 
 fn vertical_extent(page: &PositionedPage) -> Option<(f32, f32)> {

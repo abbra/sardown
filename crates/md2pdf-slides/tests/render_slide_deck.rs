@@ -128,9 +128,12 @@ fn vertical_align_center_actually_shifts_content_away_from_the_top_margin() {
 fn a_layouts_background_image_is_drawn_and_decoded_into_the_final_images_table() {
     let mut sheet = small_page_stylesheet();
     let mut title = SlideLayoutStyle::default();
-    title.background_image = Some(std::path::PathBuf::from("test-image.png"));
-    title.background_image_corner = md2pdf_style::ImageCorner::BottomRight;
-    title.background_image_width_pt = 20.0;
+    title.background_images.push(md2pdf_style::BackgroundImageStyle {
+        path: std::path::PathBuf::from("test-image.png"),
+        corner: md2pdf_style::ImageCorner::BottomRight,
+        width_pt: 20.0,
+        margin_pt: 14.0,
+    });
     sheet.slides.layouts.insert("title".to_string(), title);
     let markdown = "@layout: title\n\n# Cover\n\n---\n\n# Plain Slide\n";
     let mut fs = test_font_system();
@@ -143,6 +146,56 @@ fn a_layouts_background_image_is_drawn_and_decoded_into_the_final_images_table()
     assert!(has_background_image(&output.pages[0]), "the title-layout slide should have a background image");
     assert!(!has_background_image(&output.pages[1]), "the plain slide should have no background image");
     assert!(output.images.contains_key("test-image.png"), "expected the background image to be decoded into the final images table");
+}
+
+#[test]
+fn a_layouts_svg_background_image_is_drawn_as_a_vector_graphic() {
+    let mut sheet = small_page_stylesheet();
+    let mut title = SlideLayoutStyle::default();
+    title.background_images.push(md2pdf_style::BackgroundImageStyle {
+        path: std::path::PathBuf::from("test-vector.svg"),
+        corner: md2pdf_style::ImageCorner::TopLeft,
+        width_pt: 20.0,
+        margin_pt: 14.0,
+    });
+    sheet.slides.layouts.insert("title".to_string(), title);
+    let markdown = "@layout: title\n\n# Cover\n";
+    let mut fs = test_font_system();
+    let base_dir = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../md2pdf-layout/tests/fixtures"));
+    let output = render_slide_deck(markdown, &base_dir, &mut fs, &sheet).unwrap();
+
+    let has_background_diagram =
+        |page: &md2pdf_layout::PositionedPage| page.elements.iter().any(|e| matches!(e, md2pdf_layout::PositionedElement::VectorGraphic { .. }));
+    assert!(has_background_diagram(&output.pages[0]), "expected an SVG background image to render as a VectorGraphic");
+    assert!(output.diagrams.contains_key("test-vector.svg"), "expected the SVG background image to be compiled into the final diagrams table");
+}
+
+#[test]
+fn a_layout_can_draw_multiple_background_images_on_the_same_slide() {
+    let mut sheet = small_page_stylesheet();
+    let mut title = SlideLayoutStyle::default();
+    title.background_images.push(md2pdf_style::BackgroundImageStyle {
+        path: std::path::PathBuf::from("test-image.png"),
+        corner: md2pdf_style::ImageCorner::TopLeft,
+        width_pt: 20.0,
+        margin_pt: 14.0,
+    });
+    title.background_images.push(md2pdf_style::BackgroundImageStyle {
+        path: std::path::PathBuf::from("test-vector.svg"),
+        corner: md2pdf_style::ImageCorner::BottomRight,
+        width_pt: 20.0,
+        margin_pt: 14.0,
+    });
+    sheet.slides.layouts.insert("title".to_string(), title);
+    let markdown = "@layout: title\n\n# Cover\n";
+    let mut fs = test_font_system();
+    let base_dir = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../md2pdf-layout/tests/fixtures"));
+    let output = render_slide_deck(markdown, &base_dir, &mut fs, &sheet).unwrap();
+
+    let raster_count = output.pages[0].elements.iter().filter(|e| matches!(e, md2pdf_layout::PositionedElement::RasterImage { .. })).count();
+    let vector_count = output.pages[0].elements.iter().filter(|e| matches!(e, md2pdf_layout::PositionedElement::VectorGraphic { .. })).count();
+    assert_eq!(raster_count, 1, "expected exactly one raster background image");
+    assert_eq!(vector_count, 1, "expected exactly one vector background image");
 }
 
 #[test]

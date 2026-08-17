@@ -20,7 +20,7 @@ pub use header_footer::{HeaderFooterMode, HeaderFooterStyle, HeaderZones};
 pub use heading::{HeadingLevelStyle, HeadingStyle, ResolvedHeadingStyle};
 pub use numbering::{NumberingFormat, PageNumbering, PageNumberingReset};
 pub use page::{PageFormat, PageStyle};
-pub use slides::{ImageCorner, SlideLayoutStyle, SlidesStyle, VerticalAlign};
+pub use slides::{BackgroundImageStyle, ImageCorner, SlideLayoutStyle, SlidesStyle, VerticalAlign};
 pub use structural::{BlockquoteStyle, ColumnsStyle, ListStyle, ThematicBreakStyle};
 pub use table::TableStyle;
 pub use toc::TocStyle;

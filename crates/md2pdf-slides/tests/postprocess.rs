@@ -1,5 +1,5 @@
 use md2pdf_layout::{PathCommand, PositionedElement, PositionedPage};
-use md2pdf_slides::{center_vertically, draw_background_image, fill_background};
+use md2pdf_slides::{center_vertically, draw_background_diagram, draw_background_image, fill_background};
 use md2pdf_style::{Color, ImageCorner};
 
 fn test_font_id() -> fontdb::ID {
@@ -80,6 +80,29 @@ fn draw_background_image_inserts_before_existing_content() {
     draw_background_image(&mut page, "logo.png", ImageCorner::BottomRight, 60.0, 40.0, 10.0, 300.0, 200.0);
     assert_eq!(page.elements.len(), 2);
     assert!(matches!(page.elements[0], PositionedElement::RasterImage { .. }));
+    assert!(matches!(page.elements[1], PositionedElement::TextRun { .. }));
+}
+
+#[test]
+fn draw_background_diagram_positions_using_the_same_corner_math_as_the_raster_version() {
+    let mut page = PositionedPage { page_number: 0, elements: Vec::new() };
+    draw_background_diagram(&mut page, "logo.svg", ImageCorner::TopRight, 60.0, 40.0, 10.0, 300.0, 200.0);
+    match &page.elements[0] {
+        PositionedElement::VectorGraphic { x, y, width, height, diagram_id } => {
+            assert_eq!((*x, *y), (300.0 - 10.0 - 60.0, 10.0));
+            assert_eq!((*width, *height), (60.0, 40.0));
+            assert_eq!(diagram_id, "logo.svg");
+        }
+        other => panic!("expected VectorGraphic, got {other:?}"),
+    }
+}
+
+#[test]
+fn draw_background_diagram_inserts_before_existing_content() {
+    let mut page = PositionedPage { page_number: 0, elements: vec![text_run_at(20.0, 12.0)] };
+    draw_background_diagram(&mut page, "logo.svg", ImageCorner::BottomRight, 60.0, 40.0, 10.0, 300.0, 200.0);
+    assert_eq!(page.elements.len(), 2);
+    assert!(matches!(page.elements[0], PositionedElement::VectorGraphic { .. }));
     assert!(matches!(page.elements[1], PositionedElement::TextRun { .. }));
 }
 

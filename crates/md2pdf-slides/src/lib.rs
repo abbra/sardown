@@ -7,7 +7,7 @@ mod split;
 mod stylesheet_for_slide;
 
 pub use concat::concat_slide_layouts;
-pub use postprocess::{center_vertically, draw_background_image, fill_background};
+pub use postprocess::{center_vertically, draw_background_diagram, draw_background_image, fill_background};
 use md2pdf_ast::{BlockNode, ImageSource};
 pub use rescale::rescale_slide_content;
 pub use resolve::resolve_layout;
@@ -69,24 +69,32 @@ pub fn render_slide_deck(
             }
         }
         // Drawn *before* fill_background: see draw_background_image's own doc comment for why
-        // that insertion order produces the correct final paint order (fill, then image, then
-        // the slide's own content).
-        if let Some(image_path) = &layout.background_image {
-            let synthetic_ast = [BlockNode::Image { alt: String::new(), title: None, source: ImageSource::Embedded(image_path.clone()) }];
+        // that insertion order produces the correct final paint order (fill, then images, then
+        // the slide's own content). Each entry is looked up in both the raster and the SVG
+        // table -- whichever one actually decoded the path determines which element kind gets
+        // drawn, the same dual-table check `render_block`'s own `BlockNode::Image` arm uses.
+        for image in &layout.background_images {
+            let synthetic_ast = [BlockNode::Image { alt: String::new(), title: None, source: ImageSource::Embedded(image.path.clone()) }];
+            let key = image.path.to_string_lossy().to_string();
             let decoded_table = md2pdf_layout::decode_images(&synthetic_ast, base_dir);
-            let key = image_path.to_string_lossy().to_string();
+            let diagram_table = md2pdf_layout::collect_svg_diagrams(&synthetic_ast, base_dir);
+            let (page_width_pt, page_height_pt) = (output.page_width_pt, output.page_height_pt);
             if let Some(decoded) = decoded_table.get(&key) {
-                let width_pt = layout.background_image_width_pt;
-                let height_pt = width_pt * (decoded.height as f32 / decoded.width as f32);
-                let margin_pt = layout.background_image_margin_pt;
-                let (page_width_pt, page_height_pt) = (output.page_width_pt, output.page_height_pt);
+                let height_pt = image.width_pt * (decoded.height as f32 / decoded.width as f32);
                 for page in &mut output.pages {
-                    draw_background_image(page, &key, layout.background_image_corner, width_pt, height_pt, margin_pt, page_width_pt, page_height_pt);
+                    draw_background_image(page, &key, image.corner, image.width_pt, height_pt, image.margin_pt, page_width_pt, page_height_pt);
+                }
+            } else if let Some(diagram) = diagram_table.get(&key) {
+                let height_pt = image.width_pt * (diagram.height / diagram.width);
+                for page in &mut output.pages {
+                    draw_background_diagram(page, &key, image.corner, image.width_pt, height_pt, image.margin_pt, page_width_pt, page_height_pt);
                 }
             }
-            // If decoding failed, decode_images already printed a warning -- matches this
-            // project's "skip the one broken piece, don't fail the whole render" convention.
+            // If decoding failed, decode_images/collect_svg_diagrams already printed a warning --
+            // matches this project's "skip the one broken piece, don't fail the whole render"
+            // convention.
             output.images.extend(decoded_table);
+            output.diagrams.extend(diagram_table);
         }
         if let Some(color) = layout.background_color {
             let (page_width_pt, page_height_pt) = (output.page_width_pt, output.page_height_pt);
