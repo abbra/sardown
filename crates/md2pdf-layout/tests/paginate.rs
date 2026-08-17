@@ -1303,8 +1303,16 @@ fn strikethrough_text_draws_a_horizontal_line_through_it() {
 }
 
 fn any_line_ends_in_a_hyphen(output: &md2pdf_layout::LayoutOutput) -> bool {
+    // `TextRun::text` holds the whole *buffer line*'s text (here, an entire paragraph, since a
+    // hyphenated break is a plain "-" with no forced line-break character -- see the design note
+    // in hyphenate.rs), not just this run's own visually-wrapped substring. Extract this run's
+    // real substring from its own glyphs' cluster ranges before checking for a trailing hyphen.
     output.pages.iter().flat_map(|p| &p.elements).any(|e| match e {
-        PositionedElement::TextRun { text, .. } => text.ends_with('-'),
+        PositionedElement::TextRun { text, glyphs, .. } => {
+            let Some(min_start) = glyphs.iter().map(|g| g.cluster.start).min() else { return false };
+            let Some(max_end) = glyphs.iter().map(|g| g.cluster.end).max() else { return false };
+            text[min_start..max_end].ends_with('-')
+        }
         _ => false,
     })
 }

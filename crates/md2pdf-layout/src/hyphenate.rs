@@ -61,12 +61,22 @@ fn is_hyphenation_candidate(word: &str) -> bool {
     !word.is_empty() && word.chars().all(char::is_alphabetic)
 }
 
-/// Inserts a literal "-\n" at each point a word needed to split to fit `max_width_pt`, simulating
+/// Inserts a literal "-" at each point a word needed to split to fit `max_width_pt`, simulating
 /// just enough of a greedy word-wrap to know where a fragment would fit. `content` is otherwise
 /// left untouched (most paragraphs get zero insertions); the result is handed to the existing,
-/// unmodified `shape_rich_paragraph`, which already treats "\n" as a hard break and performs all
-/// real shaping/justification/wrapping itself -- see the design doc for why a soft hyphen can't
-/// be used instead.
+/// unmodified `shape_rich_paragraph` -- see the design doc for why a soft hyphen can't be used
+/// instead.
+///
+/// Deliberately *not* a forced/mandatory break (no "\n", no U+2028 LINE SEPARATOR either -- both
+/// were tried and both exempt their line from justification, since cosmic-text, matching real
+/// typesetting convention, never justifies a line ending in *any* mandatory break, not just a
+/// paragraph-ending one). A bare hyphen-minus is already an *allowed* break-after point under
+/// UAX #14 (`unicode-linebreak`, which cosmic-text's own wrapping already uses, classifies "-" as
+/// class BA) -- exactly like the hyphen in a naturally-typed word such as "well-known" already
+/// wraps correctly today. Inserting only the hyphen and leaving the actual wrap decision to
+/// cosmic-text's own normal, real-metrics-based line-breaking means a hyphenated line is wrapped
+/// via the exact same mechanism as any other line in the paragraph, so it stays eligible for
+/// justification like everything else.
 ///
 /// A word straddling two `InlineNode`s (a style-span boundary) is never hyphenated; each node's
 /// text is tokenized independently, which very rarely (only when inline formatting lands mid-word,
@@ -131,7 +141,7 @@ pub fn insert_hyphenation_breaks(content: &[InlineNode], hyphenator: &Hyphenator
             match split {
                 Some(i) => {
                     new_text.push_str(&word[..i]);
-                    new_text.push_str("-\n");
+                    new_text.push('-');
                     cursor = word_abs_start + i;
                     line_width = 0.0;
                     line_has_content = false;
