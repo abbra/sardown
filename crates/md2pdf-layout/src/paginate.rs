@@ -75,7 +75,7 @@ impl<'a> Cursor<'a> {
 
 /// Estimated block height, in points, before shaping — used only to decide whether the
 /// block's first line fits; exact height comes from the shaped elements themselves once placed.
-fn estimate_line_height(size: f32) -> f32 {
+pub(crate) fn estimate_line_height(size: f32) -> f32 {
     size * 1.4 + LINE_SPACING_PT
 }
 
@@ -735,6 +735,7 @@ pub struct LayoutOutput {
     pub page_contexts: Vec<PageContext>,
     pub page_width_pt: f32,
     pub page_height_pt: f32,
+    pub toc_entries: Vec<crate::toc::TocEntry>,
 }
 
 pub fn layout(ast: &[BlockNode], geometry: &PageGeometry, font_system: &mut FontSystem, base_dir: &std::path::Path, diagrams: &DiagramTable) -> LayoutOutput {
@@ -768,5 +769,6 @@ pub fn layout_impl(
         page_contexts,
         page_width_pt: geometry.page_width_mm * PT_PER_MM,
         page_height_pt: geometry.page_height_mm * PT_PER_MM,
+        toc_entries: Vec::new(),
     }
 }
