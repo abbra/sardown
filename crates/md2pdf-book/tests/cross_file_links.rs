@@ -31,7 +31,7 @@ fn flatten_inline<'a>(blocks: &'a [BlockNode], out: &mut Vec<&'a InlineNode>) {
 }
 
 fn find_linked<'a>(nodes: &[&'a InlineNode], text: &str) -> &'a InlineNode {
-    *nodes.iter().find(|n| n.text == text && n.link_target.is_some()).unwrap_or_else(|| panic!("no linked inline node with text {text:?} found"))
+    nodes.iter().find(|n| n.text == text && n.link_target.is_some()).unwrap_or_else(|| panic!("no linked inline node with text {text:?} found"))
 }
 
 #[test]
