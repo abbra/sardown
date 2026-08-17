@@ -113,6 +113,11 @@ fn absolutize_image_paths(blocks: &mut [BlockNode], chapter_dir: &Path) {
                     absolutize_image_paths(item, chapter_dir);
                 }
             }
+            BlockNode::Columns(columns) => {
+                for column in columns {
+                    absolutize_image_paths(column, chapter_dir);
+                }
+            }
             _ => {}
         }
     }

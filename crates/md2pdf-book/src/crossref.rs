@@ -62,6 +62,11 @@ pub(crate) fn classify_links(blocks: &mut [BlockNode], chapter_dir: &Path, known
                     }
                 }
             }
+            BlockNode::Columns(columns) => {
+                for column in columns {
+                    classify_links(column, chapter_dir, known_chapter_files);
+                }
+            }
             _ => {}
         }
     }
@@ -105,6 +110,11 @@ pub(crate) fn record_heading_slugs(blocks: &[BlockNode], chapter_path: &Path, sl
                     record_heading_slugs(item, chapter_path, slug_map);
                 }
             }
+            BlockNode::Columns(columns) => {
+                for column in columns {
+                    record_heading_slugs(column, chapter_path, slug_map);
+                }
+            }
             _ => {}
         }
     }
@@ -133,6 +143,11 @@ pub(crate) fn resolve_links(blocks: &mut [BlockNode], slug_map: &HashMap<(PathBu
                     for cell in row {
                         resolve_inline(cell, slug_map, chapter_start_map);
                     }
+                }
+            }
+            BlockNode::Columns(columns) => {
+                for column in columns {
+                    resolve_links(column, slug_map, chapter_start_map);
                 }
             }
             _ => {}
