@@ -28,8 +28,7 @@ fn a_deck_with_two_thematic_breaks_produces_three_pages() {
 #[test]
 fn a_layout_directive_selects_the_named_layouts_background() {
     let mut sheet = small_page_stylesheet();
-    let mut title = SlideLayoutStyle::default();
-    title.background_color = Some(md2pdf_style::Color([27, 13, 51]));
+    let title = SlideLayoutStyle { background_color: Some(md2pdf_style::Color([27, 13, 51])), ..SlideLayoutStyle::default() };
     sheet.slides.layouts.insert("title".to_string(), title);
     let markdown = "@layout: title\n\n# Cover\n\n---\n\n# Plain Slide\n";
     let mut fs = test_font_system();
@@ -100,8 +99,7 @@ fn a_layout_that_suppresses_the_footer_has_no_footer_on_its_own_slide_only() {
     let mut sheet = small_page_stylesheet();
     sheet.footer.enabled = true;
     sheet.footer.uniform.center = "FOOTER".to_string();
-    let mut title = SlideLayoutStyle::default();
-    title.suppress_footer = true;
+    let title = SlideLayoutStyle { suppress_footer: true, ..SlideLayoutStyle::default() };
     sheet.slides.layouts.insert("title".to_string(), title);
     let markdown = "@layout: title\n\n# Cover\n\n---\n\n# Plain\n";
     let mut fs = test_font_system();
@@ -122,17 +120,20 @@ fn a_layout_that_suppresses_the_footer_has_no_footer_on_its_own_slide_only() {
 #[test]
 fn vertical_align_center_actually_shifts_content_away_from_the_top_margin() {
     let mut sheet = small_page_stylesheet();
-    let mut title = SlideLayoutStyle::default();
-    title.vertical_align = VerticalAlign::Center;
+    let title = SlideLayoutStyle { vertical_align: VerticalAlign::Center, ..SlideLayoutStyle::default() };
     sheet.slides.layouts.insert("title".to_string(), title);
     let markdown = "@layout: title\n\nShort line.\n";
     let mut fs = test_font_system();
     let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), std::path::Path::new("."), &mut fs, &sheet).unwrap();
-    let margin_pt = sheet.page.margin_mm * 2.834645669;
-    let first_y = output.pages[0].elements.iter().find_map(|e| match e {
-        md2pdf_layout::PositionedElement::TextRun { y, .. } => Some(*y),
-        _ => None,
-    }).expect("expected a text run");
+    let margin_pt = sheet.page.margin_mm * 2.834_645_7;
+    let first_y = output.pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            md2pdf_layout::PositionedElement::TextRun { y, .. } => Some(*y),
+            _ => None,
+        })
+        .expect("expected a text run");
     assert!(first_y > margin_pt + 5.0, "expected centered content to sit well below the top margin ({margin_pt}), got {first_y}");
 }
 
@@ -147,11 +148,13 @@ fn every_slidelayoutstyle_text_affecting_field_visibly_changes_rendered_output()
     // you add a text-affecting field to SlideLayoutStyle, add an assertion for it here too, so a
     // silently-no-op wiring mistake fails a test instead of only showing up in a rendered PDF.
     let mut sheet = small_page_stylesheet();
-    let mut layout = SlideLayoutStyle::default();
-    layout.alignment = Some(md2pdf_style::TextAlignment::Center);
-    layout.body_size_pt = Some(30.0);
-    layout.text_color = Some(md2pdf_style::Color([200, 0, 0]));
-    layout.secondary_text_color = Some(md2pdf_style::Color([0, 200, 0]));
+    let layout = SlideLayoutStyle {
+        alignment: Some(md2pdf_style::TextAlignment::Center),
+        body_size_pt: Some(30.0),
+        text_color: Some(md2pdf_style::Color([200, 0, 0])),
+        secondary_text_color: Some(md2pdf_style::Color([0, 200, 0])),
+        ..SlideLayoutStyle::default()
+    };
     sheet.slides.layouts.insert("title".to_string(), layout);
     let markdown = "@layout: title\n\n# Heading\n\nRegular **Bold** text.\n";
     let mut fs = test_font_system();
@@ -170,7 +173,7 @@ fn every_slidelayoutstyle_text_affecting_field_visibly_changes_rendered_output()
         .collect();
 
     // alignment: a centered run should not start flush against the left margin.
-    let margin_pt = sheet.page.margin_mm * 2.834645669;
+    let margin_pt = sheet.page.margin_mm * 2.834_645_7;
     assert!(
         text_runs.iter().all(|(_, _, x)| *x > margin_pt + 1.0),
         "expected the layout's centered alignment to shift every run away from the left margin: {text_runs:?}"

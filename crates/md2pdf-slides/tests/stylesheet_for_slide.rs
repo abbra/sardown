@@ -26,8 +26,7 @@ fn scale_0_5_halves_every_content_font_size_but_not_header_footer() {
 #[test]
 fn a_layouts_body_size_override_is_the_unscaled_base_before_scaling() {
     let base = Stylesheet::default();
-    let mut layout = SlideLayoutStyle::default();
-    layout.body_size_pt = Some(20.0);
+    let layout = SlideLayoutStyle { body_size_pt: Some(20.0), ..SlideLayoutStyle::default() };
     let sheet = build_slide_stylesheet(&base, &layout, 0.5);
     assert_eq!(sheet.typography.body_size_pt, 10.0, "20.0 (layout override) * 0.5 (scale)");
 }
@@ -35,8 +34,7 @@ fn a_layouts_body_size_override_is_the_unscaled_base_before_scaling() {
 #[test]
 fn a_layouts_alignment_override_applies() {
     let base = Stylesheet::default();
-    let mut layout = SlideLayoutStyle::default();
-    layout.alignment = Some(TextAlignment::Center);
+    let layout = SlideLayoutStyle { alignment: Some(TextAlignment::Center), ..SlideLayoutStyle::default() };
     let sheet = build_slide_stylesheet(&base, &layout, 1.0);
     assert_eq!(sheet.typography.alignment, TextAlignment::Center);
 }
@@ -44,8 +42,7 @@ fn a_layouts_alignment_override_applies() {
 #[test]
 fn a_layouts_text_color_override_applies_to_body_color() {
     let base = Stylesheet::default();
-    let mut layout = SlideLayoutStyle::default();
-    layout.text_color = Some(md2pdf_style::Color([255, 255, 255]));
+    let layout = SlideLayoutStyle { text_color: Some(md2pdf_style::Color([255, 255, 255])), ..SlideLayoutStyle::default() };
     let sheet = build_slide_stylesheet(&base, &layout, 1.0);
     assert_eq!(sheet.typography.body_color, md2pdf_style::Color([255, 255, 255]));
 }
@@ -53,8 +50,7 @@ fn a_layouts_text_color_override_applies_to_body_color() {
 #[test]
 fn a_layouts_text_color_override_applies_to_every_heading_levels_underline_color() {
     let base = Stylesheet::default();
-    let mut layout = SlideLayoutStyle::default();
-    layout.text_color = Some(md2pdf_style::Color([26, 74, 122]));
+    let layout = SlideLayoutStyle { text_color: Some(md2pdf_style::Color([26, 74, 122])), ..SlideLayoutStyle::default() };
     let sheet = build_slide_stylesheet(&base, &layout, 1.0);
     for level in 1..=6u8 {
         assert_eq!(
@@ -69,8 +65,7 @@ fn a_layouts_text_color_override_applies_to_every_heading_levels_underline_color
 fn a_layouts_text_color_override_replaces_a_pre_existing_per_level_underline_color() {
     let toml_text = "[heading.levels.1]\nunderline_color = \"#d2d2d2\"\n";
     let base: Stylesheet = toml::from_str(toml_text).unwrap();
-    let mut layout = SlideLayoutStyle::default();
-    layout.text_color = Some(md2pdf_style::Color([26, 74, 122]));
+    let layout = SlideLayoutStyle { text_color: Some(md2pdf_style::Color([26, 74, 122])), ..SlideLayoutStyle::default() };
     let sheet = build_slide_stylesheet(&base, &layout, 1.0);
     assert_eq!(sheet.heading.resolve(1).underline_color, md2pdf_style::Color([26, 74, 122]));
 }

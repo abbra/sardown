@@ -1412,8 +1412,8 @@ fn a_raster_image_taller_than_the_page_is_capped_to_the_available_height() {
     let geometry = letter_geometry();
     let output = layout(&ast, &geometry, &mut fs, &fixtures_dir(), &DiagramTable::new());
 
-    let margin_pt = geometry.margin_mm * 2.834645669;
-    let page_height_pt = geometry.page_height_mm * 2.834645669;
+    let margin_pt = geometry.margin_mm * 2.834_645_7;
+    let page_height_pt = geometry.page_height_mm * 2.834_645_7;
     let max_height_pt = page_height_pt - margin_pt - margin_pt; // top margin to bottom margin
 
     match &output.pages[0].elements[0] {
@@ -1451,8 +1451,8 @@ fn two_columns_render_at_non_overlapping_x_offsets() {
     assert_eq!(xs.len(), 2, "expected one text run per column");
     assert!(xs[1] > xs[0], "expected the right column's text to start further right than the left column's, got {xs:?}");
 
-    let margin_pt = letter_geometry().margin_mm * 2.834645669;
-    let content_width_pt = letter_geometry().page_width_mm * 2.834645669 - 2.0 * margin_pt;
+    let margin_pt = letter_geometry().margin_mm * 2.834_645_7;
+    let content_width_pt = letter_geometry().page_width_mm * 2.834_645_7 - 2.0 * margin_pt;
     let expected_column_width_pt = (content_width_pt - 24.0) / 2.0; // default columns.gap_pt = 24.0
     assert!(
         (xs[1] - xs[0] - (expected_column_width_pt + 24.0)).abs() < 1.0,
@@ -1601,8 +1601,8 @@ fn a_headings_underline_hugs_the_headings_own_text_width_not_the_full_content_wi
     let mut fs = test_font_system();
     let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
 
-    let margin_pt = letter_geometry().margin_mm * 2.834645669;
-    let content_width_pt = letter_geometry().page_width_mm * 2.834645669 - 2.0 * margin_pt;
+    let margin_pt = letter_geometry().margin_mm * 2.834_645_7;
+    let content_width_pt = letter_geometry().page_width_mm * 2.834_645_7 - 2.0 * margin_pt;
 
     let underline_length_pt = output.pages[0]
         .elements
