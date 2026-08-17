@@ -51,6 +51,40 @@ fn a_layouts_text_color_override_applies_to_body_color() {
 }
 
 #[test]
+fn a_layouts_text_color_override_applies_to_every_heading_levels_underline_color() {
+    let base = Stylesheet::default();
+    let mut layout = SlideLayoutStyle::default();
+    layout.text_color = Some(md2pdf_style::Color([26, 74, 122]));
+    let sheet = build_slide_stylesheet(&base, &layout, 1.0);
+    for level in 1..=6u8 {
+        assert_eq!(
+            sheet.heading.resolve(level).underline_color,
+            md2pdf_style::Color([26, 74, 122]),
+            "level {level} underline color should follow the layout's text_color"
+        );
+    }
+}
+
+#[test]
+fn a_layouts_text_color_override_replaces_a_pre_existing_per_level_underline_color() {
+    let toml_text = "[heading.levels.1]\nunderline_color = \"#d2d2d2\"\n";
+    let base: Stylesheet = toml::from_str(toml_text).unwrap();
+    let mut layout = SlideLayoutStyle::default();
+    layout.text_color = Some(md2pdf_style::Color([26, 74, 122]));
+    let sheet = build_slide_stylesheet(&base, &layout, 1.0);
+    assert_eq!(sheet.heading.resolve(1).underline_color, md2pdf_style::Color([26, 74, 122]));
+}
+
+#[test]
+fn no_layout_text_color_leaves_heading_underline_colors_untouched() {
+    let toml_text = "[heading.levels.1]\nunderline_color = \"#d2d2d2\"\n";
+    let base: Stylesheet = toml::from_str(toml_text).unwrap();
+    let layout = SlideLayoutStyle::default();
+    let sheet = build_slide_stylesheet(&base, &layout, 1.0);
+    assert_eq!(sheet.heading.resolve(1).underline_color, md2pdf_style::Color([210, 210, 210]));
+}
+
+#[test]
 fn scaling_a_per_language_code_block_font_size_override_leaves_unset_languages_alone() {
     let toml_text = "[code_block.languages.rust]\nfont_size_pt = 14.0\n\n[code_block.languages.python]\nlabel = \"Python\"\n";
     let base: Stylesheet = toml::from_str(toml_text).unwrap();
