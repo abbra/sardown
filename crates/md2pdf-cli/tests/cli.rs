@@ -701,6 +701,27 @@ fn render_slides_subcommand_produces_one_page_per_slide_with_layout_driven_styli
 }
 
 #[test]
+fn render_slides_diagram_parse_error_names_the_deck_file_not_just_a_line_number() {
+    // Regression test: render_slide_deck previously never called tag_diagram_origins, so a
+    // failed Mermaid diagram inside a slide deck reported "line N, column M" with no file name
+    // at all -- unlike the plain `render` command, which does (see the sibling test above).
+    let md_path = std::env::temp_dir().join("md2pdf-test-slides-diagram-location.md");
+    std::fs::write(&md_path, "# Test\n\n```mermaid\nsequenceDiagram\n    participant A\n    participant B\n    A->>B bad syntax here\n    B-->>A: ok\n```\n")
+        .unwrap();
+    let out_path = std::env::temp_dir().join("md2pdf-test-slides-diagram-location.pdf");
+    let _ = std::fs::remove_file(&out_path);
+
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render-slides").arg(&md_path).arg("-o").arg(&out_path);
+    let output = cmd.output().expect("failed to run md2pdf");
+    assert!(output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let expected = format!("{}:7:11", md_path.display());
+    assert!(stderr.contains(&expected), "expected stderr to contain {expected:?}, got:\n{stderr}");
+}
+
+#[test]
 fn render_slides_subcommand_requires_input_and_output() {
     let mut cmd = Command::cargo_bin("md2pdf").unwrap();
     cmd.arg("render-slides").arg("nonexistent.md").arg("-o").arg("/tmp/md2pdf-test-slides-missing.pdf");

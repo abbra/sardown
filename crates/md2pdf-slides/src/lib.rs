@@ -23,13 +23,18 @@ pub use stylesheet_for_slide::build_slide_stylesheet;
 /// independently, then concatenate and run the existing header/footer and margin passes.
 pub fn render_slide_deck(
     markdown: &str,
+    input_file: &std::path::Path,
     base_dir: &std::path::Path,
     font_system: &mut cosmic_text::FontSystem,
     stylesheet: &md2pdf_style::Stylesheet,
 ) -> anyhow::Result<md2pdf_layout::LayoutOutput> {
     let mut slugs = md2pdf_ast::SlugGenerator::new();
     let mut next_diagram_id = 0usize;
-    let ast = md2pdf_ast::parse_with_style(markdown, &mut slugs, &mut next_diagram_id, stylesheet);
+    let mut ast = md2pdf_ast::parse_with_style(markdown, &mut slugs, &mut next_diagram_id, stylesheet);
+    // Matches Commands::Render's own tag_diagram_origins call -- without it, every Mermaid
+    // diagram in a slide deck kept `file: None`, so a failed diagram's warning fell back to
+    // "line N, column M" instead of naming the deck it came from.
+    md2pdf_ast::tag_diagram_origins(&mut ast, input_file);
     let ast = md2pdf_enrich::Highlighter::with_style(stylesheet).highlight(ast);
     let diagrams = md2pdf_enrich::compile_diagrams(&ast);
     // group_columns runs per-slide, not once on the whole deck before splitting: doing it before

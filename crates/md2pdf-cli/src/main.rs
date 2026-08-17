@@ -251,7 +251,7 @@ fn main() -> anyhow::Result<()> {
             let mut font_system = timed_stage("Loading fonts", || build_font_system(&stylesheet.typography));
 
             let output_layout = timed_stage("Laying out slides", || {
-                md2pdf_slides::render_slide_deck(&markdown, &base_dir, &mut font_system, &stylesheet)
+                md2pdf_slides::render_slide_deck(&markdown, &input, &base_dir, &mut font_system, &stylesheet)
             })?;
             let pdf_bytes = timed_stage("Rendering PDF", || {
                 md2pdf_pdf::render_pdf(&output_layout.pages, font_system.db(), &output_layout.images, &output_layout.diagrams, &output_layout.anchors, output_layout.page_width_pt, output_layout.page_height_pt, &output_layout.toc_entries)

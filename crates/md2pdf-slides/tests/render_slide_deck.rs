@@ -21,7 +21,7 @@ fn small_page_stylesheet() -> Stylesheet {
 fn a_deck_with_two_thematic_breaks_produces_three_pages() {
     let markdown = "# One\n\n---\n\n# Two\n\n---\n\n# Three\n";
     let mut fs = test_font_system();
-    let output = render_slide_deck(markdown, std::path::Path::new("."), &mut fs, &small_page_stylesheet()).unwrap();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), std::path::Path::new("."), &mut fs, &small_page_stylesheet()).unwrap();
     assert_eq!(output.pages.len(), 3);
 }
 
@@ -33,7 +33,7 @@ fn a_layout_directive_selects_the_named_layouts_background() {
     sheet.slides.layouts.insert("title".to_string(), title);
     let markdown = "@layout: title\n\n# Cover\n\n---\n\n# Plain Slide\n";
     let mut fs = test_font_system();
-    let output = render_slide_deck(markdown, std::path::Path::new("."), &mut fs, &sheet).unwrap();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), std::path::Path::new("."), &mut fs, &sheet).unwrap();
 
     let has_background =
         |page: &md2pdf_layout::PositionedPage| matches!(page.elements.first(), Some(md2pdf_layout::PositionedElement::Path { fill: Some([27, 13, 51]), .. }));
@@ -45,7 +45,7 @@ fn a_layout_directive_selects_the_named_layouts_background() {
 fn an_unresolvable_layout_directive_is_a_load_time_error() {
     let markdown = "@layout: nonexistent\n\n# Cover\n";
     let mut fs = test_font_system();
-    match render_slide_deck(markdown, std::path::Path::new("."), &mut fs, &small_page_stylesheet()) {
+    match render_slide_deck(markdown, std::path::Path::new("slides.md"), std::path::Path::new("."), &mut fs, &small_page_stylesheet()) {
         // `{err:#}` (the full chain) rather than plain `{err}` (only the outermost context)
         // since resolve_layout's own message is now wrapped in a per-slide context.
         Err(err) => assert!(format!("{err:#}").contains("nonexistent")),
@@ -57,7 +57,7 @@ fn an_unresolvable_layout_directive_is_a_load_time_error() {
 fn an_unresolvable_layout_directives_error_names_which_slide_it_was_on() {
     let markdown = "# One\n\n---\n\n@layout: nonexistent\n\n# Two\n";
     let mut fs = test_font_system();
-    match render_slide_deck(markdown, std::path::Path::new("."), &mut fs, &small_page_stylesheet()) {
+    match render_slide_deck(markdown, std::path::Path::new("slides.md"), std::path::Path::new("."), &mut fs, &small_page_stylesheet()) {
         Err(err) => assert!(format!("{err:#}").contains("slide 2"), "expected the error to name slide 2, got: {err:#}"),
         Ok(_) => panic!("expected an unresolvable @layout: directive to be a load-time error"),
     }
@@ -69,7 +69,7 @@ fn a_link_from_one_slide_to_a_heading_on_a_later_slide_resolves_to_the_right_fin
     // `{#id}` attribute syntax) -- "# Target Heading" always slugifies to "target-heading".
     let markdown = "[jump](#target-heading)\n\n---\n\n# Target Heading\n";
     let mut fs = test_font_system();
-    let output = render_slide_deck(markdown, std::path::Path::new("."), &mut fs, &small_page_stylesheet()).unwrap();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), std::path::Path::new("."), &mut fs, &small_page_stylesheet()).unwrap();
     let anchor = output.anchors.get("target-heading").expect("expected the heading's auto-generated slug to be recorded as an anchor");
     assert_eq!(anchor.page, 1, "the heading lives on the second slide (physical page 1)");
 }
@@ -81,7 +81,7 @@ fn header_and_footer_still_render_across_the_whole_concatenated_deck() {
     sheet.footer.uniform.center = "{page}".to_string();
     let markdown = "# One\n\n---\n\n# Two\n";
     let mut fs = test_font_system();
-    let output = render_slide_deck(markdown, std::path::Path::new("."), &mut fs, &sheet).unwrap();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), std::path::Path::new("."), &mut fs, &sheet).unwrap();
     let text_of = |page: &md2pdf_layout::PositionedPage| {
         page.elements
             .iter()
@@ -105,7 +105,7 @@ fn a_layout_that_suppresses_the_footer_has_no_footer_on_its_own_slide_only() {
     sheet.slides.layouts.insert("title".to_string(), title);
     let markdown = "@layout: title\n\n# Cover\n\n---\n\n# Plain\n";
     let mut fs = test_font_system();
-    let output = render_slide_deck(markdown, std::path::Path::new("."), &mut fs, &sheet).unwrap();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), std::path::Path::new("."), &mut fs, &sheet).unwrap();
     let text_of = |page: &md2pdf_layout::PositionedPage| {
         page.elements
             .iter()
@@ -127,7 +127,7 @@ fn vertical_align_center_actually_shifts_content_away_from_the_top_margin() {
     sheet.slides.layouts.insert("title".to_string(), title);
     let markdown = "@layout: title\n\nShort line.\n";
     let mut fs = test_font_system();
-    let output = render_slide_deck(markdown, std::path::Path::new("."), &mut fs, &sheet).unwrap();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), std::path::Path::new("."), &mut fs, &sheet).unwrap();
     let margin_pt = sheet.page.margin_mm * 2.834645669;
     let first_y = output.pages[0].elements.iter().find_map(|e| match e {
         md2pdf_layout::PositionedElement::TextRun { y, .. } => Some(*y),
@@ -151,7 +151,7 @@ fn a_layouts_background_image_is_drawn_and_decoded_into_the_final_images_table()
     let mut fs = test_font_system();
     // test-image.png lives in md2pdf-layout's own fixtures -- reused here rather than duplicated.
     let base_dir = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../md2pdf-layout/tests/fixtures"));
-    let output = render_slide_deck(markdown, &base_dir, &mut fs, &sheet).unwrap();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), &base_dir, &mut fs, &sheet).unwrap();
 
     let has_background_image =
         |page: &md2pdf_layout::PositionedPage| page.elements.iter().any(|e| matches!(e, md2pdf_layout::PositionedElement::RasterImage { .. }));
@@ -174,7 +174,7 @@ fn a_layouts_svg_background_image_is_drawn_as_a_vector_graphic() {
     let markdown = "@layout: title\n\n# Cover\n";
     let mut fs = test_font_system();
     let base_dir = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../md2pdf-layout/tests/fixtures"));
-    let output = render_slide_deck(markdown, &base_dir, &mut fs, &sheet).unwrap();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), &base_dir, &mut fs, &sheet).unwrap();
 
     let has_background_diagram =
         |page: &md2pdf_layout::PositionedPage| page.elements.iter().any(|e| matches!(e, md2pdf_layout::PositionedElement::VectorGraphic { .. }));
@@ -200,7 +200,7 @@ fn three_slides_sharing_one_layouts_background_image_all_render_it() {
     let markdown = "@layout: title\n\n# One\n\n---\n\n@layout: title\n\n# Two\n\n---\n\n@layout: title\n\n# Three\n";
     let mut fs = test_font_system();
     let base_dir = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../md2pdf-layout/tests/fixtures"));
-    let output = render_slide_deck(markdown, &base_dir, &mut fs, &sheet).unwrap();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), &base_dir, &mut fs, &sheet).unwrap();
 
     let has_background_image =
         |page: &md2pdf_layout::PositionedPage| page.elements.iter().any(|e| matches!(e, md2pdf_layout::PositionedElement::RasterImage { .. }));
@@ -224,7 +224,7 @@ fn a_zero_width_svg_background_image_is_skipped_instead_of_dividing_by_zero() {
     let markdown = "@layout: title\n\n# Cover\n";
     let mut fs = test_font_system();
     let base_dir = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"));
-    let output = render_slide_deck(markdown, &base_dir, &mut fs, &sheet).unwrap();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), &base_dir, &mut fs, &sheet).unwrap();
 
     let has_background_diagram =
         |page: &md2pdf_layout::PositionedPage| page.elements.iter().any(|e| matches!(e, md2pdf_layout::PositionedElement::VectorGraphic { .. }));
@@ -251,7 +251,7 @@ fn a_layout_can_draw_multiple_background_images_on_the_same_slide() {
     let markdown = "@layout: title\n\n# Cover\n";
     let mut fs = test_font_system();
     let base_dir = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../md2pdf-layout/tests/fixtures"));
-    let output = render_slide_deck(markdown, &base_dir, &mut fs, &sheet).unwrap();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), &base_dir, &mut fs, &sheet).unwrap();
 
     let raster_count = output.pages[0].elements.iter().filter(|e| matches!(e, md2pdf_layout::PositionedElement::RasterImage { .. })).count();
     let vector_count = output.pages[0].elements.iter().filter(|e| matches!(e, md2pdf_layout::PositionedElement::VectorGraphic { .. })).count();
@@ -263,7 +263,7 @@ fn a_layout_can_draw_multiple_background_images_on_the_same_slide() {
 fn a_columns_block_renders_both_columns_side_by_side() {
     let markdown = "::columns\n\n::column\n\n- Left one\n- Left two\n\n::column\n\n- Right one\n\n::end\n";
     let mut fs = test_font_system();
-    let output = render_slide_deck(markdown, std::path::Path::new("."), &mut fs, &small_page_stylesheet()).unwrap();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), std::path::Path::new("."), &mut fs, &small_page_stylesheet()).unwrap();
     let text_of = |page: &md2pdf_layout::PositionedPage| {
         page.elements
             .iter()
@@ -304,7 +304,7 @@ fn code_blocks_are_syntax_highlighted() {
     // which both call Highlighter::with_style before layout.
     let markdown = "```rust\nfn main() {\n    let x = \"hello\";\n}\n```\n";
     let mut fs = test_font_system();
-    let output = render_slide_deck(markdown, std::path::Path::new("."), &mut fs, &small_page_stylesheet()).unwrap();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), std::path::Path::new("."), &mut fs, &small_page_stylesheet()).unwrap();
     let colors: std::collections::HashSet<[u8; 3]> = output.pages[0]
         .elements
         .iter()
