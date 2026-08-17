@@ -139,6 +139,19 @@ fn rendered_output_is_pdf_a_2b_compliant() {
         .success();
     fixtures.push(hyphenation_pdf.clone());
 
+    // Exercises the render-slides subcommand -- background fills and vertical-centering shifts
+    // are new content shapes this validator hasn't seen from md2pdf before.
+    let slides_pdf = tmp.join("md2pdf-test-pdfa-slides.pdf");
+    Command::cargo_bin("md2pdf")
+        .unwrap()
+        .args(["render-slides", concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/slides-deck.md"), "-o"])
+        .arg(&slides_pdf)
+        .arg("--style")
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/slides-style.toml"))
+        .assert()
+        .success();
+    fixtures.push(slides_pdf.clone());
+
     let output = std::process::Command::new(&verapdf)
         .arg("--flavour")
         .arg("2b")
