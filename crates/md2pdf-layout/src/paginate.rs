@@ -100,10 +100,10 @@ fn to_cosmic_align(alignment: md2pdf_style::TextAlignment) -> cosmic_text::Align
     }
 }
 
-/// Returns the rendered width (in points, relative to `margin_pt + indent_pt`) of the widest line
-/// placed -- used by the `Heading` arm to draw an underline hugging the heading's own text width
-/// rather than the full content width (matching how a block-level heading element sized to its
-/// content, not stretched to fill its container, would look).
+/// Returns `(leftmost_x, rightmost_x)` in points -- the actual rendered horizontal extent of the
+/// widest line placed. Used by the `Heading` arm to draw an underline hugging the heading's own
+/// text (both its width *and* its actual start position, which shifts under `Align::Center`/
+/// `Align::Right`) rather than assuming it always starts at `margin_pt + indent_pt`.
 fn place_inline_content(
     cursor: &mut Cursor,
     margin_pt: f32,
@@ -113,7 +113,7 @@ fn place_inline_content(
     align: cosmic_text::Align,
     hyphenator: Option<&crate::Hyphenator>,
     font_system: &mut FontSystem,
-) -> f32 {
+) -> (f32, f32) {
     let hyphenated;
     let content = match hyphenator {
         Some(h) => {
@@ -128,6 +128,7 @@ fn place_inline_content(
     let mut content_start_y = cursor.y;
     let mut first_line_y: Option<f32> = None;
     let line_start_x = margin_pt + indent_pt;
+    let mut min_start_x = f32::MAX;
     let mut max_end_x = line_start_x;
 
     while let Some(first) = iter.next() {
@@ -174,6 +175,7 @@ fn place_inline_content(
                     *y = placed_y;
                     let width: f32 = glyphs.iter().map(|g| g.x_advance).sum();
                     let rect = Rect { x: *x, y: placed_y - *size, width, height: *size * 1.2 };
+                    min_start_x = min_start_x.min(rect.x);
                     max_end_x = max_end_x.max(rect.x + rect.width);
                     // A strikethrough line conventionally sits roughly through the x-height, above
                     // the baseline -- 0.3x the font size is a reasonable approximation without
@@ -199,7 +201,11 @@ fn place_inline_content(
         }
         cursor.y = placed_y + line_height;
     }
-    max_end_x - line_start_x
+    if min_start_x > max_end_x {
+        (line_start_x, line_start_x) // no TextRun was ever placed (empty content)
+    } else {
+        (min_start_x, max_end_x)
+    }
 }
 
 /// Shapes every cell in `row` (without placing anything) to find how tall the row will actually
@@ -312,8 +318,15 @@ fn render_block(
             }
             let anchor_y = cursor.y;
             let max_width_pt = cursor.content_width_pt - indent_pt;
-            let heading_width_pt =
-                place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, cosmic_text::Align::Left, None, font_system);
+            // Headings never justify/stretch -- Justify is forced to Left, matching the
+            // pre-existing guarantee that headings stay left-aligned under a justified
+            // stylesheet even though body paragraphs do stretch.
+            let heading_align = match cursor.style.typography.alignment {
+                md2pdf_style::TextAlignment::Justify => cosmic_text::Align::Left,
+                other => to_cosmic_align(other),
+            };
+            let (heading_start_x, heading_end_x) =
+                place_inline_content(cursor, margin_pt, indent_pt, max_width_pt, content, heading_align, None, font_system);
             let resolved_heading = cursor.style.heading.resolve(*level);
             if resolved_heading.underline_width_pt > 0.0 {
                 // Approximates the last line's baseline plus a little clearance for descenders --
@@ -321,9 +334,8 @@ fn render_block(
                 // (rare) gets an underline positioned from this same estimate, not its own
                 // measured last-line baseline.
                 let underline_y = cursor.y - estimate_line_height(heading_size) + heading_size * 0.25;
-                let start_x = margin_pt + indent_pt;
                 cursor.current.push(PositionedElement::Path {
-                    points: vec![PathCommand::MoveTo(start_x, underline_y), PathCommand::LineTo(start_x + heading_width_pt, underline_y)],
+                    points: vec![PathCommand::MoveTo(heading_start_x, underline_y), PathCommand::LineTo(heading_end_x, underline_y)],
                     fill: None,
                     stroke: Some(StrokeStyle { color: resolved_heading.underline_color.0, width: resolved_heading.underline_width_pt }),
                 });

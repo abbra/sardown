@@ -1254,6 +1254,50 @@ fn headings_and_code_blocks_stay_left_aligned_even_under_a_justified_stylesheet(
 }
 
 #[test]
+fn a_heading_honors_center_and_right_alignment() {
+    let ast = vec![BlockNode::Heading { level: 1, id: "h".to_string(), content: vec![sized_inline("Hi", 28.0)] }];
+
+    let mut left_style = Stylesheet::default();
+    left_style.typography.alignment = md2pdf_style::TextAlignment::Left;
+    let mut fs = test_font_system();
+    let left_x = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &left_style).pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { x, .. } => Some(*x),
+            _ => None,
+        })
+        .unwrap();
+
+    let mut center_style = Stylesheet::default();
+    center_style.typography.alignment = md2pdf_style::TextAlignment::Center;
+    let mut fs = test_font_system();
+    let center_x = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &center_style).pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { x, .. } => Some(*x),
+            _ => None,
+        })
+        .unwrap();
+
+    let mut right_style = Stylesheet::default();
+    right_style.typography.alignment = md2pdf_style::TextAlignment::Right;
+    let mut fs = test_font_system();
+    let right_x = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &right_style).pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { x, .. } => Some(*x),
+            _ => None,
+        })
+        .unwrap();
+
+    assert!(center_x > left_x, "expected a centered heading to start further right than a left-aligned one");
+    assert!(right_x > center_x, "expected a right-aligned heading to start further right than a centered one");
+}
+
+#[test]
 fn strikethrough_text_draws_a_horizontal_line_through_it() {
     let mut plain = plain_inline("plain");
     let mut struck = plain_inline("struck");
