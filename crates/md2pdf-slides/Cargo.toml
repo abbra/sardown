@@ -10,3 +10,6 @@ md2pdf-ast = { version = "0.1.0", path = "../md2pdf-ast" }
 md2pdf-enrich = { version = "0.1.0", path = "../md2pdf-enrich" }
 md2pdf-layout = { path = "../md2pdf-layout" }
 md2pdf-style = { version = "0.1.0", path = "../md2pdf-style" }
+
+[dev-dependencies]
+toml = "1.1.4"
