@@ -850,13 +850,7 @@ fn render_block(
                 if cursor.remaining_height() < height && !cursor.current.is_empty() {
                     cursor.break_page(margin_pt);
                 }
-                cursor.current.push(PositionedElement::VectorGraphic {
-                    x: margin_pt + indent_pt,
-                    y: cursor.y,
-                    width,
-                    height,
-                    diagram_id: key,
-                });
+                cursor.current.push(PositionedElement::VectorGraphic { x: margin_pt + indent_pt, y: cursor.y, width, height, diagram_id: key });
                 cursor.y += height;
             }
         }

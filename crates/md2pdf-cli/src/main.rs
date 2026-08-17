@@ -212,8 +212,7 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Render { input, output, style, title, author, date } => {
-            let mut stylesheet =
-                timed_stage("Resolving stylesheet", || md2pdf_style::Stylesheet::resolve(style.as_deref(), None))?;
+            let mut stylesheet = timed_stage("Resolving stylesheet", || md2pdf_style::Stylesheet::resolve(style.as_deref(), None))?;
             apply_document_overrides(&mut stylesheet, title, author, date);
 
             let markdown = std::fs::read_to_string(&input)?;
@@ -233,9 +232,7 @@ fn main() -> anyhow::Result<()> {
             write_pdf_output(&output_layout, &font_system, &output, "pages")
         }
         Commands::RenderBook { book_root, output, style, title, author, date } => {
-            let mut stylesheet = timed_stage("Resolving stylesheet", || {
-                md2pdf_style::Stylesheet::resolve(style.as_deref(), Some(&book_root))
-            })?;
+            let mut stylesheet = timed_stage("Resolving stylesheet", || md2pdf_style::Stylesheet::resolve(style.as_deref(), Some(&book_root)))?;
             apply_document_overrides(&mut stylesheet, title, author, date);
 
             let ast = timed_stage("Loading book", || md2pdf_book::load_book(&book_root, &stylesheet))?;
@@ -255,8 +252,7 @@ fn main() -> anyhow::Result<()> {
             write_pdf_output(&output_layout, &font_system, &output, "pages")
         }
         Commands::RenderSlides { input, output, style, title, author, date } => {
-            let mut stylesheet =
-                timed_stage("Resolving stylesheet", || md2pdf_style::Stylesheet::resolve(style.as_deref(), None))?;
+            let mut stylesheet = timed_stage("Resolving stylesheet", || md2pdf_style::Stylesheet::resolve(style.as_deref(), None))?;
             apply_document_overrides(&mut stylesheet, title, author, date);
 
             let markdown = std::fs::read_to_string(&input)?;
