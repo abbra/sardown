@@ -56,13 +56,24 @@ impl Highlighter {
         let syntax = self.syntax_for(language);
         let mut highlighter = HighlightLines::new(syntax, &self.theme);
         let mut tokens = Vec::new();
+        // Logged once per code block, not once per failing line: a highlighting engine error is
+        // typically a per-block condition (e.g. a syntax definition it can't process), and this
+        // avoids a wall of identical warnings for one broken code block.
+        let mut warned = false;
         for line in source.split_inclusive('\n') {
-            let Ok(ranges) = highlighter.highlight_line(line, &self.syntax_set) else {
-                tokens.push(HighlightedToken { text: line.to_string(), color: [0, 0, 0] });
-                continue;
-            };
-            for (style, text) in ranges {
-                tokens.push(HighlightedToken { text: text.to_string(), color: color_of(style) });
+            match highlighter.highlight_line(line, &self.syntax_set) {
+                Ok(ranges) => {
+                    for (style, text) in ranges {
+                        tokens.push(HighlightedToken { text: text.to_string(), color: color_of(style) });
+                    }
+                }
+                Err(e) => {
+                    if !warned {
+                        eprintln!("warning: syntax highlighting failed ({e}); rendering the rest of this code block unhighlighted");
+                        warned = true;
+                    }
+                    tokens.push(HighlightedToken { text: line.to_string(), color: [0, 0, 0] });
+                }
             }
         }
         tokens

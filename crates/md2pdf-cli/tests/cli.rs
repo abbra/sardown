@@ -722,6 +722,31 @@ fn render_slides_diagram_parse_error_names_the_deck_file_not_just_a_line_number(
 }
 
 #[test]
+fn a_failing_stage_reports_failed_not_done() {
+    // Regression test: timed_stage previously printed "done" unconditionally, even for the
+    // stage whose own error is about to propagate and fail the whole render -- misleadingly
+    // implying that stage succeeded. A book root with no SUMMARY.md fails at "Loading book",
+    // after "Resolving stylesheet" has already genuinely succeeded, so both outcomes are
+    // checked in the same run.
+    let book_root = std::env::temp_dir().join("md2pdf-test-failing-stage-reports-failed");
+    let _ = std::fs::remove_dir_all(&book_root);
+    std::fs::create_dir_all(book_root.join("src")).unwrap();
+    // No SUMMARY.md written -- load_book fails reading it.
+
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render-book").arg(&book_root).arg("-o").arg("/tmp/md2pdf-test-failing-stage-reports-failed.pdf");
+    let output = cmd.output().expect("failed to run md2pdf");
+    assert!(!output.status.success(), "expected the render to fail with no SUMMARY.md present");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Resolving stylesheet... done"), "expected the stylesheet stage to genuinely succeed: {stderr}");
+    assert!(stderr.contains("Loading book... failed"), "expected the failing stage to report failed, not done: {stderr}");
+    assert!(!stderr.contains("Loading book... done"), "the failing stage must never claim done: {stderr}");
+
+    std::fs::remove_dir_all(&book_root).unwrap();
+}
+
+#[test]
 fn render_slides_subcommand_requires_input_and_output() {
     let mut cmd = Command::cargo_bin("md2pdf").unwrap();
     cmd.arg("render-slides").arg("nonexistent.md").arg("-o").arg("/tmp/md2pdf-test-slides-missing.pdf");
