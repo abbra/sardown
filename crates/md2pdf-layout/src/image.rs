@@ -1,4 +1,5 @@
 use md2pdf_ast::{BlockNode, ImageSource};
+use md2pdf_enrich::{CompiledDiagram, DiagramTable};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -35,10 +36,20 @@ pub fn decode_images(ast: &[BlockNode], base_dir: &Path) -> ImageTable {
     table
 }
 
+fn is_svg_path(path: &Path) -> bool {
+    path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+}
+
 fn collect(ast: &[BlockNode], base_dir: &Path, table: &mut ImageTable) {
     for block in ast {
         match block {
             BlockNode::Image { source: ImageSource::Embedded(path), .. } => {
+                // .svg files are collected separately by collect_svg_diagrams -- the `image`
+                // crate has no SVG decoder, so leaving this arm to try would just produce a
+                // spurious "failed to decode" warning for every embedded SVG.
+                if is_svg_path(path) {
+                    continue;
+                }
                 let key = path.to_string_lossy().to_string();
                 if table.contains_key(&key) {
                     continue;
@@ -61,6 +72,51 @@ fn collect(ast: &[BlockNode], base_dir: &Path, table: &mut ImageTable) {
             BlockNode::List { items, .. } => {
                 for item in items {
                     collect(item, base_dir, table);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Collects embedded `.svg` image files into a `DiagramTable`, keyed the same way
+/// `decode_images` keys raster images -- `render_block`'s `BlockNode::Image` arm checks the
+/// raster table first, then this one, so whichever table actually has an entry for a given path
+/// determines whether it renders as a `RasterImage` or a `VectorGraphic`. Reuses the exact same
+/// `resolve_within_base` security boundary as raster images: an SVG file is still Markdown-author-
+/// controlled input, and needs the same protection against path traversal.
+pub fn collect_svg_diagrams(ast: &[BlockNode], base_dir: &Path) -> DiagramTable {
+    let mut table = HashMap::new();
+    collect_svgs(ast, base_dir, &mut table);
+    table
+}
+
+fn collect_svgs(ast: &[BlockNode], base_dir: &Path, table: &mut DiagramTable) {
+    for block in ast {
+        match block {
+            BlockNode::Image { source: ImageSource::Embedded(path), .. } if is_svg_path(path) => {
+                let key = path.to_string_lossy().to_string();
+                if table.contains_key(&key) {
+                    continue;
+                }
+                match resolve_within_base(base_dir, path) {
+                    Ok(resolved) => match std::fs::read_to_string(&resolved) {
+                        Ok(svg) => match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
+                            Ok(tree) => {
+                                let size = tree.size();
+                                table.insert(key, CompiledDiagram { svg, width: size.width(), height: size.height() });
+                            }
+                            Err(e) => eprintln!("warning: failed to parse SVG image {key}: {e}"),
+                        },
+                        Err(e) => eprintln!("warning: failed to read SVG image {key}: {e}"),
+                    },
+                    Err(e) => eprintln!("warning: refusing to load image {key}: {e}"),
+                }
+            }
+            BlockNode::Blockquote { content } => collect_svgs(content, base_dir, table),
+            BlockNode::List { items, .. } => {
+                for item in items {
+                    collect_svgs(item, base_dir, table);
                 }
             }
             _ => {}

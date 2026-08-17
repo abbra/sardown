@@ -1699,6 +1699,7 @@ dependencies = [
  "md2pdf-ast",
  "md2pdf-enrich",
  "md2pdf-style",
+ "usvg 0.48.1",
 ]
 
 [[package]]

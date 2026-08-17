@@ -10,3 +10,4 @@ image = { version = "0.25.10", default-features = false, features = ["png", "jpe
 md2pdf-ast = { version = "0.1.0", path = "../md2pdf-ast" }
 md2pdf-enrich = { version = "0.1.0", path = "../md2pdf-enrich" }
 md2pdf-style = { version = "0.1.0", path = "../md2pdf-style" }
+usvg = "0.48.1"

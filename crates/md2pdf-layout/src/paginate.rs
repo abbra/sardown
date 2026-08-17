@@ -689,28 +689,31 @@ fn render_block(
                 }
                 cursor.current.push(PositionedElement::RasterImage { x: margin_pt + indent_pt, y: cursor.y, width, height, image_id: key });
                 cursor.y += height;
+            } else if let Some(diagram) = diagrams.get(&key) {
+                // An embedded .svg file (collect_svg_diagrams) rather than a raster image --
+                // rendered through the exact same VectorGraphic path Mermaid diagrams use.
+                let max_width = cursor.content_width_pt - indent_pt;
+                let max_height = cursor.page_height_pt - margin_pt;
+                let (width, height) = fit_vector_graphic(diagram.width, diagram.height, max_width, max_height);
+                if cursor.remaining_height() < height && !cursor.current.is_empty() {
+                    cursor.break_page(margin_pt);
+                }
+                cursor.current.push(PositionedElement::VectorGraphic {
+                    x: margin_pt + indent_pt,
+                    y: cursor.y,
+                    width,
+                    height,
+                    diagram_id: key,
+                });
+                cursor.y += height;
             }
         }
         BlockNode::Image { source: md2pdf_ast::ImageSource::External(_), .. } => {} // skipped, see decode_images
         BlockNode::MermaidDiagram { id, .. } => {
             if let Some(diagram) = diagrams.get(id) {
                 let max_width = cursor.content_width_pt - indent_pt;
-                let aspect = diagram.height / diagram.width;
-                let (mut width, mut height) = if diagram.width > max_width {
-                    (max_width, max_width * aspect)
-                } else {
-                    (diagram.width, diagram.height)
-                };
-                // Fitting by width alone isn't enough: a diagram taller (relative to its width)
-                // than a full page's content area would still overflow past the bottom margin
-                // even on a fresh page -- breaking to a new page can't help when the diagram is
-                // too big for ANY page, not just the current one. Cap by the full page height a
-                // fresh page provides and re-derive width from that to keep the aspect ratio.
                 let max_height = cursor.page_height_pt - margin_pt;
-                if height > max_height {
-                    height = max_height;
-                    width = max_height / aspect;
-                }
+                let (width, height) = fit_vector_graphic(diagram.width, diagram.height, max_width, max_height);
                 if cursor.remaining_height() < height && !cursor.current.is_empty() {
                     cursor.break_page(margin_pt);
                 }
@@ -726,6 +729,21 @@ fn render_block(
             }
         }
     }
+}
+
+/// Fits a vector graphic's natural (width, height) within `max_width`/`max_height`, preserving
+/// aspect ratio: capped by width first, then -- since a diagram taller (relative to its width)
+/// than a full page's content area would still overflow past the bottom margin even on a fresh
+/// page -- re-capped by height, re-deriving width from that so the aspect ratio still holds.
+/// Shared by Mermaid diagrams and embedded `.svg` images, both rendered as `VectorGraphic`.
+fn fit_vector_graphic(natural_width: f32, natural_height: f32, max_width: f32, max_height: f32) -> (f32, f32) {
+    let aspect = natural_height / natural_width;
+    let (mut width, mut height) = if natural_width > max_width { (max_width, max_width * aspect) } else { (natural_width, natural_height) };
+    if height > max_height {
+        height = max_height;
+        width = max_height / aspect;
+    }
+    (width, height)
 }
 
 pub struct LayoutOutput {
@@ -755,10 +773,15 @@ pub fn layout_impl(
     stylesheet: &md2pdf_style::Stylesheet,
 ) -> LayoutOutput {
     let images = crate::image::decode_images(ast, base_dir);
+    // Embedded .svg images are collected separately from Mermaid-compiled diagrams (a different
+    // crate, with no filesystem access) but rendered through the exact same VectorGraphic path --
+    // merge them into one local table so render_block doesn't need to know the difference.
+    let mut diagrams = diagrams.clone();
+    diagrams.extend(crate::image::collect_svg_diagrams(ast, base_dir));
     let margin_pt = geometry.margin_mm * PT_PER_MM;
     let mut cursor = Cursor::new(geometry, stylesheet);
     for (i, block) in ast.iter().enumerate() {
-        render_block(block, &mut cursor, margin_pt, 0.0, font_system, &images, diagrams, ast.get(i + 1));
+        render_block(block, &mut cursor, margin_pt, 0.0, font_system, &images, &diagrams, ast.get(i + 1));
         cursor.y += LINE_SPACING_PT;
     }
     let (pages, anchors, page_contexts) = cursor.finish();

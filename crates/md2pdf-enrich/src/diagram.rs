@@ -2,6 +2,7 @@ use md2pdf_ast::BlockNode;
 use merman::svg::HeadlessRenderer;
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct CompiledDiagram {
     pub svg: String,
     pub width: f32,

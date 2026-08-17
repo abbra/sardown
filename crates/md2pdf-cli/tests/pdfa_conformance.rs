@@ -104,6 +104,21 @@ fn rendered_output_is_pdf_a_2b_compliant() {
         .success();
     fixtures.push(font_pdf.clone());
 
+    // Exercises an embedded arbitrary (non-Mermaid-generated) .svg image -- unlike the other
+    // vector content this project already validated, this SVG source didn't come from merman.
+    let svg_dir = tmp.join("md2pdf-test-pdfa-svg-src");
+    let _ = std::fs::remove_dir_all(&svg_dir);
+    std::fs::create_dir_all(&svg_dir).unwrap();
+    std::fs::write(
+        svg_dir.join("test-vector.svg"),
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"50\" viewBox=\"0 0 100 50\">\n  <rect width=\"100\" height=\"50\" fill=\"#3366cc\"/>\n</svg>\n",
+    )
+    .unwrap();
+    std::fs::write(svg_dir.join("doc.md"), "# SVG Image Test\n\n![test](test-vector.svg)\n").unwrap();
+    let svg_pdf = tmp.join("md2pdf-test-pdfa-svg.pdf");
+    Command::cargo_bin("md2pdf").unwrap().args(["render"]).arg(svg_dir.join("doc.md")).arg("-o").arg(&svg_pdf).assert().success();
+    fixtures.push(svg_pdf.clone());
+
     let output = std::process::Command::new(&verapdf)
         .arg("--flavour")
         .arg("2b")
@@ -122,4 +137,5 @@ fn rendered_output_is_pdf_a_2b_compliant() {
     }
     let _ = std::fs::remove_file(&font_style_path);
     let _ = std::fs::remove_dir_all(&image_dir);
+    let _ = std::fs::remove_dir_all(&svg_dir);
 }

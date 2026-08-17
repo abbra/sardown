@@ -1,5 +1,5 @@
 use md2pdf_ast::{BlockNode, ImageSource};
-use md2pdf_layout::decode_images;
+use md2pdf_layout::{collect_svg_diagrams, decode_images};
 
 #[test]
 fn decodes_embedded_local_image_and_indexes_by_path() {
@@ -42,6 +42,34 @@ fn absolute_path_outside_base_dir_is_rejected() {
     }];
     let table = decode_images(&ast, &base_dir);
     assert!(table.is_empty(), "absolute path outside base_dir must not decode anything");
+}
+
+#[test]
+fn collects_an_embedded_svg_with_its_intrinsic_size() {
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let ast = vec![BlockNode::Image { alt: "test".to_string(), title: None, source: ImageSource::Embedded(std::path::PathBuf::from("test-vector.svg")) }];
+    let table = collect_svg_diagrams(&ast, &base_dir);
+    let diagram = table.get("test-vector.svg").expect("svg not found in table");
+    assert_eq!((diagram.width, diagram.height), (100.0, 50.0));
+    assert!(diagram.svg.contains("<svg"));
+}
+
+#[test]
+fn an_svg_image_is_absent_from_the_raster_image_table() {
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let ast = vec![BlockNode::Image { alt: "test".to_string(), title: None, source: ImageSource::Embedded(std::path::PathBuf::from("test-vector.svg")) }];
+    let table = decode_images(&ast, &base_dir);
+    assert!(table.is_empty(), "expected an .svg file to be left for collect_svg_diagrams, not decoded as a raster image");
+}
+
+#[test]
+fn svg_path_traversal_outside_base_dir_is_rejected() {
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    // Escapes tests/fixtures/ back up to tests/secret.svg -- a real, valid, .svg-extensioned file
+    // that exists and would otherwise be a valid target for the SVG collection path.
+    let ast = vec![BlockNode::Image { alt: "traversal".to_string(), title: None, source: ImageSource::Embedded(std::path::PathBuf::from("../secret.svg")) }];
+    let table = collect_svg_diagrams(&ast, &base_dir);
+    assert!(table.is_empty(), "path traversal outside base_dir must not be read");
 }
 
 #[test]

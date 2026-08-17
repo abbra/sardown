@@ -125,6 +125,33 @@ fn render_book_loads_images_from_a_book_root_outside_the_current_directory() {
 }
 
 #[test]
+fn renders_an_embedded_svg_image_as_vector_content_not_a_raster_image() {
+    // The image path is resolved relative to the Markdown file's own directory and must stay
+    // within it (the same path-traversal boundary raster images use) -- copy the fixture next to
+    // the temp Markdown file rather than referencing it by its own (differently-rooted) path.
+    let md_path = std::env::temp_dir().join("md2pdf-test-svg-image-doc.md");
+    std::fs::write(&md_path, "# Test\n\n![pic](test-vector.svg)\n").unwrap();
+    std::fs::copy(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/test-vector.svg"), std::env::temp_dir().join("test-vector.svg")).unwrap();
+
+    let out_path = std::env::temp_dir().join("md2pdf-test-svg-image-output.pdf");
+    let _ = std::fs::remove_file(&out_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(&md_path).arg("-o").arg(&out_path);
+    cmd.assert().success();
+
+    let bytes = std::fs::read(&out_path).expect("output PDF was not written");
+    let doc = lopdf::Document::load_mem(&bytes).expect("output is not a valid PDF");
+    // SVG content draws as vector paths in the page's own content stream (via krilla-svg), not as
+    // an embedded raster Image XObject -- confirm no Image XObject was created for it.
+    let has_image_xobject =
+        doc.objects.values().any(|obj| obj.as_stream().ok().and_then(|s| s.dict.get(b"Subtype").ok()).and_then(|s| s.as_name().ok()) == Some(b"Image"));
+    assert!(!has_image_xobject, "expected an SVG image to render as vector content, not an Image XObject");
+
+    std::fs::remove_file(&md_path).unwrap();
+    std::fs::remove_file(&out_path).unwrap();
+}
+
+#[test]
 fn diagram_parse_error_reports_the_offending_line_inside_the_diagram_not_just_the_fence() {
     // Regression test: a failed-diagram warning previously only ever named the opening
     // ```mermaid fence's own location -- useless for finding the actual bad line in anything

@@ -68,9 +68,12 @@ per-language styling). A ` ```mermaid ` fence is treated specially — see
 
 ## Images
 
-`![alt](path)` embeds a local PNG or JPEG file, resolved relative to the
-Markdown file's own directory (or, inside a book, relative to that
-chapter's own directory). **External image URLs (`http://`/`https://`) are
+`![alt](path)` embeds a local PNG, JPEG, or SVG file, resolved relative to
+the Markdown file's own directory (or, inside a book, relative to that
+chapter's own directory). An SVG renders as vector content (the same
+mechanism a Mermaid diagram uses), scaled to fit the page width — and,
+like a Mermaid diagram, scaled down further if it would still be taller
+than a full page. **External image URLs (`http://`/`https://`) are
 not fetched** — they're skipped with a warning on stderr rather than
 silently failing or blocking on a network request.
 

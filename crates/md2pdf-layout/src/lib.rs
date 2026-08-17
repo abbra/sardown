@@ -5,7 +5,7 @@ mod shape;
 mod table;
 mod toc;
 pub use header_footer::{apply_asymmetric_margins, format_page_number, layout_with_header_footer, render_headers_footers, resolve_template};
-pub use image::{decode_images, DecodedImage, ImageTable};
+pub use image::{collect_svg_diagrams, decode_images, DecodedImage, ImageTable};
 pub use paginate::{layout, layout_impl, LayoutOutput};
 pub use shape::{shape_paragraph, shape_rich_paragraph, ShapedRun};
 pub use toc::{insert_table_of_contents, TocEntry};

@@ -601,6 +601,24 @@ fn mermaid_diagram_taller_than_a_full_page_is_scaled_down_to_fit_one_page() {
 }
 
 #[test]
+fn an_embedded_svg_image_produces_a_vector_graphic_element() {
+    let ast =
+        vec![BlockNode::Image { alt: "test".to_string(), title: None, source: md2pdf_ast::ImageSource::Embedded(std::path::PathBuf::from("test-vector.svg")) }];
+    let mut fs = test_font_system();
+    // No pre-populated DiagramTable -- layout_impl must discover and merge the SVG file itself,
+    // the same way it discovers embedded raster images via decode_images.
+    let output = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new());
+
+    match &output.pages[0].elements[0] {
+        PositionedElement::VectorGraphic { diagram_id, width, height, .. } => {
+            assert_eq!(diagram_id, "test-vector.svg");
+            assert!(*width > 0.0 && *height > 0.0);
+        }
+        other => panic!("expected VectorGraphic, got {other:?}"),
+    }
+}
+
+#[test]
 fn heading_after_mermaid_diagram_does_not_overlap_the_diagrams_bottom_edge() {
     // Regression test: a diagram has a crisp, hard bottom edge (unlike wrapped body text, where
     // consecutive baselines sitting close together is normal typography). The flat
