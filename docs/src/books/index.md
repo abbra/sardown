@@ -41,12 +41,13 @@ my-book/
   own `images/` folder without collision.
 - Mermaid diagram failures reported with the chapter's own path, not an
   opaque internal ID — see [Diagrams](../diagrams.md).
+- A generated table of contents, if `[toc].enabled = true` — see
+  [Table of Contents](../styling/table-of-contents.md).
 
 ## What's not yet supported
 
 - `\{{#include ...}}` and other mdBook preprocessor directives are not
   processed — chapter files are read as plain Markdown.
-- A table of contents page is not generated automatically.
 - `PartTitle` entries (headings in `SUMMARY.md` used as sidebar group
   labels in mdBook's own HTML output) are recognized during parsing but
   currently have no visual treatment in the combined PDF body.

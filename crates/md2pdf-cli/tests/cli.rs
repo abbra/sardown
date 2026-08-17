@@ -364,3 +364,31 @@ fn explicit_style_flag_accepts_justified_alignment_without_disturbing_pagination
     std::fs::remove_file(&justified_path).unwrap();
     std::fs::remove_file(&default_path).unwrap();
 }
+
+#[test]
+fn explicit_style_flag_generates_a_toc_page_with_working_links() {
+    let style_path = std::env::temp_dir().join("md2pdf-test-toc-style.toml");
+    std::fs::write(&style_path, "[toc]\nenabled = true\ndepth = 2\n").unwrap();
+
+    let md_path = std::env::temp_dir().join("md2pdf-test-toc-doc.md");
+    std::fs::write(&md_path, "# Chapter One\n\nBody.\n\n## Section A\n\nMore body.\n").unwrap();
+
+    let out_path = std::env::temp_dir().join("md2pdf-test-toc-output.pdf");
+    let _ = std::fs::remove_file(&out_path);
+    let mut cmd = Command::cargo_bin("md2pdf").unwrap();
+    cmd.arg("render").arg(&md_path).arg("-o").arg(&out_path).arg("--style").arg(&style_path);
+    cmd.assert().success();
+
+    let doc = lopdf::Document::load_mem(&std::fs::read(&out_path).unwrap()).unwrap();
+    assert_eq!(doc.get_pages().len(), 2, "expected 1 TOC page + 1 content page");
+    let toc_text = doc.extract_text(&[1]).unwrap_or_default();
+    assert!(toc_text.contains("Table of Contents"), "expected the TOC title on page 1: {toc_text}");
+    assert!(toc_text.contains("Chapter One"), "expected a Chapter One entry on page 1: {toc_text}");
+    assert!(toc_text.contains("Section A"), "expected a Section A entry on page 1: {toc_text}");
+    let has_outlines = doc.catalog().ok().and_then(|cat| cat.get(b"Outlines").ok()).is_some();
+    assert!(has_outlines, "expected a populated PDF outline");
+
+    std::fs::remove_file(&style_path).unwrap();
+    std::fs::remove_file(&md_path).unwrap();
+    std::fs::remove_file(&out_path).unwrap();
+}

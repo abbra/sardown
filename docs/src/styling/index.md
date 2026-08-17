@@ -46,6 +46,7 @@ they control:
 | `[table]` | [Table padding and text size](./tables.md) |
 | `[code_block]` | [Syntax theme, labels, per-language overrides](./code-blocks.md) |
 | `[header]`, `[footer]` | [Running headers/footers, page numbering, templates](./headers-and-footers.md) |
+| `[toc]` | [Table of contents and PDF outline generation](./table-of-contents.md) |
 
 For a complete, field-by-field listing of every value each section
 accepts, see the [Stylesheet Reference](../stylesheet-reference.md). For

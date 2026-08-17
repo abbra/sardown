@@ -17,6 +17,7 @@
   - [Tables](./styling/tables.md)
   - [Code Blocks](./styling/code-blocks.md)
   - [Headers and Footers](./styling/headers-and-footers.md)
+  - [Table of Contents](./styling/table-of-contents.md)
   - [Style Presets Gallery](./styling/presets.md)
 - [Command-Line Reference](./cli-reference.md)
 - [Stylesheet Reference](./stylesheet-reference.md)

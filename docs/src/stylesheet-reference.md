@@ -148,3 +148,11 @@ nothing shown in that zone):
 `mode = "two_sided"`, selected by physical page parity. Valid placeholders
 in a template string: `{page}`, `{total_pages}`, `{h1}`, `{h2}` — see
 [Headers and Footers](./styling/headers-and-footers.md#zones-and-templates).
+
+## `[toc]`
+
+| Field | Type | Default |
+|---|---|---|
+| `enabled` | boolean | `false` |
+| `depth` | integer (`1`-`6`) | `2` |
+| `title` | string | `"Table of Contents"` |
