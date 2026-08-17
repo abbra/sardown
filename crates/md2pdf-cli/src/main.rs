@@ -20,15 +20,15 @@ enum Commands {
         #[arg(long)]
         style: Option<PathBuf>,
         /// Document title, available to header/footer templates as {title}. Overrides
-        /// [document].title from the stylesheet if both are given.
+        /// \[document\].title from the stylesheet if both are given.
         #[arg(long)]
         title: Option<String>,
         /// Document author, available to header/footer templates as {author}. Overrides
-        /// [document].author from the stylesheet if both are given.
+        /// \[document\].author from the stylesheet if both are given.
         #[arg(long)]
         author: Option<String>,
         /// Document date ("YYYY-MM-DD" or any other literal string), available to header/footer
-        /// templates as {date}. Overrides [document].date from the stylesheet if both are given;
+        /// templates as {date}. Overrides \[document\].date from the stylesheet if both are given;
         /// if neither is given, defaults to today's date.
         #[arg(long)]
         date: Option<String>,
@@ -44,15 +44,15 @@ enum Commands {
         #[arg(long)]
         style: Option<PathBuf>,
         /// Document title, available to header/footer templates as {title}. Overrides
-        /// [document].title from the stylesheet if both are given.
+        /// \[document\].title from the stylesheet if both are given.
         #[arg(long)]
         title: Option<String>,
         /// Document author, available to header/footer templates as {author}. Overrides
-        /// [document].author from the stylesheet if both are given.
+        /// \[document\].author from the stylesheet if both are given.
         #[arg(long)]
         author: Option<String>,
         /// Document date ("YYYY-MM-DD" or any other literal string), available to header/footer
-        /// templates as {date}. Overrides [document].date from the stylesheet if both are given;
+        /// templates as {date}. Overrides \[document\].date from the stylesheet if both are given;
         /// if neither is given, defaults to today's date.
         #[arg(long)]
         date: Option<String>,
@@ -66,15 +66,15 @@ enum Commands {
         #[arg(long)]
         style: Option<PathBuf>,
         /// Document title, available to header/footer templates as {title}. Overrides
-        /// [document].title from the stylesheet if both are given.
+        /// \[document\].title from the stylesheet if both are given.
         #[arg(long)]
         title: Option<String>,
         /// Document author, available to header/footer templates as {author}. Overrides
-        /// [document].author from the stylesheet if both are given.
+        /// \[document\].author from the stylesheet if both are given.
         #[arg(long)]
         author: Option<String>,
         /// Document date ("YYYY-MM-DD" or any other literal string), available to header/footer
-        /// templates as {date}. Overrides [document].date from the stylesheet if both are given;
+        /// templates as {date}. Overrides \[document\].date from the stylesheet if both are given;
         /// if neither is given, defaults to today's date.
         #[arg(long)]
         date: Option<String>,
@@ -111,7 +111,7 @@ fn today_date_string() -> String {
 
 /// Howard Hinnant's `civil_from_days`: converts a day count since 1970-01-01 (UTC) into a
 /// proleptic-Gregorian (year, month, day) -- see
-/// http://howardhinnant.github.io/date_algorithms.html. Avoids pulling in a date/time crate as a
+/// <http://howardhinnant.github.io/date_algorithms.html>. Avoids pulling in a date/time crate as a
 /// real (non-dev) dependency for one ISO-8601 string; chrono is already in the dependency tree,
 /// but only as a dev-dependency of the golden-image/PDF-rendering test tooling.
 fn civil_from_days(z: i64) -> (i64, u32, u32) {
