@@ -24,8 +24,16 @@ highlight the way fenced code blocks do.
 
 `~~strikethrough~~` is parsed without leaving stray `~~` characters in the
 output, but the strikethrough line itself isn't drawn — the text renders
-as plain, unstruck text. Task list syntax (`- [ ]`/`- [x]`) and footnotes
-aren't specially handled either; they render as their literal source text.
+as plain, unstruck text. Footnotes aren't specially handled; they render
+as their literal source text.
+
+Task list items (`- [ ]`/`- [x]`) render a checkbox glyph (☐/☑) in place
+of the literal brackets:
+
+```markdown
+- [ ] Not done yet
+- [x] Done
+```
 
 ## Lists
 

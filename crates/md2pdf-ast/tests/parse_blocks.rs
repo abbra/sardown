@@ -300,6 +300,34 @@ fn parse_with_slugs_shares_diagram_id_counter_across_calls() {
 }
 
 #[test]
+fn task_list_items_render_a_checkbox_glyph_instead_of_literal_brackets() {
+    let md = "- [ ] Unchecked\n- [x] Checked\n";
+    let blocks = parse(md);
+    match &blocks[0] {
+        BlockNode::List { items, .. } => {
+            assert_eq!(items.len(), 2);
+            let text_of = |item: &[BlockNode]| -> String {
+                item.iter()
+                    .filter_map(|b| match b {
+                        BlockNode::Paragraph { content } => Some(content.iter().map(|n| n.text.as_str()).collect::<String>()),
+                        _ => None,
+                    })
+                    .collect()
+            };
+            let unchecked = text_of(&items[0]);
+            let checked = text_of(&items[1]);
+            assert!(unchecked.contains('\u{2610}'), "expected an unchecked box glyph, got {unchecked:?}");
+            assert!(unchecked.contains("Unchecked"));
+            assert!(checked.contains('\u{2611}'), "expected a checked box glyph, got {checked:?}");
+            assert!(checked.contains("Checked"));
+            assert!(!unchecked.contains("[ ]"), "expected the literal \"[ ]\" to be replaced, not kept alongside the glyph");
+            assert!(!checked.contains("[x]"), "expected the literal \"[x]\" to be replaced, not kept alongside the glyph");
+        }
+        other => panic!("expected List, got {other:?}"),
+    }
+}
+
+#[test]
 fn heading_style_for_level_matches_parse_generated_sizes() {
     let ast = parse("# H1\n\n## H2\n");
     let size_of = |block: &BlockNode| match block {

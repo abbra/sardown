@@ -73,6 +73,10 @@ fn apply_inline_event(builder: &mut InlineBuilder, event: Event) {
         }
         Event::End(TagEnd::Link) => builder.link_target = None,
         Event::SoftBreak | Event::HardBreak => builder.push_text(" ".to_string()),
+        // pulldown-cmark consumes the literal "[ ]"/"[x]" and reports it as this event instead --
+        // without handling it, the checkbox disappears from the rendered text entirely rather
+        // than falling back to the literal source text the way an un-enabled extension would.
+        Event::TaskListMarker(checked) => builder.push_text(if checked { "\u{2611} ".to_string() } else { "\u{2610} ".to_string() }),
         _ => {}
     }
 }
@@ -127,6 +131,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
             | Event::Code(_)
             | Event::SoftBreak
             | Event::HardBreak
+            | Event::TaskListMarker(_)
             | Event::Start(Tag::Strong)
             | Event::Start(Tag::Emphasis)
             | Event::Start(Tag::Link { .. }) => {
@@ -335,6 +340,7 @@ pub fn parse_with_style(markdown: &str, slugs: &mut SlugGenerator, next_diagram_
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
 
     let mut diagram_positions = mermaid_diagram_positions(markdown).into_iter();
     let mut parser = Parser::new_ext(markdown, options).peekable();
@@ -372,6 +378,7 @@ fn mermaid_diagram_positions(markdown: &str) -> Vec<(usize, usize)> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
 
     Parser::new_ext(markdown, options)
         .into_offset_iter()
