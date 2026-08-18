@@ -1,0 +1,161 @@
+---
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Build ────────────────────────────────────────────────────────────────────
+  # Compiles the workspace (debug) once and caches the artifacts. Downstream jobs
+  # restore from this cache instead of recompiling.
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c  # stable
+        with:
+          toolchain: stable
+      - name: Restore cargo registry cache
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
+        with:
+          path: ~/.cargo/registry
+          key: cargo-registry-v1-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-registry-v1-
+      - name: Build workspace
+        run: ./scripts/local-ci.sh --no-deps build
+      - name: Prune incremental artifacts before caching
+        run: rm -rf target/debug/incremental
+      - name: Save debug build artifacts
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
+        with:
+          path: |
+            target/debug/.fingerprint
+            target/debug/deps
+            target/debug/build
+            target/debug/examples
+          key: cargo-target-debug-v1-${{ github.sha }}
+
+  # ── Format ───────────────────────────────────────────────────────────────────
+  # rustfmt needs no compiled artifacts — runs in parallel with build.
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c  # stable
+        with:
+          toolchain: stable
+          components: rustfmt
+      - name: Check formatting
+        run: ./scripts/local-ci.sh --no-deps fmt
+
+  # ── Clippy ───────────────────────────────────────────────────────────────────
+  clippy:
+    name: Clippy
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c  # stable
+        with:
+          toolchain: stable
+          components: clippy
+      - name: Restore cargo registry cache
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
+        with:
+          path: ~/.cargo/registry
+          key: cargo-registry-v1-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-registry-v1-
+      - name: Restore debug build artifacts
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
+        with:
+          path: |
+            target/debug/.fingerprint
+            target/debug/deps
+            target/debug/build
+            target/debug/examples
+          key: cargo-target-debug-v1-${{ github.sha }}
+      - name: Run clippy
+        run: ./scripts/local-ci.sh --no-deps clippy
+
+  # ── Documentation ────────────────────────────────────────────────────────────
+  doc:
+    name: Documentation
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c  # stable
+        with:
+          toolchain: stable
+      - name: Install mdBook
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.cargo/bin
+          MDBOOK_URL="https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sSL "$MDBOOK_URL" -o /tmp/mdbook.tar.gz
+          echo "3f28de05dafca9d0f2eab99c662116b0e37b89b1d96a08f8f430b9eeae958cd7  /tmp/mdbook.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/mdbook.tar.gz --directory="$HOME/.cargo/bin"
+          rm -f /tmp/mdbook.tar.gz
+      - name: Restore cargo registry cache
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
+        with:
+          path: ~/.cargo/registry
+          key: cargo-registry-v1-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-registry-v1-
+      - name: Restore debug build artifacts
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
+        with:
+          path: |
+            target/debug/.fingerprint
+            target/debug/deps
+            target/debug/build
+            target/debug/examples
+          key: cargo-target-debug-v1-${{ github.sha }}
+      - name: Build documentation
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          ./scripts/local-ci.sh --no-deps doc
+
+  # ── Test suite ───────────────────────────────────────────────────────────────
+  # VERAPDF_BIN/PDFIUM_DYNAMIC_LIB_PATH aren't installed on this runner, so
+  # local-ci.sh skips the pdfa_conformance/visual_regression tests with a
+  # warning instead of failing (see scripts/local-ci.sh).
+  test:
+    name: Test Suite
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c  # stable
+        with:
+          toolchain: stable
+      - name: Restore cargo registry cache
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
+        with:
+          path: ~/.cargo/registry
+          key: cargo-registry-v1-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-registry-v1-
+      - name: Restore debug build artifacts
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
+        with:
+          path: |
+            target/debug/.fingerprint
+            target/debug/deps
+            target/debug/build
+            target/debug/examples
+          key: cargo-target-debug-v1-${{ github.sha }}
+      - name: Run tests
+        run: ./scripts/local-ci.sh --no-deps test
