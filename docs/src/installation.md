@@ -32,7 +32,8 @@ cargo install --path crates/sardown-cli
 sardown --help
 ```
 
-should print the two subcommands, `render` and `render-book` (see the
+should print the three subcommands, `render`, `render-book`, and
+`render-slides` (see the
 [Command-Line Reference](./cli-reference.md)).
 
 ## Fonts
