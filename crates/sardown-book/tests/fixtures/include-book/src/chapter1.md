@@ -12,6 +12,12 @@ Line range:
 {{#include snippet.rs:2:2}}
 ```
 
+rustdoc_include, whole file:
+
+```rust
+{{#rustdoc_include snippet.rs}}
+```
+
 Missing target:
 
 ```text

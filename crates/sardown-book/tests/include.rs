@@ -26,6 +26,14 @@ fn includes_a_whole_file_inside_a_fenced_code_block() {
 }
 
 #[test]
+fn rustdoc_include_resolves_the_same_as_a_plain_include() {
+    let blocks = sardown_book::load_book(&fixture("include-book"), &Stylesheet::default()).expect("load_book failed");
+    let texts = code_block_texts(&blocks);
+    let occurrences = texts.iter().filter(|t| t.contains("fn main()") && t.contains("println!(\"hi\");")).count();
+    assert_eq!(occurrences, 2, "expected both {{{{#include}}}} and {{{{#rustdoc_include}}}} to resolve the whole file, got: {texts:?}");
+}
+
+#[test]
 fn includes_only_the_requested_line_range() {
     let blocks = sardown_book::load_book(&fixture("include-book"), &Stylesheet::default()).expect("load_book failed");
     let texts = code_block_texts(&blocks);

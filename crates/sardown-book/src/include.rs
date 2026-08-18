@@ -6,12 +6,16 @@ struct Directive {
     end: Option<usize>,
 }
 
-/// Resolves `{{#include path[:start[:end]]}}` directives in `text`, splicing in the referenced
-/// file's content before the chapter is parsed as markdown. A directive must be the entire
-/// (trimmed) content of its own line -- the overwhelmingly common real-world usage, and simple
-/// to detect without a regex dependency. A line starting with a backslash (`\{{#include ...}}`,
-/// this project's own docs use this to talk *about* the syntax without triggering it) is left
-/// untouched for pulldown-cmark's own backslash-escape handling to render literally downstream.
+/// Resolves `{{#include path[:start[:end]]}}` and `{{#rustdoc_include path[:start[:end]]}}`
+/// directives in `text`, splicing in the referenced file's content before the chapter is parsed
+/// as markdown. mdBook treats `rustdoc_include` as a variant of `include` that also emits a
+/// hidden rustdoc-playground marker pointing at the original file; since PDF output has no
+/// interactive playground to link to, both directives are resolved identically here. A directive
+/// must be the entire (trimmed) content of its own line -- the overwhelmingly common real-world
+/// usage, and simple to detect without a regex dependency. A line starting with a backslash
+/// (`\{{#include ...}}`, this project's own docs use this to talk *about* the syntax without
+/// triggering it) is left untouched for pulldown-cmark's own backslash-escape handling to render
+/// literally downstream.
 ///
 /// `path` comes directly from Markdown authored by whoever wrote the book being rendered, so
 /// (mirroring `sardown-layout::image`'s identical guard for embedded images) it's resolved against
@@ -62,7 +66,7 @@ fn resolve_within_book_root(book_root: &Path, chapter_dir: &Path, path: &Path) -
 }
 
 fn parse_directive(trimmed_line: &str) -> Option<Directive> {
-    let body = trimmed_line.strip_prefix("{{#include")?.strip_suffix("}}")?;
+    let body = trimmed_line.strip_prefix("{{#rustdoc_include").or_else(|| trimmed_line.strip_prefix("{{#include"))?.strip_suffix("}}")?;
     let mut segments = body.trim().splitn(3, ':');
     let path = segments.next()?.trim();
     if path.is_empty() {
