@@ -52,6 +52,13 @@ pub struct CodeBlockStyle {
     pub default_label: String,
     pub default: CodeBlockDefaultStyle,
     pub languages: BTreeMap<String, CodeLanguageStyle>,
+    /// Whether a code block whose longest line doesn't fit the page width gets its font size
+    /// reduced (down to `min_font_size_pt`) to make it fit, instead of that line word-wrapping.
+    pub shrink_to_fit: bool,
+    /// The floor `shrink_to_fit` won't shrink a code block's font size below. A line still too
+    /// wide at this size wraps as usual -- this bounds how small code text is allowed to get, not
+    /// a guarantee that shrinking alone always avoids wrapping.
+    pub min_font_size_pt: f32,
 }
 
 impl Default for CodeBlockStyle {
@@ -62,6 +69,8 @@ impl Default for CodeBlockStyle {
             default_label: "text".to_string(),
             default: CodeBlockDefaultStyle::default(),
             languages: BTreeMap::new(),
+            shrink_to_fit: false,
+            min_font_size_pt: 6.0,
         }
     }
 }

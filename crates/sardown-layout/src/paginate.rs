@@ -1,6 +1,6 @@
 use crate::{
-    shape_paragraph, shape_rich_paragraph, AnchorPosition, AnchorTable, ImageTable, PageContext, PageGeometry, PathCommand, PositionedElement, PositionedPage,
-    Rect, StrokeStyle,
+    measure_widest_line_pt, shape_paragraph, shape_rich_paragraph, AnchorPosition, AnchorTable, ImageTable, PageContext, PageGeometry, PathCommand,
+    PositionedElement, PositionedPage, Rect, StrokeStyle,
 };
 use cosmic_text::FontSystem;
 use sardown_ast::BlockNode;
@@ -486,7 +486,23 @@ fn render_block(
         }
         BlockNode::CodeBlock { language, tokens } => {
             let resolved = cursor.style.code_block.resolve(language.as_deref());
-            let code_font_size_pt = resolved.font_size_pt;
+            let code_indent_pt = indent_pt + 8.0;
+            let max_width_pt = cursor.content_width_pt - code_indent_pt;
+            let mut code_font_size_pt = resolved.font_size_pt;
+            if cursor.style.code_block.shrink_to_fit {
+                // Glyph advances scale linearly with font size for a fixed font/text, so the
+                // scale needed to make the widest line fit can be computed directly from one
+                // measurement at the configured size, rather than re-shaping at candidate sizes.
+                let plain_text: String = tokens.iter().map(|t| t.text.as_str()).collect();
+                let natural_width_pt = measure_widest_line_pt(font_system, &plain_text, code_font_size_pt, &resolved.font_family);
+                if natural_width_pt > max_width_pt {
+                    // A small safety margin, not an exact-fit scale: shaping at the derived size
+                    // could otherwise land the line's width back at (or a hair past) max_width_pt
+                    // through ordinary font-metric rounding, wrapping anyway despite "fitting".
+                    let scale = (max_width_pt / natural_width_pt) * 0.99;
+                    code_font_size_pt = (code_font_size_pt * scale).max(cursor.style.code_block.min_font_size_pt);
+                }
+            }
             let code_background = resolved.background.0;
             let label_style = cursor.style.code_block.label_style;
             // Header bar: drawn (background, then its own label text, in that paint order) as a
@@ -569,8 +585,6 @@ fn render_block(
             // "fn " and "main" as separate syntect tokens) flow together on one visual line,
             // each keeping its own color; line breaks come from the embedded `\n` characters
             // syntect leaves at the end of each source line's tokens.
-            let code_indent_pt = indent_pt + 8.0;
-            let max_width_pt = cursor.content_width_pt - code_indent_pt;
             place_inline_content(
                 cursor,
                 &combined,

@@ -1,6 +1,6 @@
 use crate::{PositionedElement, PositionedGlyph};
 use cosmic_text::{Align, Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Style, Weight};
-use sardown_ast::InlineNode;
+use sardown_ast::{InlineNode, TextStyle};
 
 const PT_TO_PX_SCALE: f32 = 1.0; // 1pt == 1px at our fixed 96/72... kept 1:1 for Phase 1 simplicity
 
@@ -90,6 +90,34 @@ pub fn shape_paragraph(font_system: &mut FontSystem, content: &[InlineNode], max
         elements.push(PositionedElement::TextRun { x: 0.0, y: run.line_y, glyphs, text: run.text.to_string(), font_id, size, color });
     }
     elements
+}
+
+/// A generous, finite width (rather than `f32::MAX`) for `measure_widest_line_pt`'s unconstrained
+/// shaping pass -- keeps `Buffer`'s internal wrap-width arithmetic away from any overflow edge
+/// case, while still being far wider than any real code line needs.
+const UNCONSTRAINED_WIDTH_PT: f32 = 1_000_000.0;
+
+/// The natural (unwrapped) width, in points, of the widest `\n`-delimited line in `text` when
+/// shaped at `size`pt in `font_family` -- used by code blocks' `shrink_to_fit` to decide whether a
+/// block's font needs to shrink to keep its longest line from wrapping. Glyph advance widths scale
+/// linearly with font size for a fixed font and text, so callers can measure once at the
+/// configured size and derive the scale factor needed for any other size by division, rather than
+/// re-shaping per candidate size the way `sardown-slides`' iterative whole-page shrink search does
+/// -- that search exists because a slide's wrapped line *count* changes non-linearly with scale,
+/// which doesn't apply here: only the widest single line matters, and its width is exact.
+pub fn measure_widest_line_pt(font_system: &mut FontSystem, text: &str, size: f32, font_family: &str) -> f32 {
+    let node = InlineNode {
+        text: text.to_string(),
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: font_family.to_string() },
+        link_target: None,
+    };
+    shape_paragraph(font_system, std::slice::from_ref(&node), UNCONSTRAINED_WIDTH_PT)
+        .iter()
+        .map(|e| match e {
+            PositionedElement::TextRun { glyphs, .. } => glyphs.iter().map(|g| g.x_advance).sum(),
+            _ => 0.0,
+        })
+        .fold(0.0_f32, f32::max)
 }
 
 /// One shaped glyph run, tagged with the index into the original `content` slice it came from.

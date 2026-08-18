@@ -145,6 +145,14 @@ Only used by the `::columns` slide-deck syntax -- see [Slide Decks](./slides.md#
 | `syntax_theme` | string (a syntect theme name) | `"InspiredGitHub"` |
 | `label_style` | `"none"` \| `"corner"` \| `"header_bar"` \| `"inline"` | `"none"` |
 | `default_label` | string | `"text"` |
+| `shrink_to_fit` | boolean | `false` |
+| `min_font_size_pt` | number | `6.0` |
+
+`shrink_to_fit` reduces a code block's font size (down to `min_font_size_pt`)
+when its longest line doesn't fit the page width at the configured size,
+instead of word-wrapping that line. A line still too wide at the floor size
+wraps as usual -- this bounds how small code text can get, not a guarantee
+that shrinking alone always avoids wrapping.
 
 ### `[code_block.default]`
 

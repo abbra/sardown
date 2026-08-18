@@ -1088,6 +1088,94 @@ fn code_block_font_size_uses_the_per_language_override() {
 }
 
 #[test]
+fn shrink_to_fit_disabled_by_default_leaves_a_too_long_line_wrapped() {
+    let style = Stylesheet::default(); // shrink_to_fit defaults to off
+    let long_line = format!("{}\n", "M".repeat(200));
+    let ast = vec![BlockNode::CodeBlock { language: None, tokens: vec![sardown_ast::HighlightedToken { text: long_line, color: [0, 0, 0] }] }];
+    let mut fs = test_font_system();
+    let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    let sizes: Vec<f32> = output.pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            PositionedElement::TextRun { size, .. } => Some(*size),
+            _ => None,
+        })
+        .collect();
+    assert!(sizes.len() > 1, "expected the 200-char line to wrap into multiple runs without shrink_to_fit, got {}", sizes.len());
+    assert!(
+        sizes.iter().all(|&s| s == style.code_block.default.font_size_pt),
+        "expected the font size to stay at the configured default when shrink_to_fit is off"
+    );
+}
+
+#[test]
+fn shrink_to_fit_reduces_font_size_so_an_overlong_line_fits_on_one_line() {
+    let mut style = Stylesheet::default();
+    style.code_block.shrink_to_fit = true;
+    style.code_block.min_font_size_pt = 1.0; // low enough that this line can always find a fitting scale
+    let long_line = format!("{}\n", "M".repeat(200));
+    let ast = vec![BlockNode::CodeBlock { language: None, tokens: vec![sardown_ast::HighlightedToken { text: long_line, color: [0, 0, 0] }] }];
+    let mut fs = test_font_system();
+    let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    let sizes: Vec<f32> = output.pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| match e {
+            PositionedElement::TextRun { size, .. } => Some(*size),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sizes.len(), 1, "expected shrink_to_fit to make the 200-char line fit on a single run, got {}", sizes.len());
+    assert!(sizes[0] < style.code_block.default.font_size_pt, "expected the font size to shrink below the configured default, got {}", sizes[0]);
+}
+
+#[test]
+fn shrink_to_fit_leaves_an_already_fitting_line_at_the_configured_size() {
+    let mut style = Stylesheet::default();
+    style.code_block.shrink_to_fit = true;
+    let ast =
+        vec![BlockNode::CodeBlock { language: None, tokens: vec![sardown_ast::HighlightedToken { text: "fn main() {}\n".to_string(), color: [0, 0, 0] }] }];
+    let mut fs = test_font_system();
+    let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    let size = output.pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { size, .. } => Some(*size),
+            _ => None,
+        })
+        .expect("expected a code text run");
+    assert_eq!(size, style.code_block.default.font_size_pt, "expected a line that already fits to keep the configured font size");
+}
+
+#[test]
+fn shrink_to_fit_clamps_to_the_floor_and_still_wraps_when_even_that_does_not_fit() {
+    let mut style = Stylesheet::default();
+    style.code_block.shrink_to_fit = true;
+    style.code_block.min_font_size_pt = 6.0;
+    let extreme_line = format!("{}\n", "M".repeat(2000));
+    let ast = vec![BlockNode::CodeBlock { language: None, tokens: vec![sardown_ast::HighlightedToken { text: extreme_line, color: [0, 0, 0] }] }];
+    let mut fs = test_font_system();
+    let output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+
+    let sizes: Vec<f32> = output
+        .pages
+        .iter()
+        .flat_map(|p| p.elements.iter())
+        .filter_map(|e| match e {
+            PositionedElement::TextRun { size, .. } => Some(*size),
+            _ => None,
+        })
+        .collect();
+    assert!(sizes.len() > 1, "expected the 2000-char line to still wrap even at the font-size floor");
+    assert!(sizes.iter().all(|&s| s == 6.0), "expected every run to use exactly the floor font size, got {sizes:?}");
+}
+
+#[test]
 fn inline_label_style_prepends_the_label_as_the_first_line_of_code_text() {
     let mut style = Stylesheet::default();
     style.code_block.label_style = sardown_style::LabelStyle::Inline;

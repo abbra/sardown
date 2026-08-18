@@ -5,6 +5,8 @@
 syntax_theme = "InspiredGitHub"   # default
 label_style = "none"
 default_label = "text"
+shrink_to_fit = false
+min_font_size_pt = 6.0
 
 [code_block.default]
 background = "#f5f5f5"
@@ -57,6 +59,17 @@ naming its language:
 The label text itself is the fence's language tag, title-cased (` ```rust `
 becomes "Rust"). Fences with no language tag use `default_label` instead
 (default `"text"`).
+
+## Fitting overlong lines
+
+By default, a code block line wider than the page (minus margins and the
+block's own indent) word-wraps, same as body text. Setting `shrink_to_fit
+= true` instead reduces that block's font size — down to
+`min_font_size_pt` — until its longest line fits on one line, before
+falling back to wrapping if even the floor size doesn't fit. This is a
+per-block decision: a document with one code block containing a long
+compiler-output line and another with only short lines ends up with two
+different code font sizes, one shrunk and one at the configured default.
 
 ## Per-language overrides
 

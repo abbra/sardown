@@ -11,7 +11,7 @@ pub use hyphenate::{insert_hyphenation_breaks, Hyphenator};
 pub use image::{collect_svg_diagrams, decode_images, DecodedImage, ImageTable};
 pub use numbering::format_page_number;
 pub use paginate::{layout, layout_impl, LayoutOutput};
-pub use shape::{shape_paragraph, shape_rich_paragraph, ShapedRun};
+pub use shape::{measure_widest_line_pt, shape_paragraph, shape_rich_paragraph, ShapedRun};
 pub use toc::{insert_table_of_contents, TocEntry};
 
 #[doc(hidden)]

@@ -82,6 +82,9 @@ impl Stylesheet {
         if !(1..=6).contains(&self.toc.depth) {
             anyhow::bail!("[toc] depth must be between 1 and 6, got {}", self.toc.depth);
         }
+        if self.code_block.min_font_size_pt <= 0.0 {
+            anyhow::bail!("[code_block] min_font_size_pt must be greater than 0.0, got {}", self.code_block.min_font_size_pt);
+        }
         if let Some(name) = &self.slides.default_layout {
             if !self.slides.layouts.contains_key(name) {
                 anyhow::bail!("[slides] default_layout = {name:?} has no matching [slides.layouts.{name}] table");
