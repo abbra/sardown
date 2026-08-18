@@ -23,7 +23,18 @@ pub fn load_book(book_root: &Path, style: &sardown_style::Stylesheet) -> anyhow:
     let mut slug_map = HashMap::new();
     let mut chapter_start_map = HashMap::new();
     let mut combined = Vec::new();
-    collect_chapters(&summary.items, &src_dir, &known_files, &mut slugs, &mut next_diagram_id, &mut slug_map, &mut chapter_start_map, &mut combined, style);
+    collect_chapters(
+        &summary.items,
+        book_root,
+        &src_dir,
+        &known_files,
+        &mut slugs,
+        &mut next_diagram_id,
+        &mut slug_map,
+        &mut chapter_start_map,
+        &mut combined,
+        style,
+    );
     crate::crossref::resolve_links(&mut combined, &slug_map, &chapter_start_map);
     Ok(combined)
 }
@@ -31,6 +42,7 @@ pub fn load_book(book_root: &Path, style: &sardown_style::Stylesheet) -> anyhow:
 #[allow(clippy::too_many_arguments)]
 fn collect_chapters(
     items: &[SummaryItem],
+    book_root: &Path,
     src_dir: &Path,
     known_files: &HashSet<PathBuf>,
     slugs: &mut SlugGenerator,
@@ -48,7 +60,7 @@ fn collect_chapters(
                     match std::fs::read_to_string(&chapter_path) {
                         Ok(text) => {
                             let chapter_dir = chapter_path.parent().unwrap_or(src_dir).to_path_buf();
-                            let text = crate::include::resolve_includes(&text, &chapter_dir, src_dir);
+                            let text = crate::include::resolve_includes(&text, &chapter_dir, book_root);
                             let mut blocks = sardown_ast::parse_with_style(&text, slugs, next_diagram_id, style);
                             // Tagged with the same relative path SUMMARY.md itself names this
                             // chapter by, not the full absolute filesystem path -- that's what
@@ -73,7 +85,7 @@ fn collect_chapters(
                 }
                 // Recurse into children regardless of whether this entry itself had content --
                 // mdBook allows a draft parent (no link) with real, linked sub-chapters.
-                collect_chapters(children, src_dir, known_files, slugs, next_diagram_id, slug_map, chapter_start_map, out, style);
+                collect_chapters(children, book_root, src_dir, known_files, slugs, next_diagram_id, slug_map, chapter_start_map, out, style);
             }
             SummaryItem::PartTitle(title) => {
                 out.push(BlockNode::PageBreak);

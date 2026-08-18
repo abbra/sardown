@@ -33,15 +33,24 @@ fn includes_only_the_requested_line_range() {
 }
 
 #[test]
-fn relative_traversal_outside_the_book_src_dir_is_rejected() {
-    let blocks = sardown_book::load_book(&fixture("include-traversal-book"), &Stylesheet::default()).expect("load_book failed");
+fn a_sibling_of_src_include_within_the_book_root_is_allowed() {
+    // Mirrors the official Rust Book's own layout: a shared snippet directory (there, `listings/`)
+    // kept as a sibling of `src/` and referenced from chapters as `{{#include ../listings/...}}`.
+    let blocks = sardown_book::load_book(&fixture("include-traversal-book/book"), &Stylesheet::default()).expect("load_book failed");
     let texts = code_block_texts(&blocks);
-    assert!(texts.iter().all(|t| !t.contains("SECRET")), "expected a relative-traversal include escaping src/ to be rejected, got: {texts:?}");
+    assert!(texts.iter().any(|t| t.contains("SIBLING")), "expected a sibling-of-src include within the book root to succeed, got: {texts:?}");
+}
+
+#[test]
+fn relative_traversal_outside_the_book_root_is_rejected() {
+    let blocks = sardown_book::load_book(&fixture("include-traversal-book/book"), &Stylesheet::default()).expect("load_book failed");
+    let texts = code_block_texts(&blocks);
+    assert!(texts.iter().all(|t| !t.contains("SECRET")), "expected a relative-traversal include escaping the book root to be rejected, got: {texts:?}");
 }
 
 #[test]
 fn an_absolute_include_path_is_rejected() {
-    let blocks = sardown_book::load_book(&fixture("include-traversal-book"), &Stylesheet::default()).expect("load_book failed");
+    let blocks = sardown_book::load_book(&fixture("include-traversal-book/book"), &Stylesheet::default()).expect("load_book failed");
     let texts = code_block_texts(&blocks);
     assert!(texts.iter().all(|t| !t.contains("root:")), "expected an absolute include path to be rejected, not read from disk, got: {texts:?}");
 }

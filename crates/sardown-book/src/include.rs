@@ -15,20 +15,22 @@ struct Directive {
 ///
 /// `path` comes directly from Markdown authored by whoever wrote the book being rendered, so
 /// (mirroring `sardown-layout::image`'s identical guard for embedded images) it's resolved against
-/// `chapter_dir` and rejected unless the result stays within `src_dir` -- the whole book's source
-/// tree, not just this one chapter's directory, so a shared snippet in a sibling chapter's folder
-/// still works while `../../../../etc/passwd` does not.
+/// `chapter_dir` and rejected unless the result stays within `book_root` -- the whole book
+/// repository (the directory containing `book.toml`), not just the `src/` subtree, so a shared
+/// snippet directory kept as a sibling of `src/` (e.g. the official Rust Book's own `listings/`,
+/// referenced from chapters as `{{#include ../listings/...}}`) still works while
+/// `../../../../etc/passwd` does not.
 ///
 /// Only whole-file and line-range forms are supported -- mdBook's anchor-based
 /// (`// ANCHOR: name`) ranges are not. A directive whose target can't be read or resolves outside
-/// `src_dir` is dropped with a warning, matching this project's graceful-degradation convention
+/// `book_root` is dropped with a warning, matching this project's graceful-degradation convention
 /// for every other unresolvable reference, rather than rendered literally or left to break the
 /// surrounding code fence.
-pub fn resolve_includes(text: &str, chapter_dir: &Path, src_dir: &Path) -> String {
+pub fn resolve_includes(text: &str, chapter_dir: &Path, book_root: &Path) -> String {
     let mut out = String::with_capacity(text.len());
     for line in text.split_inclusive('\n') {
         match parse_directive(line.trim()) {
-            Some(directive) => match resolve_within_src(src_dir, chapter_dir, &directive.path) {
+            Some(directive) => match resolve_within_book_root(book_root, chapter_dir, &directive.path) {
                 Ok(target) => match std::fs::read_to_string(&target) {
                     Ok(contents) => out.push_str(&slice_lines(&contents, directive.start, directive.end)),
                     Err(e) => eprintln!("warning: failed to include {}: {e}", target.display()),
@@ -42,20 +44,20 @@ pub fn resolve_includes(text: &str, chapter_dir: &Path, src_dir: &Path) -> Strin
 }
 
 /// Rejects an absolute `path` outright (`Path::join` would discard `chapter_dir` entirely and use
-/// it verbatim), then canonicalizes the joined result and requires it to stay within `src_dir` --
-/// canonicalizing resolves `..` and symlinks via the OS, so this can't be fooled by a symlink that
-/// lexically looks contained but points outside `src_dir`.
-fn resolve_within_src(src_dir: &Path, chapter_dir: &Path, path: &Path) -> Result<PathBuf, String> {
+/// it verbatim), then canonicalizes the joined result and requires it to stay within `book_root`
+/// -- canonicalizing resolves `..` and symlinks via the OS, so this can't be fooled by a symlink
+/// that lexically looks contained but points outside `book_root`.
+fn resolve_within_book_root(book_root: &Path, chapter_dir: &Path, path: &Path) -> Result<PathBuf, String> {
     if path.is_absolute() {
         return Err(format!("absolute include paths are not allowed: {}", path.display()));
     }
-    let canonical_src = src_dir.canonicalize().map_err(|e| format!("cannot resolve book source directory {}: {e}", src_dir.display()))?;
+    let canonical_root = book_root.canonicalize().map_err(|e| format!("cannot resolve book root directory {}: {e}", book_root.display()))?;
     let candidate = chapter_dir.join(path);
     let canonical_candidate = candidate.canonicalize().map_err(|e| format!("cannot resolve path: {e}"))?;
-    if canonical_candidate.starts_with(&canonical_src) {
+    if canonical_candidate.starts_with(&canonical_root) {
         Ok(canonical_candidate)
     } else {
-        Err(format!("path escapes book source directory {}", canonical_src.display()))
+        Err(format!("path escapes book root directory {}", canonical_root.display()))
     }
 }
 
