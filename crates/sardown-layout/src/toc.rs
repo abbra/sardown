@@ -89,6 +89,13 @@ pub fn insert_table_of_contents(output: &mut LayoutOutput, ast: &[BlockNode], st
         return;
     }
 
+    if !stylesheet.toc.page {
+        // PDF bookmark outline only: `sardown-pdf` builds it from `toc_entries` and each entry's
+        // already-resolved anchor, neither of which depends on an in-document TOC page existing.
+        output.toc_entries = entries;
+        return;
+    }
+
     let margin_pt = geometry.margin_mm * PT_PER_MM;
     let content_width_pt = output.page_width_pt - geometry.horizontal_margin_budget_mm() * PT_PER_MM;
     let usable_height_pt = (output.page_height_pt - 2.0 * margin_pt).max(0.0);

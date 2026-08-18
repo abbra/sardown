@@ -81,6 +81,25 @@ fn enabled_toc_prepends_pages_and_shifts_existing_page_numbers_and_anchors() {
 }
 
 #[test]
+fn toc_page_false_populates_outline_entries_but_inserts_no_page() {
+    let ast = book_with_headings();
+    let mut style = Stylesheet::default();
+    style.toc.enabled = true;
+    style.toc.page = false;
+    let mut fs = test_font_system();
+    let mut output = layout_impl(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style);
+    let pages_before = output.pages.len();
+    let chapter_two_page_before = output.anchors.values().map(|a| a.page).max().unwrap();
+
+    sardown_layout::insert_table_of_contents(&mut output, &ast, &style, &letter_geometry(), &mut fs);
+
+    assert_eq!(output.pages.len(), pages_before, "expected no in-document TOC page to be inserted");
+    let chapter_two_page_after = output.anchors.values().map(|a| a.page).max().unwrap();
+    assert_eq!(chapter_two_page_after, chapter_two_page_before, "expected no page-number shift when the TOC page is skipped");
+    assert_eq!(output.toc_entries.len(), 3, "expected the PDF outline to still get every heading up to the configured depth");
+}
+
+#[test]
 fn toc_depth_one_excludes_h2_headings() {
     let ast = book_with_headings();
     let mut style = Stylesheet::default();

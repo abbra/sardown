@@ -6,6 +6,14 @@ fn default_toc_is_disabled_with_a_depth_of_two() {
     assert!(!toc.enabled);
     assert_eq!(toc.depth, 2);
     assert_eq!(toc.title, "Table of Contents");
+    assert!(toc.page, "expected the in-document TOC page to be on by default when enabled");
+}
+
+#[test]
+fn a_toml_document_can_enable_the_outline_without_an_in_document_toc_page() {
+    let sheet: Stylesheet = toml::from_str("[toc]\nenabled = true\npage = false\n").unwrap();
+    assert!(sheet.toc.enabled);
+    assert!(!sheet.toc.page);
 }
 
 #[test]

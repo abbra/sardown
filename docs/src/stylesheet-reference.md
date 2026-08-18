@@ -207,6 +207,12 @@ in a template string: `{page}`, `{total_pages}`, `{h1}`, `{h2}`, `{title}`,
 | `enabled` | boolean | `false` |
 | `depth` | integer (`1`-`6`) | `2` |
 | `title` | string | `"Table of Contents"` |
+| `page` | boolean | `true` |
+
+`enabled` always populates the PDF's bookmark/outline panel from the same
+heading list, up to `depth` levels. `page` controls whether an in-document
+TOC page is *also* rendered; set it to `false` to get PDF bookmarks only,
+with no printed contents page and no resulting page-number shift.
 
 ## `[slides]`
 
