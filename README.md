@@ -30,7 +30,7 @@ sardown is a Cargo workspace; there's no published crate or prebuilt binary
 yet.
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/abbra/sardown
 cd sardown
 cargo build --release
 ```
