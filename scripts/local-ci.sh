@@ -78,6 +78,8 @@ has_cargo=0
 has_rustfmt=0
 has_clippy=0
 has_mdbook=0
+has_verapdf=0
+has_pdfium=0
 
 detect_tools() {
     echo -e "${BOLD}${CYAN}Tool availability check:${NC}"
@@ -108,6 +110,20 @@ detect_tools() {
         echo -e "  ${GREEN}✓${NC} mdbook $(mdbook --version | cut -d' ' -f2)"
     else
         echo -e "  ${YELLOW}○${NC} mdbook (optional, only used if docs/ exists; install with: cargo install mdbook)"
+    fi
+
+    if [[ -n "${VERAPDF_BIN:-}" && -x "${VERAPDF_BIN}" ]]; then
+        has_verapdf=1
+        echo -e "  ${GREEN}✓${NC} VERAPDF_BIN=${VERAPDF_BIN}"
+    else
+        echo -e "  ${YELLOW}○${NC} VERAPDF_BIN not set (optional, needed for the pdfa_conformance test; see https://verapdf.org/software/)"
+    fi
+
+    if [[ -n "${PDFIUM_DYNAMIC_LIB_PATH:-}" ]]; then
+        has_pdfium=1
+        echo -e "  ${GREEN}✓${NC} PDFIUM_DYNAMIC_LIB_PATH=${PDFIUM_DYNAMIC_LIB_PATH}"
+    else
+        echo -e "  ${YELLOW}○${NC} PDFIUM_DYNAMIC_LIB_PATH not set (optional, needed for the visual_regression tests)"
     fi
 
     echo ""
@@ -232,8 +248,24 @@ job_test() {
         fail "cargo not found"; return 1
     fi
 
+    local skip_args=()
+
+    if [[ "$has_verapdf" -eq 0 ]]; then
+        warn "VERAPDF_BIN not set — skipping rendered_output_is_pdf_a_2b_compliant (PDF/A-2b conformance is not being verified this run)"
+        skip_args+=(--skip rendered_output_is_pdf_a_2b_compliant)
+    fi
+
+    if [[ "$has_pdfium" -eq 0 ]]; then
+        warn "PDFIUM_DYNAMIC_LIB_PATH not set — skipping visual_regression tests (formatting_fixture_matches_golden_render, linking_fixture_matches_golden_render, mermaid_diagram_node_actually_contains_text_ink)"
+        skip_args+=(--skip formatting_fixture_matches_golden_render --skip linking_fixture_matches_golden_render --skip mermaid_diagram_node_actually_contains_text_ink)
+    fi
+
     echo "Running test suite…"
-    cargo test --workspace --all-features
+    if [[ ${#skip_args[@]} -gt 0 ]]; then
+        cargo test --workspace --all-features -- "${skip_args[@]}"
+    else
+        cargo test --workspace --all-features
+    fi
 }
 
 # ── Dispatch table ────────────────────────────────────────────────────────────
@@ -304,6 +336,8 @@ Available jobs:
   clippy    cargo clippy --workspace --all-features --all-targets -- -D warnings
   doc       cargo doc --no-deps --all-features (+ mdbook build docs/, if docs/ exists)
   test      cargo test --workspace --all-features
+            (skips the pdfa_conformance/visual_regression tests, with a
+            warning, if VERAPDF_BIN/PDFIUM_DYNAMIC_LIB_PATH aren't set)
 
 Options:
   --list         Print available job names and exit
@@ -311,8 +345,10 @@ Options:
   --no-deps      Skip automatic prerequisite dispatching
 
 Environment:
-  CARGO_TARGET_DIR   Redirect Cargo build output to an isolated directory
-  NO_COLOR           Set to 1 to disable ANSI colour output
+  CARGO_TARGET_DIR         Redirect Cargo build output to an isolated directory
+  NO_COLOR                 Set to 1 to disable ANSI colour output
+  VERAPDF_BIN              Path to a verapdf executable (enables pdfa_conformance test)
+  PDFIUM_DYNAMIC_LIB_PATH  Path to libpdfium (enables visual_regression tests)
 
 Examples:
   $(basename "$0") all
