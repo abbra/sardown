@@ -80,6 +80,7 @@ has_clippy=0
 has_mdbook=0
 has_verapdf=0
 has_pdfium=0
+has_cargo_deny=0
 
 detect_tools() {
     echo -e "${BOLD}${CYAN}Tool availability check:${NC}"
@@ -126,6 +127,13 @@ detect_tools() {
         echo -e "  ${YELLOW}○${NC} PDFIUM_DYNAMIC_LIB_PATH not set (optional, needed for the visual_regression tests)"
     fi
 
+    if cargo deny --version >/dev/null 2>&1; then
+        has_cargo_deny=1
+        echo -e "  ${GREEN}✓${NC} cargo-deny $(cargo deny --version | cut -d' ' -f2)"
+    else
+        echo -e "  ${YELLOW}○${NC} cargo-deny (install with: cargo install cargo-deny)"
+    fi
+
     echo ""
 }
 
@@ -138,7 +146,7 @@ declare -A JOB_STATUS=()
 declare -A JOB_SECS=()
 FAILED_JOBS=()
 
-ALL_JOBS=(build fmt clippy doc test)
+ALL_JOBS=(build fmt deny clippy doc test)
 
 # Job dependencies
 declare -A JOB_DEPS=(
@@ -211,6 +219,15 @@ job_fmt() {
     cargo fmt --all -- --check
 }
 
+job_deny() {
+    if [[ "$has_cargo_deny" -eq 0 ]]; then
+        fail "cargo-deny not found (install with: cargo install cargo-deny)"; return 1
+    fi
+
+    echo "Checking licenses, bans, and sources…"
+    cargo deny check
+}
+
 job_clippy() {
     if [[ "$has_cargo" -eq 0 ]]; then
         fail "cargo not found"; return 1
@@ -273,6 +290,7 @@ dispatch_job() {
     case "$1" in
         build)     run_job build     job_build ;;
         fmt)       run_job fmt       job_fmt ;;
+        deny)      run_job deny      job_deny ;;
         clippy)    run_job clippy    job_clippy ;;
         doc)       run_job doc       job_doc ;;
         test)      run_job test      job_test ;;
@@ -333,6 +351,7 @@ Special targets:
 Available jobs:
   build     cargo build --workspace --all-features
   fmt       cargo fmt --all -- --check
+  deny      cargo deny check (licenses, bans, advisories, sources; see deny.toml)
   clippy    cargo clippy --workspace --all-features --all-targets -- -D warnings
   doc       cargo doc --no-deps --all-features (+ mdbook build docs/, if docs/ exists)
   test      cargo test --workspace --all-features
