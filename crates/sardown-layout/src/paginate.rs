@@ -475,8 +475,26 @@ fn render_block(
                         if let BlockNode::Paragraph { content } = child {
                             let mut marked_content = vec![marker_inline_node(&marker_text, &cursor.style.typography)];
                             marked_content.extend(content.iter().cloned());
-                            let marked = BlockNode::Paragraph { content: marked_content };
-                            render_block(&marked, cursor, margin_pt, child_indent_pt, font_system, images, diagrams, hyphenator, child_next);
+                            let max_width_pt = cursor.content_width_pt - child_indent_pt;
+                            // The marker shares this paragraph's own shaped line (see the design
+                            // note above), so under a justified stylesheet cosmic-text would
+                            // otherwise treat its trailing spaces as ordinary inter-word
+                            // justification-expansion points -- on a short first line (marker
+                            // plus only a word or two before the item wraps), most of the stretch
+                            // needed to fill the line lands in that one gap. Forcing Left avoids
+                            // this the same way headings already do; it's visually identical to
+                            // Justified for an item that never wraps, since cosmic-text already
+                            // skips justifying a paragraph's only/last line on its own.
+                            let item_align = match cursor.style.typography.alignment {
+                                sardown_style::TextAlignment::Justify => cosmic_text::Align::Left,
+                                other => to_cosmic_align(other),
+                            };
+                            place_inline_content(
+                                cursor,
+                                &marked_content,
+                                InlinePlacement { margin_pt, indent_pt: child_indent_pt, max_width_pt, align: item_align, hyphenator },
+                                font_system,
+                            );
                             continue;
                         }
                     }

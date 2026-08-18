@@ -310,6 +310,53 @@ fn a_list_item_whose_first_child_is_not_a_paragraph_is_left_without_a_marker() {
 }
 
 #[test]
+fn justified_list_item_marker_matches_left_aligned_when_the_item_wraps() {
+    // Regression test: a list item's marker shares its paragraph's own shaped line, so under a
+    // justified stylesheet cosmic-text would otherwise treat the marker's trailing spaces as an
+    // ordinary inter-word justification-expansion point -- on a short wrapped first line (marker
+    // plus only a word or two before the item wraps), most of the stretch needed to fill the line
+    // landed in that one gap. List items now force Align::Left regardless of the document's
+    // configured alignment, so a justified render must produce byte-for-byte identical glyph
+    // layout to a left-aligned one.
+    let long_item = "one two three four five six seven eight nine ten eleven twelve";
+    let ast = vec![BlockNode::List { ordered: false, start: None, items: vec![vec![BlockNode::Paragraph { content: vec![plain_inline(long_item)] }]] }];
+    // Narrow content width so the item's marker-bearing first line wraps after only a couple words.
+    let geometry = PageGeometry { page_width_mm: 60.0, page_height_mm: 279.4, margin_mm: 10.0, ..Default::default() };
+
+    let mut left_style = Stylesheet::default();
+    left_style.typography.alignment = sardown_style::TextAlignment::Left;
+    let mut fs1 = test_font_system();
+    let left_output = layout_impl(&ast, &geometry, &mut fs1, &fixtures_dir(), &DiagramTable::new(), &left_style);
+
+    let mut justify_style = Stylesheet::default();
+    justify_style.typography.alignment = sardown_style::TextAlignment::Justify;
+    let mut fs2 = test_font_system();
+    let justify_output = layout_impl(&ast, &geometry, &mut fs2, &fixtures_dir(), &DiagramTable::new(), &justify_style);
+
+    let text_run_count = |output: &sardown_layout::LayoutOutput| {
+        output.pages.iter().flat_map(|p| p.elements.iter()).filter(|e| matches!(e, PositionedElement::TextRun { .. })).count()
+    };
+    assert!(text_run_count(&left_output) > 2, "expected the item to actually wrap onto multiple lines for this test to be meaningful");
+
+    let advances = |output: &sardown_layout::LayoutOutput| -> Vec<Vec<f32>> {
+        output
+            .pages
+            .iter()
+            .flat_map(|p| p.elements.iter())
+            .filter_map(|e| match e {
+                PositionedElement::TextRun { glyphs, .. } => Some(glyphs.iter().map(|g| g.x_advance).collect()),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(
+        advances(&left_output),
+        advances(&justify_output),
+        "expected a wrapping list item's glyph layout to be identical under justify and left alignment (list items never stretch)"
+    );
+}
+
+#[test]
 fn code_block_produces_a_background_path_and_highlighted_text_runs() {
     let ast = vec![BlockNode::CodeBlock {
         language: None,
