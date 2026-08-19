@@ -171,14 +171,21 @@ fn timed_stage<T>(label: &str, f: impl FnOnce() -> anyhow::Result<T>) -> anyhow:
 
 /// Runs `Highlighter::with_style`'s highlight pass and Mermaid diagram compilation -- the two
 /// enrichment stages every render mode except `render-slides` needs identically (`render_slide_deck`
-/// runs its own copy of this same pipeline internally, since it also needs to re-run it per slide
-/// during auto-shrink).
+/// runs its own copy of this same pipeline internally).
+///
+/// The syntect highlighter is only constructed when the document actually contains code blocks:
+/// `with_style` loads every default syntax definition and the complete theme (well over a second
+/// of work) and would do nothing for a document without any.
 fn highlight_and_compile_diagrams(
     ast: Vec<sardown_ast::BlockNode>,
     stylesheet: &sardown_style::Stylesheet,
 ) -> anyhow::Result<(Vec<sardown_ast::BlockNode>, sardown_enrich::DiagramTable)> {
-    let highlighter = Highlighter::with_style(stylesheet);
-    let ast = timed_stage("Highlighting code blocks", || Ok(highlighter.highlight(ast)))?;
+    let ast = if sardown_enrich::ast_contains_code_block(&ast) {
+        let highlighter = Highlighter::with_style(stylesheet);
+        timed_stage("Highlighting code blocks", || Ok(highlighter.highlight(ast)))?
+    } else {
+        ast
+    };
     let diagrams = timed_stage("Compiling diagrams", || Ok(sardown_enrich::compile_diagrams(&ast)))?;
     Ok((ast, diagrams))
 }
