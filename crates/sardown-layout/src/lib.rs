@@ -10,7 +10,7 @@ pub use header_footer::{apply_asymmetric_margins, layout_with_header_footer, ren
 pub use hyphenate::{insert_hyphenation_breaks, Hyphenator};
 pub use image::{collect_svg_diagrams, decode_images, DecodedImage, ImageTable};
 pub use numbering::format_page_number;
-pub use paginate::{layout, layout_impl, LayoutOutput};
+pub use paginate::{layout, layout_impl, layout_with_assets, prepare_layout_assets, LayoutAssets, LayoutOutput};
 pub use shape::{measure_widest_line_pt, shape_paragraph, shape_rich_paragraph, ShapedRun};
 pub use toc::{insert_table_of_contents, TocEntry};
 

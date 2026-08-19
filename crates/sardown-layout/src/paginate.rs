@@ -1013,6 +1013,30 @@ pub fn layout(ast: &[BlockNode], geometry: &PageGeometry, font_system: &mut Font
     layout_impl(ast, geometry, font_system, base_dir, diagrams, &sardown_style::Stylesheet::default())
 }
 
+/// Everything a layout pass needs that does NOT depend on the text's font scale: the decoded
+/// raster images, the diagram table (Mermaid-compiled plus embedded SVGs), and the hyphenation
+/// dictionary. `prepare_layout_assets` is the expensive part -- image decoding, SVG parsing,
+/// dictionary loading -- and is scale-independent, so a caller that lays the same content out
+/// repeatedly at different scales (the slide auto-shrink loop retries the whole layout at
+/// successively smaller scales) prepares the assets once and reuses them across every attempt
+/// instead of re-decoding every image and re-parsing every SVG on each retry.
+pub struct LayoutAssets {
+    pub images: ImageTable,
+    pub diagrams: DiagramTable,
+    pub hyphenator: Option<crate::Hyphenator>,
+}
+
+pub fn prepare_layout_assets(ast: &[BlockNode], base_dir: &std::path::Path, diagrams: &DiagramTable, stylesheet: &sardown_style::Stylesheet) -> LayoutAssets {
+    let images = crate::image::decode_images(ast, base_dir);
+    // Embedded .svg images are collected separately from Mermaid-compiled diagrams (a different
+    // crate, with no filesystem access) but rendered through the exact same VectorGraphic path --
+    // merge them into one local table so render_block doesn't need to know the difference.
+    let mut diagrams = diagrams.clone();
+    diagrams.extend(crate::image::collect_svg_diagrams(ast, base_dir));
+    let hyphenator = if stylesheet.typography.hyphenation { crate::Hyphenator::load(&stylesheet.typography.language) } else { None };
+    LayoutAssets { images, diagrams, hyphenator }
+}
+
 /// The real implementation behind `layout()`. Takes the full `Stylesheet` explicitly instead of
 /// individual values so `layout_with_header_footer` can thread a real stylesheet's values
 /// through, while `layout()` itself keeps its exact original signature and default behavior for
@@ -1025,24 +1049,33 @@ pub fn layout_impl(
     diagrams: &DiagramTable,
     stylesheet: &sardown_style::Stylesheet,
 ) -> LayoutOutput {
-    let images = crate::image::decode_images(ast, base_dir);
-    // Embedded .svg images are collected separately from Mermaid-compiled diagrams (a different
-    // crate, with no filesystem access) but rendered through the exact same VectorGraphic path --
-    // merge them into one local table so render_block doesn't need to know the difference.
-    let mut diagrams = diagrams.clone();
-    diagrams.extend(crate::image::collect_svg_diagrams(ast, base_dir));
-    let hyphenator = if stylesheet.typography.hyphenation { crate::Hyphenator::load(&stylesheet.typography.language) } else { None };
+    let assets = prepare_layout_assets(ast, base_dir, diagrams, stylesheet);
+    layout_with_assets(ast, geometry, font_system, &assets, stylesheet)
+}
+
+/// `layout_impl`'s layout half, factored out so a caller that re-lays-out the same content at
+/// different scales can prepare the scale-independent assets once via `prepare_layout_assets`
+/// and skip re-decoding images, re-parsing SVGs, and re-loading the hyphenation dictionary on
+/// every attempt. `DecodedImage::rgba8` is `Arc`-backed precisely so the per-attempt
+/// `LayoutOutput` clone of the shared image table stays cheap.
+pub fn layout_with_assets(
+    ast: &[BlockNode],
+    geometry: &PageGeometry,
+    font_system: &mut FontSystem,
+    assets: &LayoutAssets,
+    stylesheet: &sardown_style::Stylesheet,
+) -> LayoutOutput {
     let margin_pt = geometry.margin_mm * PT_PER_MM;
     let mut cursor = Cursor::new(geometry, stylesheet);
     for (i, block) in ast.iter().enumerate() {
-        render_block(block, &mut cursor, margin_pt, 0.0, font_system, &images, &diagrams, hyphenator.as_ref(), ast.get(i + 1));
+        render_block(block, &mut cursor, margin_pt, 0.0, font_system, &assets.images, &assets.diagrams, assets.hyphenator.as_ref(), ast.get(i + 1));
         cursor.y += LINE_SPACING_PT;
     }
     let (pages, anchors, page_contexts) = cursor.finish();
     LayoutOutput {
         pages,
-        images,
-        diagrams,
+        images: assets.images.clone(),
+        diagrams: assets.diagrams.clone(),
         anchors,
         page_contexts,
         page_width_pt: geometry.page_width_mm * PT_PER_MM,

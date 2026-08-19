@@ -40,6 +40,11 @@ pub fn render_slide_deck(
     // pure overhead otherwise.
     let ast = if sardown_enrich::ast_contains_code_block(&ast) { sardown_enrich::Highlighter::with_style(stylesheet).highlight(ast) } else { ast };
     let diagrams = sardown_enrich::compile_diagrams(&ast);
+    // Decode images, parse embedded SVGs, and load the hyphenation dictionary ONCE for the whole
+    // deck, before splitting into slides: the per-slide auto-shrink loop re-lays-out each slide
+    // at up to ~16 successively smaller scales, and every retry reuses these assets instead of
+    // re-decoding and re-parsing them from scratch.
+    let assets = sardown_layout::prepare_layout_assets(&ast, base_dir, &diagrams, stylesheet);
     // group_columns runs per-slide, not once on the whole deck before splitting: doing it before
     // splitting would let a deck author's forgotten `::end` silently swallow every remaining
     // block in the *entire rest of the deck*, including slides after the next `---`, instead of
@@ -64,7 +69,7 @@ pub fn render_slide_deck(
     let mut background_diagrams = sardown_enrich::DiagramTable::new();
     let mut attempted_background_paths = std::collections::HashSet::new();
 
-    let deck_context = DeckContext { geometry: &geometry, base_dir, diagrams: &diagrams, base_stylesheet: stylesheet, min_scale: stylesheet.slides.min_scale };
+    let deck_context = DeckContext { geometry: &geometry, assets: &assets, base_stylesheet: stylesheet, min_scale: stylesheet.slides.min_scale };
 
     let mut slide_outputs = Vec::with_capacity(slides.len());
     for (i, slide) in slides.iter().enumerate() {

@@ -16,8 +16,15 @@ fn geometry() -> PageGeometry {
     PageGeometry { page_width_mm: 100.0, page_height_mm: 60.0, margin_mm: 5.0, ..Default::default() }
 }
 
-fn deck_context<'a>(geometry: &'a PageGeometry, diagrams: &'a DiagramTable, base_stylesheet: &'a Stylesheet) -> DeckContext<'a> {
-    DeckContext { geometry, base_dir: std::path::Path::new("."), diagrams, base_stylesheet, min_scale: 0.5 }
+fn deck_context<'a>(geometry: &'a PageGeometry, assets: &'a sardown_layout::LayoutAssets, base_stylesheet: &'a Stylesheet) -> DeckContext<'a> {
+    DeckContext { geometry, assets, base_stylesheet, min_scale: 0.5 }
+}
+
+/// Empty deck-wide assets table for tests that exercise layout/shrink without any images or
+/// diagrams. The caller owns it and must keep it alive for as long as the `DeckContext` it's
+/// handed to is in use.
+fn empty_assets() -> sardown_layout::LayoutAssets {
+    sardown_layout::LayoutAssets { images: sardown_layout::ImageTable::new(), diagrams: DiagramTable::new(), hyphenator: None }
 }
 
 fn plain(text: &str) -> InlineNode {
@@ -36,8 +43,11 @@ fn paragraph(text: &str) -> BlockNode {
 fn content_that_already_fits_is_rendered_at_full_scale() {
     let blocks = vec![paragraph("Short.")];
     let mut fs = test_font_system();
-    let (geometry, diagrams, base_stylesheet) = (geometry(), DiagramTable::new(), Stylesheet::default());
-    let output = layout_slide_with_shrink(&blocks, &mut fs, &deck_context(&geometry, &diagrams, &base_stylesheet), &SlideLayoutStyle::default(), 1);
+    let geometry = geometry();
+    let base_stylesheet = Stylesheet::default();
+    let assets = empty_assets();
+    let deck = deck_context(&geometry, &assets, &base_stylesheet);
+    let output = layout_slide_with_shrink(&blocks, &mut fs, &deck, &SlideLayoutStyle::default(), 1);
     assert_eq!(output.pages.len(), 1);
     let has_full_size_text =
         output.pages[0].elements.iter().any(|e| matches!(e, sardown_layout::PositionedElement::TextRun { size, .. } if (*size - 12.0).abs() < 0.01));
@@ -59,8 +69,11 @@ fn content_that_overflows_at_full_scale_shrinks_until_it_fits() {
     // so the shrink loop is guaranteed to find *some* fitting scale at or before the 0.5 floor.
     let blocks: Vec<BlockNode> = (0..8).map(|_| paragraph("Body text line.")).collect();
     let mut fs = test_font_system();
-    let (geometry, diagrams, base_stylesheet) = (geometry(), DiagramTable::new(), Stylesheet::default());
-    let output = layout_slide_with_shrink(&blocks, &mut fs, &deck_context(&geometry, &diagrams, &base_stylesheet), &SlideLayoutStyle::default(), 1);
+    let geometry = geometry();
+    let base_stylesheet = Stylesheet::default();
+    let assets = empty_assets();
+    let deck = deck_context(&geometry, &assets, &base_stylesheet);
+    let output = layout_slide_with_shrink(&blocks, &mut fs, &deck, &SlideLayoutStyle::default(), 1);
     assert_eq!(output.pages.len(), 1, "expected the shrink loop to find a fitting scale");
     let smallest_size = output.pages[0]
         .elements
@@ -80,7 +93,10 @@ fn content_that_still_overflows_at_the_floor_scale_renders_every_page_without_dr
     // comfortably overflowing with no risk of a near-miss on either side.
     let blocks: Vec<BlockNode> = (0..30).map(|_| paragraph("Body text line.")).collect();
     let mut fs = test_font_system();
-    let (geometry, diagrams, base_stylesheet) = (geometry(), DiagramTable::new(), Stylesheet::default());
-    let output = layout_slide_with_shrink(&blocks, &mut fs, &deck_context(&geometry, &diagrams, &base_stylesheet), &SlideLayoutStyle::default(), 1);
+    let geometry = geometry();
+    let base_stylesheet = Stylesheet::default();
+    let assets = empty_assets();
+    let deck = deck_context(&geometry, &assets, &base_stylesheet);
+    let output = layout_slide_with_shrink(&blocks, &mut fs, &deck, &SlideLayoutStyle::default(), 1);
     assert!(output.pages.len() > 1, "expected genuine overflow content to span more than one page rather than being dropped");
 }
