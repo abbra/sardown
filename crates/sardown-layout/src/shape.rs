@@ -303,7 +303,14 @@ pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode]
     }
     buffer.shape_until_scroll(font_system, false);
 
-    let span_index_for = |cluster_start: usize| spans.iter().position(|s| s.range.contains(&cluster_start)).unwrap_or(spans.len().saturating_sub(1));
+    // `spans` tile [0, full_text.len()) contiguously in document order (built above by a running
+    // byte offset), and the glyph `global_start`s below arrive in that same forward order across
+    // every run/glyph -- text flows top-to-bottom down the page, then left-to-right within each
+    // visual line. So one cursor only ever moves FORWARD through the spans: O(glyphs + spans) total,
+    // instead of the per-glyph linear scan this used to be (which was O(glyphs * spans)). The
+    // regression guard keeps it correct even if a run's order were ever non-monotonic; in practice
+    // that branch never fires.
+    let mut span_cursor = 0usize;
 
     let mut runs = Vec::new();
     for run in buffer.layout_runs() {
@@ -334,7 +341,15 @@ pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode]
             // `PositionedGlyph::cluster` against that same string for ToUnicode text extraction --
             // not against this function's own internal global-offset bookkeeping.
             let global_start = line_offset + glyph.start;
-            let span_index = span_index_for(global_start);
+            if global_start < spans[span_cursor].range.start {
+                // Guard against a (never-observed) non-monotonic run order: reset to the start and
+                // re-scan forward. Cold in practice; without it a regression would mis-resolve.
+                span_cursor = 0;
+            }
+            while span_cursor + 1 < spans.len() && spans[span_cursor + 1].range.start <= global_start {
+                span_cursor += 1;
+            }
+            let span_index = span_cursor;
             if glyph.glyph_id == 0 {
                 // See shape_paragraph's identical check for why .notdef glyphs are dropped
                 // rather than rendered: PDF/A forbids them, and krilla refuses to serialize a
