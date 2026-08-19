@@ -144,6 +144,14 @@ fn collects_a_base64_data_uri_svg_with_its_intrinsic_size() {
 }
 
 #[test]
+fn an_svg_data_uri_needs_no_base_dir_at_all() {
+    let uri = format!("data:image/svg+xml;base64,{BASE64_SVG}");
+    let ast = vec![BlockNode::Image { alt: "test".to_string(), title: None, source: ImageSource::DataUri(uri.clone()) }];
+    let table = collect_svg_diagrams(&ast, std::path::Path::new("/nonexistent/does/not/exist"));
+    assert!(table.contains_key(&uri), "expected the SVG data URI to be collected without touching base_dir");
+}
+
+#[test]
 fn a_non_base64_data_uri_is_rejected_not_mis_decoded() {
     let uri = "data:image/svg+xml,%3Csvg%3E%3C%2Fsvg%3E".to_string();
     let ast = vec![BlockNode::Image { alt: "test".to_string(), title: None, source: ImageSource::DataUri(uri) }];

@@ -3,6 +3,7 @@ use sardown_ast::{BlockNode, ImageSource};
 use sardown_enrich::{CompiledDiagram, DiagramTable};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// Resolves `path` against `base_dir` and rejects the result unless it stays within `base_dir`.
 ///
@@ -12,19 +13,27 @@ use std::path::{Path, PathBuf};
 /// a document embed arbitrary local files into the output PDF. Canonicalizing resolves `..` and
 /// symlinks via the OS, so the `starts_with` check can't be fooled by a symlink that lexically
 /// looks contained but points outside `base_dir`.
-fn resolve_within_base(base_dir: &Path, path: &Path) -> Result<PathBuf, String> {
-    let canonical_base = base_dir.canonicalize().map_err(|e| format!("cannot resolve base directory {}: {e}", base_dir.display()))?;
+/// `resolve_within_base`, with the base directory's own canonicalization hoisted out: the
+/// canonical base is computed ONCE per document (see `decode_images` / `collect_svg_diagrams`)
+/// and passed in, instead of re-canonicalizing `base_dir` -- a real syscall-heavy path
+/// resolution -- for every single image in the document.
+fn resolve_within_base(base_dir: &Path, canonical_base: &Path, path: &Path) -> Result<PathBuf, String> {
     let candidate = base_dir.join(path);
     let canonical_candidate = candidate.canonicalize().map_err(|e| format!("cannot resolve path: {e}"))?;
-    if canonical_candidate.starts_with(&canonical_base) {
+    if canonical_candidate.starts_with(canonical_base) {
         Ok(canonical_candidate)
     } else {
         Err(format!("path escapes base directory {}", canonical_base.display()))
     }
 }
 
+#[derive(Clone)]
 pub struct DecodedImage {
-    pub rgba8: Vec<u8>,
+    /// `Arc`-backed so a table of decoded images can be cloned cheaply (the slide auto-shrink
+    /// loop and the per-slide `LayoutOutput`s share one deck-wide table) without re-copying
+    /// megapixel pixel buffers; the one real copy happens where krilla's `Image::from_rgba8`
+    /// API demands an owned `Vec<u8>`.
+    pub rgba8: Arc<Vec<u8>>,
     pub width: u32,
     pub height: u32,
 }
@@ -33,7 +42,17 @@ pub type ImageTable = HashMap<String, DecodedImage>;
 
 pub fn decode_images(ast: &[BlockNode], base_dir: &Path) -> ImageTable {
     let mut table = HashMap::new();
-    collect(ast, base_dir, &mut table);
+    // A `data:` URI needs no filesystem access, so it can always be decoded even when `base_dir`
+    // can't be resolved. Only filesystem-backed (`Embedded`) images require a canonical base; if
+    // it can't be resolved we skip just those and still decode every embedded data URI.
+    let canonical_base = match base_dir.canonicalize() {
+        Ok(cb) => Some(cb),
+        Err(e) => {
+            eprintln!("warning: cannot resolve base directory {}: {e}; filesystem images will not be loaded", base_dir.display());
+            None
+        }
+    };
+    collect(ast, base_dir, canonical_base.as_deref(), &mut table);
     table
 }
 
@@ -67,7 +86,7 @@ fn decode_data_uri(uri: &str) -> Result<Vec<u8>, String> {
     STANDARD.decode(&cleaned).map_err(|e| format!("invalid base64 data: {e}"))
 }
 
-fn collect(ast: &[BlockNode], base_dir: &Path, table: &mut ImageTable) {
+fn collect(ast: &[BlockNode], base_dir: &Path, canonical_base: Option<&Path>, table: &mut ImageTable) {
     for block in ast {
         match block {
             BlockNode::Image { source: ImageSource::Embedded(path), .. } => {
@@ -81,11 +100,14 @@ fn collect(ast: &[BlockNode], base_dir: &Path, table: &mut ImageTable) {
                 if table.contains_key(&key) {
                     continue;
                 }
-                match resolve_within_base(base_dir, path) {
+                let Some(canonical_base) = canonical_base else {
+                    continue; // base_dir unresolvable: filesystem images can't be loaded
+                };
+                match resolve_within_base(base_dir, canonical_base, path) {
                     Ok(resolved) => match image::open(&resolved) {
                         Ok(img) => {
                             let rgba = img.to_rgba8();
-                            table.insert(key, DecodedImage { width: rgba.width(), height: rgba.height(), rgba8: rgba.into_raw() });
+                            table.insert(key, DecodedImage { width: rgba.width(), height: rgba.height(), rgba8: Arc::new(rgba.into_raw()) });
                         }
                         Err(e) => eprintln!("warning: failed to decode image {key}: {e}"),
                     },
@@ -105,7 +127,7 @@ fn collect(ast: &[BlockNode], base_dir: &Path, table: &mut ImageTable) {
                     Ok(bytes) => match image::load_from_memory(&bytes) {
                         Ok(img) => {
                             let rgba = img.to_rgba8();
-                            table.insert(uri.clone(), DecodedImage { width: rgba.width(), height: rgba.height(), rgba8: rgba.into_raw() });
+                            table.insert(uri.clone(), DecodedImage { width: rgba.width(), height: rgba.height(), rgba8: Arc::new(rgba.into_raw()) });
                         }
                         Err(e) => eprintln!("warning: failed to decode embedded {} image: {e}", data_uri_label(uri)),
                     },
@@ -115,15 +137,15 @@ fn collect(ast: &[BlockNode], base_dir: &Path, table: &mut ImageTable) {
             BlockNode::Image { source: ImageSource::External(url), .. } => {
                 eprintln!("warning: skipping external image (not fetched): {url}");
             }
-            BlockNode::Blockquote { content } => collect(content, base_dir, table),
+            BlockNode::Blockquote { content } => collect(content, base_dir, canonical_base, table),
             BlockNode::List { items, .. } => {
                 for item in items {
-                    collect(item, base_dir, table);
+                    collect(item, base_dir, canonical_base, table);
                 }
             }
             BlockNode::Columns(columns) => {
                 for column in columns {
-                    collect(column, base_dir, table);
+                    collect(column, base_dir, canonical_base, table);
                 }
             }
             _ => {}
@@ -139,11 +161,21 @@ fn collect(ast: &[BlockNode], base_dir: &Path, table: &mut ImageTable) {
 /// controlled input, and needs the same protection against path traversal.
 pub fn collect_svg_diagrams(ast: &[BlockNode], base_dir: &Path) -> DiagramTable {
     let mut table = HashMap::new();
-    collect_svgs(ast, base_dir, &mut table);
+    // A `data:` URI needs no filesystem access, so it can always be collected even when `base_dir`
+    // can't be resolved. Only filesystem-backed (`Embedded`) SVGs require a canonical base; if it
+    // can't be resolved we skip just those and still collect every embedded SVG data URI.
+    let canonical_base = match base_dir.canonicalize() {
+        Ok(cb) => Some(cb),
+        Err(e) => {
+            eprintln!("warning: cannot resolve base directory {}: {e}; filesystem SVG images will not be loaded", base_dir.display());
+            None
+        }
+    };
+    collect_svgs(ast, base_dir, canonical_base.as_deref(), &mut table);
     table
 }
 
-fn collect_svgs(ast: &[BlockNode], base_dir: &Path, table: &mut DiagramTable) {
+fn collect_svgs(ast: &[BlockNode], base_dir: &Path, canonical_base: Option<&Path>, table: &mut DiagramTable) {
     for block in ast {
         match block {
             BlockNode::Image { source: ImageSource::Embedded(path), .. } if is_svg_path(path) => {
@@ -151,7 +183,10 @@ fn collect_svgs(ast: &[BlockNode], base_dir: &Path, table: &mut DiagramTable) {
                 if table.contains_key(&key) {
                     continue;
                 }
-                match resolve_within_base(base_dir, path) {
+                let Some(canonical_base) = canonical_base else {
+                    continue; // base_dir unresolvable: filesystem SVGs can't be loaded
+                };
+                match resolve_within_base(base_dir, canonical_base, path) {
                     Ok(resolved) => match std::fs::read_to_string(&resolved) {
                         Ok(svg) => match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
                             Ok(tree) => {
@@ -183,15 +218,15 @@ fn collect_svgs(ast: &[BlockNode], base_dir: &Path, table: &mut DiagramTable) {
                     Err(e) => eprintln!("warning: refusing to load embedded {} image: {e}", data_uri_label(uri)),
                 }
             }
-            BlockNode::Blockquote { content } => collect_svgs(content, base_dir, table),
+            BlockNode::Blockquote { content } => collect_svgs(content, base_dir, canonical_base, table),
             BlockNode::List { items, .. } => {
                 for item in items {
-                    collect_svgs(item, base_dir, table);
+                    collect_svgs(item, base_dir, canonical_base, table);
                 }
             }
             BlockNode::Columns(columns) => {
                 for column in columns {
-                    collect_svgs(column, base_dir, table);
+                    collect_svgs(column, base_dir, canonical_base, table);
                 }
             }
             _ => {}
