@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-base64 = "0.23"
+base64 = "0.22"
 cosmic-text = "0.19.0"
 fontdb = "0.23"
 hyphenation = { version = "0.8", features = ["embed_all"] }
@@ -14,4 +14,4 @@ image = { version = "0.25.10", default-features = false, features = ["png", "jpe
 sardown-ast = { version = "0.1.0", path = "../sardown-ast" }
 sardown-enrich = { version = "0.1.0", path = "../sardown-enrich" }
 sardown-style = { version = "0.1.0", path = "../sardown-style" }
-usvg = "0.48.1"
+usvg = "0.47"
