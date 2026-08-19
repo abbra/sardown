@@ -25,17 +25,18 @@ pub fn column_widths(headers: &[Vec<InlineNode>], rows: &[Vec<Vec<InlineNode>>],
     let mut longest_word = vec![0.0f32; column_count];
     let mut longest_line = vec![0.0f32; column_count];
 
-    let mut measure = |col: usize, cell: &[InlineNode], font_system: &mut FontSystem| {
-        longest_word[col] = longest_word[col].max(measure_longest_word_width(font_system, cell));
-        longest_line[col] = longest_line[col].max(measure_unwrapped_width(font_system, cell));
+    let mut measure = |col: usize, cell: &[InlineNode]| {
+        let m = measure_cell(font_system, cell);
+        longest_word[col] = longest_word[col].max(m.longest_word);
+        longest_line[col] = longest_line[col].max(m.longest_line);
     };
     for (col, header) in headers.iter().enumerate() {
-        measure(col, header, font_system);
+        measure(col, header);
     }
     for row in rows {
         for (col, cell) in row.iter().enumerate() {
             if col < column_count {
-                measure(col, cell, font_system);
+                measure(col, cell);
             }
         }
     }
@@ -111,30 +112,42 @@ fn max_min_fair_allocation(needs: &[f32], available: f32) -> Vec<f32> {
     allocation
 }
 
-fn measure_unwrapped_width(font_system: &mut FontSystem, cell: &[InlineNode]) -> f32 {
+/// Both measurements `column_widths` needs for one cell, from a single unwrapped shaping pass.
+/// The previous implementation shaped the whole cell once *and again once per word* (the word
+/// floor came from isolated per-word shaping passes) -- a 100x4 table with ~5 words per cell
+/// cost ~2,000 shaping passes before the table was ever placed. Deriving the per-word widths
+/// from the same shaped glyph advances (words are whitespace-delimited runs of non-whitespace
+/// clusters) keeps it at one pass per cell. Word widths measured in the cell's own text context
+/// rather than in isolation can differ from the old isolated measurement by a fraction of a
+/// kerning unit at most -- below the column floor's and the proportional distribution's own
+/// smoothing, and below the visual-regression pixel threshold.
+fn measure_cell(font_system: &mut FontSystem, cell: &[InlineNode]) -> CellMeasure {
     let elements = shape_paragraph(font_system, cell, f32::MAX);
-    elements
-        .into_iter()
-        .filter_map(|e| match e {
-            PositionedElement::TextRun { glyphs, .. } => Some(glyphs.iter().map(|g| g.x_advance).sum::<f32>()),
-            _ => None,
-        })
-        .fold(0.0, f32::max)
-        + 12.0 // cell padding
+    let mut longest_line = 0.0f32;
+    let mut longest_word = 0.0f32;
+    for element in elements {
+        if let PositionedElement::TextRun { glyphs, text, .. } = element {
+            longest_line = longest_line.max(glyphs.iter().map(|g| g.x_advance).sum::<f32>());
+            let mut word_width = 0.0f32;
+            for g in &glyphs {
+                let cluster_is_whitespace = text[g.cluster.start..g.cluster.end].chars().next().is_some_and(char::is_whitespace);
+                if cluster_is_whitespace {
+                    longest_word = longest_word.max(word_width);
+                    word_width = 0.0;
+                } else {
+                    word_width += g.x_advance;
+                }
+            }
+            longest_word = longest_word.max(word_width);
+        }
+    }
+    // 12.0 = cell padding
+    CellMeasure { longest_line: longest_line + 12.0, longest_word: longest_word + 12.0 }
 }
 
-fn measure_longest_word_width(font_system: &mut FontSystem, cell: &[InlineNode]) -> f32 {
-    let Some(style) = cell.first().map(|n| n.style.clone()) else {
-        return 0.0;
-    };
-    let full_text: String = cell.iter().map(|n| n.text.as_str()).collect();
-    full_text
-        .split_whitespace()
-        .map(|word| {
-            let node = InlineNode { text: word.to_string(), style: style.clone(), link_target: None };
-            measure_unwrapped_width(font_system, std::slice::from_ref(&node))
-        })
-        .fold(0.0, f32::max)
+struct CellMeasure {
+    longest_line: f32,
+    longest_word: f32,
 }
 
 /// Grid line Path for a table occupying [x, x + total_width] x [top_y, bottom_y], with one
