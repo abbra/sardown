@@ -87,13 +87,13 @@ fn a_word_straddling_two_styled_spans_is_never_hyphenated() {
 
 #[test]
 fn resulting_lines_never_exceed_max_width_pt() {
-    use sardown_layout::{shape_rich_paragraph, PositionedElement};
+    use sardown_layout::{shape_rich_paragraph, PositionedElement, ShapingOptions};
     let mut fs = test_font_system();
     let hyphenator = Hyphenator::load("en-us").unwrap();
     let max_width_pt = 60.0;
     let content = vec![plain_node("An extraordinarily long hyphenation demonstration paragraph.")];
     let hyphenated = insert_hyphenation_breaks(&content, &hyphenator, max_width_pt, &mut fs);
-    let shaped = shape_rich_paragraph(&mut fs, &hyphenated, max_width_pt, cosmic_text::Align::Left);
+    let shaped = shape_rich_paragraph(&mut fs, &hyphenated, max_width_pt, cosmic_text::Align::Left, ShapingOptions::PROSE);
     for run in &shaped {
         if let PositionedElement::TextRun { x, glyphs, .. } = &run.element {
             let right_edge: f32 = x + glyphs.iter().map(|g| g.x_advance).sum::<f32>();
@@ -118,13 +118,13 @@ fn hyphenated_lines_still_justify_like_the_rest_of_the_paragraph() {
     // of a single very long word with no other words alongside it has no spaces to redistribute
     // width into and can never be justified by any space-based justification algorithm,
     // hyphenated or not; that's an unrelated, pre-existing, expected limitation, not this bug.
-    use sardown_layout::{shape_rich_paragraph, PositionedElement};
+    use sardown_layout::{shape_rich_paragraph, PositionedElement, ShapingOptions};
     let mut fs = test_font_system();
     let hyphenator = Hyphenator::load("en-us").unwrap();
     let max_width_pt = 100.0;
     let content = vec![plain_node("An extraordinarily long hyphenation demonstration paragraph that wraps across several lines of justified text.")];
     let hyphenated = insert_hyphenation_breaks(&content, &hyphenator, max_width_pt, &mut fs);
-    let shaped = shape_rich_paragraph(&mut fs, &hyphenated, max_width_pt, cosmic_text::Align::Justified);
+    let shaped = shape_rich_paragraph(&mut fs, &hyphenated, max_width_pt, cosmic_text::Align::Justified, ShapingOptions::PROSE);
 
     let mut checked_a_hyphenated_line = false;
     for (i, run) in shaped.iter().enumerate() {

@@ -149,6 +149,9 @@ struct InlinePlacement<'a> {
     max_width_pt: f32,
     align: cosmic_text::Align,
     hyphenator: Option<&'a crate::Hyphenator>,
+    /// False for code blocks: ligatures off so every character keeps its own monospace cell
+    /// (see `shape::no_ligature_features`). True everywhere else (prose keeps ligatures).
+    ligatures: bool,
 }
 
 /// Returns `(leftmost_x, rightmost_x)` in points -- the actual rendered horizontal extent of the
@@ -156,7 +159,7 @@ struct InlinePlacement<'a> {
 /// text (both its width *and* its actual start position, which shifts under `Align::Center`/
 /// `Align::Right`) rather than assuming it always starts at `margin_pt + indent_pt`.
 fn place_inline_content(cursor: &mut Cursor, content: &[sardown_ast::InlineNode], placement: InlinePlacement, font_system: &mut FontSystem) -> (f32, f32) {
-    let InlinePlacement { margin_pt, indent_pt, max_width_pt, align, hyphenator } = placement;
+    let InlinePlacement { margin_pt, indent_pt, max_width_pt, align, hyphenator, ligatures } = placement;
     let hyphenated;
     let content = match hyphenator {
         Some(h) => {
@@ -165,7 +168,7 @@ fn place_inline_content(cursor: &mut Cursor, content: &[sardown_ast::InlineNode]
         }
         None => content,
     };
-    let shaped = shape_rich_paragraph(font_system, content, max_width_pt, align);
+    let shaped = shape_rich_paragraph(font_system, content, max_width_pt, align, ligatures);
     let mut iter = shaped.into_iter().peekable();
 
     let mut content_start_y = cursor.y;
@@ -271,7 +274,7 @@ fn measure_row_height(
             continue;
         }
         let cell_max_width_pt = (*width - cell_padding_pt).max(min_cell_wrap_width_pt);
-        let shaped = shape_rich_paragraph(font_system, cell, cell_max_width_pt, cosmic_text::Align::Left);
+        let shaped = shape_rich_paragraph(font_system, cell, cell_max_width_pt, cosmic_text::Align::Left, ShapingOptions::PROSE);
         let mut ys: Vec<f32> = shaped
             .iter()
             .map(|r| match &r.element {
@@ -371,7 +374,7 @@ fn render_block(
             let (heading_start_x, heading_end_x) = place_inline_content(
                 cursor,
                 content,
-                InlinePlacement { margin_pt, indent_pt, max_width_pt, align: heading_align, hyphenator: None },
+                InlinePlacement { margin_pt, indent_pt, max_width_pt, align: heading_align, hyphenator: None, ligatures: true },
                 font_system,
             );
             let resolved_heading = cursor.style.heading.resolve(*level);
@@ -394,7 +397,7 @@ fn render_block(
             place_inline_content(
                 cursor,
                 content,
-                InlinePlacement { margin_pt, indent_pt, max_width_pt, align: to_cosmic_align(cursor.style.typography.alignment), hyphenator },
+                InlinePlacement { margin_pt, indent_pt, max_width_pt, align: to_cosmic_align(cursor.style.typography.alignment), hyphenator, ligatures: true },
                 font_system,
             );
         }
@@ -492,7 +495,7 @@ fn render_block(
                             place_inline_content(
                                 cursor,
                                 &marked_content,
-                                InlinePlacement { margin_pt, indent_pt: child_indent_pt, max_width_pt, align: item_align, hyphenator },
+                                InlinePlacement { margin_pt, indent_pt: child_indent_pt, max_width_pt, align: item_align, hyphenator, ligatures: true },
                                 font_system,
                             );
                             continue;
@@ -606,7 +609,7 @@ fn render_block(
             place_inline_content(
                 cursor,
                 &combined,
-                InlinePlacement { margin_pt, indent_pt: code_indent_pt, max_width_pt, align: cosmic_text::Align::Left, hyphenator: None },
+                InlinePlacement { margin_pt, indent_pt: code_indent_pt, max_width_pt, align: cosmic_text::Align::Left, hyphenator: None, ligatures: false },
                 font_system,
             );
             let end_y = cursor.y;
@@ -795,6 +798,7 @@ fn render_block(
                         max_width_pt: cell_max_width_pt,
                         align: cosmic_text::Align::Left,
                         hyphenator: None,
+                        ligatures: true,
                     },
                     font_system,
                 );
@@ -843,6 +847,7 @@ fn render_block(
                             max_width_pt: cell_max_width_pt,
                             align: cosmic_text::Align::Left,
                             hyphenator: None,
+                            ligatures: true,
                         },
                         font_system,
                     );

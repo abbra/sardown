@@ -1,5 +1,5 @@
 use crate::{PositionedElement, PositionedGlyph};
-use cosmic_text::{Align, Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Style, Weight};
+use cosmic_text::{Align, Attrs, Buffer, Family, Feature, FeatureTag, FontFeatures, FontSystem, Metrics, Shaping, Style, Weight};
 use sardown_ast::{InlineNode, TextStyle};
 
 const PT_TO_PX_SCALE: f32 = 1.0; // 1pt == 1px at our fixed 96/72... kept 1:1 for Phase 1 simplicity
@@ -138,7 +138,40 @@ struct Span {
 /// `InlineNode`) and recovers which span each glyph came from via `LayoutGlyph`'s `start`/`end`
 /// cluster fields against precomputed per-span byte ranges — no dependency on any less-certain
 /// "glyph metadata echo" API.
-pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode], max_width_pt: f32, align: Align) -> Vec<ShapedRun> {
+/// Disables the OpenType ligature features (`liga`/`dlig`/`clig`). Monospaced code faces ship
+/// ligature glyphs (e.g. `fi`) whose advance is a *single* character cell, not two -- shaping
+/// code with ligatures on therefore collapses `fi`/`ff`/`fl` pairs and shifts every column after
+/// them left, breaking code alignment. Prose keeps ligatures (typographically desirable); code
+/// turns them off so each character occupies exactly one cell and a line's width is exactly
+/// `char_count * advance` (which is what makes `estimate_code_natural_width_pt` exact).
+fn no_ligature_features() -> FontFeatures {
+    FontFeatures {
+        features: vec![
+            Feature { tag: FeatureTag::STANDARD_LIGATURES, value: 0 },
+            Feature { tag: FeatureTag::DISCRETIONARY_LIGATURES, value: 0 },
+            Feature { tag: FeatureTag::CONTEXTUAL_LIGATURES, value: 0 },
+        ],
+    }
+}
+
+/// Shaping controls for `shape_rich_paragraph`. The only knob today is whether OpenType ligature
+/// features stay on: prose keeps them (typographically desirable); code turns them off so each
+/// character occupies exactly one cell -- see `no_ligature_features` for why that matters to column
+/// alignment. The named constructors keep call sites self-documenting instead of passing a bare bool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShapingOptions {
+    /// Keep OpenType ligature features (`liga`/`dlig`/`clig`) enabled while shaping.
+    pub ligatures: bool,
+}
+
+impl ShapingOptions {
+    /// Prose shaping: ligatures on.
+    pub const PROSE: Self = Self { ligatures: true };
+    /// Code shaping: ligatures off, so each glyph occupies exactly one character cell.
+    pub const CODE: Self = Self { ligatures: false };
+}
+
+pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode], max_width_pt: f32, align: Align, options: ShapingOptions) -> Vec<ShapedRun> {
     if content.is_empty() {
         return Vec::new();
     }
@@ -147,10 +180,13 @@ pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode]
     let mut rich_text_spans: Vec<(&str, Attrs)> = Vec::with_capacity(content.len());
     let mut offset = 0usize;
     for node in content {
-        let attrs = Attrs::new()
+        let mut attrs = Attrs::new()
             .family(resolve_family(font_system.db(), &node.style.font_family))
             .weight(if node.style.bold { Weight::BOLD } else { Weight::NORMAL })
             .style(if node.style.italic { Style::Italic } else { Style::Normal });
+        if !options.ligatures {
+            attrs = attrs.font_features(no_ligature_features());
+        }
         rich_text_spans.push((node.text.as_str(), attrs));
         spans.push(Span { range: offset..offset + node.text.len(), size: node.style.size, color: node.style.color });
         offset += node.text.len();
