@@ -39,19 +39,47 @@ impl Hyphenator {
     }
 }
 
-fn measure_text_width(font_system: &mut FontSystem, style: &sardown_ast::TextStyle, text: &str) -> f32 {
-    if text.is_empty() {
-        return 0.0;
-    }
-    let node = InlineNode { text: text.to_string(), style: style.clone(), link_target: None };
+/// One word shaped exactly once (unwrapped), with per-glyph advance data kept so that the
+/// width of any `word[..offset]` prefix can be derived by lookup instead of a second shaping
+/// pass. Shaping a word per candidate hyphenation prefix -- the previous approach -- turned a
+/// single long word with N dictionary break points into N+1 full cosmic-text shaping passes;
+/// here the whole word costs exactly one pass regardless of how many break candidates exist.
+struct ShapedWord {
+    /// `(cluster_start, cumulative advance up to and including the glyph starting there)`, in
+    /// cluster order (which is text order for an unwrapped single word).
+    advances: Vec<(usize, f32)>,
+    total: f32,
+}
+
+fn shape_word(font_system: &mut FontSystem, style: &sardown_ast::TextStyle, word: &str) -> ShapedWord {
+    let node = InlineNode { text: word.to_string(), style: style.clone(), link_target: None };
     let elements = shape_paragraph(font_system, std::slice::from_ref(&node), f32::MAX);
-    elements
-        .into_iter()
-        .filter_map(|e| match e {
-            PositionedElement::TextRun { glyphs, .. } => Some(glyphs.iter().map(|g| g.x_advance).sum::<f32>()),
-            _ => None,
-        })
-        .sum()
+    let mut advances = Vec::new();
+    let mut total = 0.0f32;
+    for element in elements {
+        if let PositionedElement::TextRun { glyphs, .. } = element {
+            for g in &glyphs {
+                total += g.x_advance;
+                advances.push((g.cluster.start, total));
+            }
+        }
+    }
+    ShapedWord { advances, total }
+}
+
+impl ShapedWord {
+    fn width(&self) -> f32 {
+        self.total
+    }
+
+    /// The width of `word[..offset]`: the sum of the advances of every glyph whose cluster
+    /// starts before `offset`. Hyphenation break offsets always land on character boundaries
+    /// the dictionary permits, so a cluster never straddles `offset` mid-grapheme.
+    fn prefix_width(&self, offset: usize) -> f32 {
+        // First entry whose cluster start is >= offset; everything before it is inside the prefix.
+        let idx = self.advances.partition_point(|(start, _)| *start < offset);
+        self.advances.get(idx - 1).map(|(_, w)| *w).unwrap_or(0.0)
+    }
 }
 
 /// A hyphenation candidate: every character alphabetic -- no digits, punctuation, or apostrophes.
@@ -92,8 +120,10 @@ pub fn insert_hyphenation_breaks(content: &[InlineNode], hyphenator: &Hyphenator
 
     for node_idx in 0..node_count {
         let style = result[node_idx].style.clone();
-        let space_width = measure_text_width(font_system, &style, " ");
-        let hyphen_width = measure_text_width(font_system, &style, "-");
+        // Measured once per node (not per word): both are single-character and never change
+        // within the node's own style.
+        let space_width = shape_word(font_system, &style, " ").width();
+        let hyphen_width = shape_word(font_system, &style, "-").width();
         let text = std::mem::take(&mut result[node_idx].text);
         // The word at the very end of this node's text (if any) continues into the next node
         // when there IS a next node, this node's text doesn't end in whitespace, and the next
@@ -120,7 +150,8 @@ pub fn insert_hyphenation_breaks(content: &[InlineNode], hyphenator: &Hyphenator
             let word_abs_start = cursor + word_start;
             let is_last_word_in_node = word_abs_start + word_len == text.len();
             let straddles_node_boundary = is_last_word_in_node && continues_into_next_node;
-            let word_width = measure_text_width(font_system, &style, word);
+            let shaped_word = shape_word(font_system, &style, word);
+            let word_width = shaped_word.width();
             let prefix_width = if line_has_content { space_width } else { 0.0 };
 
             if line_width + prefix_width + word_width <= max_width_pt {
@@ -133,7 +164,7 @@ pub fn insert_hyphenation_breaks(content: &[InlineNode], hyphenator: &Hyphenator
 
             let available = if line_has_content { max_width_pt - line_width - space_width } else { max_width_pt };
             let split = if !straddles_node_boundary && is_hyphenation_candidate(word) {
-                hyphenator.candidate_breaks(word).into_iter().rev().find(|&i| measure_text_width(font_system, &style, &word[..i]) + hyphen_width <= available)
+                hyphenator.candidate_breaks(word).into_iter().rev().find(|&i| shaped_word.prefix_width(i) + hyphen_width <= available)
             } else {
                 None
             };
