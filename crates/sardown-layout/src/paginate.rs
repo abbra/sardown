@@ -142,7 +142,10 @@ fn to_cosmic_align(alignment: sardown_style::TextAlignment) -> cosmic_text::Alig
 
 /// Groups `place_inline_content`'s plain placement/formatting parameters (as opposed to `cursor`/
 /// `font_system`, which are shared mutable context, and `content`, the data being placed) into one
-/// value instead of five separate scalar arguments.
+/// value instead of five separate scalar arguments. `Copy` so `place_inline_content` can
+/// destructure out its shaping parameters and still hand the whole value to
+/// `place_shaped_runs`.
+#[derive(Clone, Copy)]
 struct InlinePlacement<'a> {
     margin_pt: f32,
     indent_pt: f32,
@@ -159,7 +162,7 @@ struct InlinePlacement<'a> {
 /// text (both its width *and* its actual start position, which shifts under `Align::Center`/
 /// `Align::Right`) rather than assuming it always starts at `margin_pt + indent_pt`.
 fn place_inline_content(cursor: &mut Cursor, content: &[sardown_ast::InlineNode], placement: InlinePlacement, font_system: &mut FontSystem) -> (f32, f32) {
-    let InlinePlacement { margin_pt, indent_pt, max_width_pt, align, hyphenator, ligatures } = placement;
+    let InlinePlacement { margin_pt: _, indent_pt: _, max_width_pt, align, hyphenator, ligatures } = placement;
     let hyphenated;
     let content = match hyphenator {
         Some(h) => {
@@ -168,7 +171,19 @@ fn place_inline_content(cursor: &mut Cursor, content: &[sardown_ast::InlineNode]
         }
         None => content,
     };
-    let shaped = shape_rich_paragraph(font_system, content, max_width_pt, align, ligatures);
+    let shaped = shape_rich_paragraph(font_system, content, max_width_pt, align, ShapingOptions { ligatures });
+    place_shaped_runs(cursor, shaped, content, placement)
+}
+
+/// The placement half of `place_inline_content`, factored out so a caller that has *already*
+/// shaped the same content at the same width can place the shaped runs directly instead of
+/// paying for a second identical shaping pass. The table path does exactly this: it shapes each
+/// cell once to measure the row's height (the page-break decision), then places those very runs
+/// -- previously the whole table was shaped twice, once per row-height measurement and once per
+/// cell placement. `content` must be the same slice the runs were shaped from (it is only
+/// consulted for each run's link target and strikethrough flags via `source_index`).
+fn place_shaped_runs(cursor: &mut Cursor, shaped: Vec<crate::ShapedRun>, content: &[sardown_ast::InlineNode], placement: InlinePlacement) -> (f32, f32) {
+    let InlinePlacement { margin_pt, indent_pt, .. } = placement;
     let mut iter = shaped.into_iter().peekable();
 
     let mut content_start_y = cursor.y;
@@ -254,23 +269,26 @@ fn place_inline_content(cursor: &mut Cursor, content: &[sardown_ast::InlineNode]
     }
 }
 
-/// Shapes every cell in `row` (without placing anything) to find how tall the row will actually
-/// render, so a page-break decision can be made *before* any of its cells are drawn. Deciding
-/// per-cell instead (as rendering itself does) risks a page break landing between two cells of
-/// the same row: every cell rendered after that point would reset to a `row_top_y` that belongs
-/// to the wrong page, scattering the row's remaining cells across an unrelated part of the next
-/// page (they'd land whatever the row's cursor-y offset was on the far side of the break).
-fn measure_row_height(
+/// Shapes every cell in `row` and reports both how tall the row will actually render (so a
+/// page-break decision can be made *before* any of its cells are drawn -- deciding per-cell
+/// instead risks a page break landing between two cells of the same row: every cell rendered
+/// after that point would reset to a `row_top_y` that belongs to the wrong page, scattering the
+/// row's remaining cells across an unrelated part of the next page) and the shaped runs
+/// themselves, so the placement pass reuses them via `place_shaped_runs` instead of shaping the
+/// whole row a second time at the identical widths.
+fn shape_row_cells(
     row: &[Vec<sardown_ast::InlineNode>],
     widths: &[f32],
     cell_padding_pt: f32,
     min_cell_wrap_width_pt: f32,
     min_row_height: f32,
     font_system: &mut FontSystem,
-) -> f32 {
+) -> (f32, Vec<Vec<crate::ShapedRun>>) {
     let mut max_height = min_row_height;
+    let mut shaped_cells = Vec::with_capacity(row.len());
     for (cell, width) in row.iter().zip(widths) {
         if cell.is_empty() {
+            shaped_cells.push(Vec::new());
             continue;
         }
         let cell_max_width_pt = (*width - cell_padding_pt).max(min_cell_wrap_width_pt);
@@ -288,8 +306,9 @@ fn measure_row_height(
             let size = cell[0].style.size;
             max_height = max_height.max((last - first) + estimate_line_height(size));
         }
+        shaped_cells.push(shaped);
     }
-    max_height
+    (max_height, shaped_cells)
 }
 
 /// A rough "how tall is this block's first line" estimate, used only to reserve enough gap
@@ -771,7 +790,7 @@ fn render_block(
             // `place_inline_content`'s own per-line break fire mid-row (the previous behavior)
             // corrupted every cell rendered after the break, since each resets to a `row_top_y`
             // belonging to the page the row started on.
-            let header_height = measure_row_height(headers, &widths, cell_padding_pt, MIN_CELL_WRAP_WIDTH_PT, min_row_height, font_system);
+            let (header_height, shaped_headers) = shape_row_cells(headers, &widths, cell_padding_pt, MIN_CELL_WRAP_WIDTH_PT, min_row_height, font_system);
             if cursor.remaining_height() < header_height && !cursor.current.is_empty() {
                 cursor.break_page(margin_pt);
             }
@@ -779,18 +798,20 @@ fn render_block(
             let table_top_y = cursor.y;
             let mut col_x = margin_pt + indent_pt;
             let mut header_bottom_y = table_top_y + min_row_height;
-            for (header, width) in headers.iter().zip(&widths) {
-                // Reset before each cell: `place_inline_content` advances `cursor.y` as it lays
-                // out lines, so without this reset every cell after the first in a row would
-                // start below where the previous cell's text left off instead of at the row's top.
+            for ((header, width), shaped) in headers.iter().zip(&widths).zip(shaped_headers) {
+                // Reset before each cell: placement advances `cursor.y` as it lays out lines,
+                // so without this reset every cell after the first in a row would start below
+                // where the previous cell's text left off instead of at the row's top.
                 cursor.y = table_top_y;
                 // Capped at this column's own width (minus a little breathing room before the
-                // grid line), not the page's remaining width: `place_inline_content`'s width
-                // parameter is normally "wrap at the right margin," which is wrong for a cell —
-                // it let long text bleed across into the next column's space instead of wrapping.
+                // grid line), not the page's remaining width: the placement width parameter is
+                // normally "wrap at the right margin," which is wrong for a cell — it let long
+                // text bleed across into the next column's space instead of wrapping. The runs
+                // were shaped at exactly this width by `shape_row_cells` above.
                 let cell_max_width_pt = (width - cell_padding_pt).max(MIN_CELL_WRAP_WIDTH_PT);
-                place_inline_content(
+                place_shaped_runs(
                     cursor,
+                    shaped,
                     header,
                     InlinePlacement {
                         margin_pt,
@@ -800,7 +821,6 @@ fn render_block(
                         hyphenator: None,
                         ligatures: true,
                     },
-                    font_system,
                 );
                 header_bottom_y = header_bottom_y.max(cursor.y);
                 col_x += width;
@@ -826,7 +846,7 @@ fn render_block(
             }];
 
             for row in rows {
-                let row_height = measure_row_height(row, &widths, cell_padding_pt, MIN_CELL_WRAP_WIDTH_PT, min_row_height, font_system);
+                let (row_height, shaped_cells) = shape_row_cells(row, &widths, cell_padding_pt, MIN_CELL_WRAP_WIDTH_PT, min_row_height, font_system);
                 if cursor.remaining_height() < row_height && !cursor.current.is_empty() {
                     cursor.break_page(margin_pt);
                     segments.push(Segment { page: cursor.page_number, top_y: cursor.y - table_top_pad_pt, bottom_y: cursor.y, header_bottom_y: None });
@@ -835,11 +855,12 @@ fn render_block(
                 let row_top_y = cursor.y;
                 let mut col_x = margin_pt + indent_pt;
                 let mut row_bottom_y = row_top_y + min_row_height;
-                for (cell, width) in row.iter().zip(&widths) {
+                for ((cell, width), shaped) in row.iter().zip(&widths).zip(shaped_cells) {
                     cursor.y = row_top_y;
                     let cell_max_width_pt = (width - cell_padding_pt).max(MIN_CELL_WRAP_WIDTH_PT);
-                    place_inline_content(
+                    place_shaped_runs(
                         cursor,
+                        shaped,
                         cell,
                         InlinePlacement {
                             margin_pt,
@@ -849,7 +870,6 @@ fn render_block(
                             hyphenator: None,
                             ligatures: true,
                         },
-                        font_system,
                     );
                     row_bottom_y = row_bottom_y.max(cursor.y);
                     col_x += width;
