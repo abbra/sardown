@@ -1,6 +1,6 @@
 use cosmic_text::{Align, FontSystem};
 use sardown_ast::{InlineNode, TextStyle};
-use sardown_layout::{shape_paragraph, shape_rich_paragraph, PositionedElement};
+use sardown_layout::{shape_paragraph, shape_rich_paragraph, PositionedElement, PositionedGlyph, ShapedRun, ShapingOptions};
 
 fn test_font_system() -> FontSystem {
     let mut db = fontdb::Database::new();
@@ -54,6 +54,47 @@ fn run_with_family(text: &str, font_family: &str) -> InlineNode {
     }
 }
 
+/// Cantarell ships standard Latin ligatures (`fi`/`ff`/`fl`/etc.); use it when tests need a
+/// deterministic ligature-capable face instead of depending on whatever happens to be installed.
+fn font_system_with_ligature_font() -> FontSystem {
+    let mut db = fontdb::Database::new();
+    db.load_font_file(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/Cantarell-VF.otf")).expect("failed to load ligature test font");
+    db.set_sans_serif_family("Cantarell");
+    FontSystem::new_with_locale_and_db("en-US".to_string(), db)
+}
+
+const LIGATURE_PROBE_TEXT: &str = "ffi ff fi fl";
+
+fn glyph_is_whitespace(line_text: &str, glyph: &PositionedGlyph) -> bool {
+    line_text[glyph.cluster.start..glyph.cluster.end].chars().next().is_some_and(char::is_whitespace)
+}
+
+fn first_line_glyphs(runs: &[ShapedRun]) -> (&str, Vec<&PositionedGlyph>) {
+    assert!(!runs.is_empty(), "expected at least one shaped run");
+    let first_y = match &runs[0].element {
+        PositionedElement::TextRun { y, .. } => *y,
+        other => panic!("expected TextRun, got {other:?}"),
+    };
+    let mut line_text = None;
+    let mut glyphs = Vec::new();
+    for run in runs {
+        let PositionedElement::TextRun { y, glyphs: run_glyphs, text, .. } = &run.element else {
+            panic!("expected TextRun, got {:?}", run.element);
+        };
+        if *y == first_y {
+            if line_text.is_none() {
+                line_text = Some(text.as_str());
+            }
+            glyphs.extend(run_glyphs.iter());
+        }
+    }
+    (line_text.expect("expected at least one glyph on the first line"), glyphs)
+}
+
+fn count_non_whitespace_glyphs(line_text: &str, glyphs: &[&PositionedGlyph]) -> usize {
+    glyphs.iter().filter(|g| !glyph_is_whitespace(line_text, g)).count()
+}
+
 #[test]
 fn shape_paragraph_resolves_distinct_generic_keywords_to_distinct_fonts() {
     let mut font_system = font_system_with_distinct_generic_families();
@@ -97,7 +138,7 @@ fn shape_paragraph_falls_back_to_sans_serif_for_an_unknown_family_name_without_p
 fn shape_rich_paragraph_mixes_two_font_families_within_one_call() {
     let mut font_system = font_system_with_distinct_generic_families();
     let content = vec![run_with_family("sans ", "sans-serif"), run_with_family("mono", "monospace")];
-    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left);
+    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left, ShapingOptions::PROSE);
 
     let font_ids: Vec<_> = runs
         .iter()
@@ -145,7 +186,7 @@ fn splits_a_run_at_a_font_fallback_boundary_within_one_span() {
     // instead of the intended character.
     let mut font_system = font_system_with_fallback();
     let content = vec![plain_run("a\u{2192}b")];
-    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left);
+    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left, ShapingOptions::PROSE);
 
     let font_ids: Vec<_> = runs
         .iter()
@@ -174,7 +215,7 @@ fn shape_rich_paragraph_drops_characters_with_no_font_coverage_instead_of_notdef
     // document" convention for images/diagrams/links -- keeps the render succeeding.
     let mut font_system = font_system_with_fallback(); // neither loaded font covers this character
     let content = vec![plain_run("a\u{1D11E}b")]; // U+1D11E MUSICAL SYMBOL G CLEF
-    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left);
+    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left, ShapingOptions::PROSE);
 
     let all_glyph_ids: Vec<_> = runs
         .iter()
@@ -225,7 +266,7 @@ fn shape_rich_paragraph_keeps_correct_span_colors_across_embedded_newlines() {
                                          // on its own BufferLine
     ];
     let mut font_system = test_font_system();
-    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left);
+    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left, ShapingOptions::PROSE);
 
     let colors_by_source_index: std::collections::HashMap<usize, [u8; 3]> = runs
         .iter()
@@ -250,8 +291,8 @@ fn shape_rich_paragraph_justifies_a_non_last_wrapped_line_to_the_full_width() {
     let content = vec![plain_run("one two three four five six seven eight nine ten")];
     let max_width_pt = 200.0;
 
-    let left_runs = shape_rich_paragraph(&mut font_system, &content, max_width_pt, Align::Left);
-    let justified_runs = shape_rich_paragraph(&mut font_system, &content, max_width_pt, Align::Justified);
+    let left_runs = shape_rich_paragraph(&mut font_system, &content, max_width_pt, Align::Left, ShapingOptions::PROSE);
+    let justified_runs = shape_rich_paragraph(&mut font_system, &content, max_width_pt, Align::Justified, ShapingOptions::PROSE);
 
     let rightmost_extent_of_first_line = |runs: &[sardown_layout::ShapedRun]| -> f32 {
         let first_line_y = match &runs[0].element {
@@ -275,5 +316,50 @@ fn shape_rich_paragraph_justifies_a_non_last_wrapped_line_to_the_full_width() {
     assert!(
         (justified_extent - max_width_pt).abs() < 2.0,
         "expected the justified line to reach very close to the {max_width_pt}pt wrap width, got {justified_extent}"
+    );
+}
+
+#[test]
+fn shape_rich_paragraph_disables_ligatures_for_code() {
+    let mut font_system = font_system_with_ligature_font();
+    let content = vec![run_with_family(LIGATURE_PROBE_TEXT, "sans-serif")];
+
+    let runs = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left, ShapingOptions::CODE);
+    let (line_text, glyphs) = first_line_glyphs(&runs);
+
+    let non_space_chars = LIGATURE_PROBE_TEXT.chars().filter(|c| !c.is_whitespace()).count();
+    let non_space_glyphs = count_non_whitespace_glyphs(line_text, &glyphs);
+    assert_eq!(
+        non_space_glyphs, non_space_chars,
+        "expected one glyph per non-space character when ligatures are disabled, got {non_space_glyphs} glyphs for {non_space_chars} characters"
+    );
+
+    let line_advance: f32 = glyphs.iter().map(|g| g.x_advance).sum();
+    assert!(line_advance > 0.0, "expected a positive line advance when ligatures are disabled, got {line_advance}");
+}
+
+#[test]
+fn shape_rich_paragraph_enables_ligatures_for_prose() {
+    let mut font_system = font_system_with_ligature_font();
+    let content = vec![run_with_family(LIGATURE_PROBE_TEXT, "sans-serif")];
+
+    let without_ligatures = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left, ShapingOptions::CODE);
+    let with_ligatures = shape_rich_paragraph(&mut font_system, &content, 400.0, Align::Left, ShapingOptions::PROSE);
+
+    let (line_text, code_glyphs) = first_line_glyphs(&without_ligatures);
+    let (_, prose_glyphs) = first_line_glyphs(&with_ligatures);
+
+    let non_space_chars = LIGATURE_PROBE_TEXT.chars().filter(|c| !c.is_whitespace()).count();
+    let code_glyph_count = count_non_whitespace_glyphs(line_text, &code_glyphs);
+    let prose_glyph_count = count_non_whitespace_glyphs(line_text, &prose_glyphs);
+
+    assert_eq!(code_glyph_count, non_space_chars, "ligature-disabled shaping should keep every character separate");
+    assert!(
+        prose_glyph_count < non_space_chars,
+        "expected ligatures to reduce the number of non-space glyphs, got {prose_glyph_count} glyphs for {non_space_chars} characters"
+    );
+    assert!(
+        prose_glyph_count < code_glyph_count,
+        "expected ligature-enabled shaping ({prose_glyph_count} glyphs) to use fewer glyphs than ligature-disabled ({code_glyph_count})"
     );
 }
