@@ -40,7 +40,10 @@ use sardown_layout::{DecodedImage, ImageTable, PathCommand, StrokeStyle};
 fn renders_a_page_with_a_stroked_path_and_a_raster_image() {
     let db = test_font_db();
     let mut images = ImageTable::new();
-    images.insert("dot.png".to_string(), DecodedImage { rgba8: vec![255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255], width: 2, height: 2 });
+    images.insert(
+        "dot.png".to_string(),
+        DecodedImage { rgba8: std::sync::Arc::new(vec![255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255]), width: 2, height: 2 },
+    );
 
     let page = PositionedPage {
         page_number: 0,
