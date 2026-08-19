@@ -3,6 +3,7 @@ use crate::{AnchorTable, PageContext, PageGeometry, PositionedElement, Positione
 use cosmic_text::FontSystem;
 use sardown_ast::{InlineNode, TextStyle};
 use sardown_style::{DocumentStyle, HeaderFooterMode, HeaderFooterStyle, HeaderZones, Stylesheet};
+use std::collections::HashMap;
 
 // Mirrors paginate.rs's own PT_PER_MM: a fixed physical constant, not business logic, so a small
 // local duplicate is lower-risk than threading a cross-module import for it.
@@ -58,6 +59,17 @@ fn zones_for(style: &HeaderFooterStyle, is_odd_physical_page: bool) -> &HeaderZo
     }
 }
 
+/// Cache of already-shaped header/footer zone lines, shared across every page of one
+/// `render_headers_footers` call. Keyed by the resolved text plus the style parameters that
+/// affect shaping (size, family, color): a zone without a page-dependent placeholder
+/// (`{page}`/`{h1}`/`{h2}`) resolves to the identical string on every page, so it is shaped
+/// ONCE for the whole document and merely cloned (with per-page x/y) for each subsequent page
+/// instead of paying a full cosmic-text shaping pass per page. Zones that DO contain a
+/// page-dependent placeholder simply never hit the cache (unique key per page) and cost exactly
+/// what they always did.
+/// The font size is stored as its `f32` bit pattern (`f32` itself is neither `Hash` nor `Eq`).
+type ShapedZoneCache = HashMap<(String, u32, String, [u8; 3]), PositionedElement>;
+
 #[allow(clippy::too_many_arguments)]
 fn render_band(
     page: &mut PositionedPage,
@@ -71,6 +83,7 @@ fn render_band(
     baseline_y: f32,
     is_odd_physical_page: bool,
     font_system: &mut FontSystem,
+    shaped_cache: &mut ShapedZoneCache,
 ) {
     let zones = zones_for(style, is_odd_physical_page);
     for (template, align) in [(&zones.left, Align::Left), (&zones.center, Align::Center), (&zones.right, Align::Right)] {
@@ -78,25 +91,34 @@ fn render_band(
         if resolved.is_empty() {
             continue;
         }
-        let node = InlineNode {
-            text: resolved,
-            style: TextStyle {
-                bold: false,
-                italic: false,
-                strikethrough: false,
-                size: style.font_size_pt,
-                color: style.color.0,
-                font_family: style.font_family.clone(),
-            },
-            link_target: None,
+        let key = (resolved.clone(), style.font_size_pt.to_bits(), style.font_family.clone(), style.color.0);
+        let mut first = match shaped_cache.get(&key) {
+            Some(cached) => cached.clone(),
+            None => {
+                let node = InlineNode {
+                    text: resolved,
+                    style: TextStyle {
+                        bold: false,
+                        italic: false,
+                        strikethrough: false,
+                        size: style.font_size_pt,
+                        color: style.color.0,
+                        font_family: style.font_family.clone(),
+                    },
+                    link_target: None,
+                };
+                // Only the first shaped line is ever used: header/footer zones are expected to be
+                // short enough not to wrap within the full content width, and the alignment math
+                // below only measures that first line anyway. If a template resolves to something
+                // long enough to wrap, taking every wrapped line would place them all at the same
+                // baseline_y and overlap -- keeping only the first line is a deliberate, graceful
+                // truncation instead.
+                let elements = crate::shape_paragraph(font_system, &[node], content_width_pt);
+                let Some(first) = elements.into_iter().next() else { continue };
+                shaped_cache.insert(key, first.clone());
+                first
+            }
         };
-        // Only the first shaped line is ever used: header/footer zones are expected to be short
-        // enough not to wrap within the full content width, and the alignment math below only
-        // measures that first line anyway. If a template resolves to something long enough to
-        // wrap, taking every wrapped line would place them all at the same baseline_y and overlap
-        // -- keeping only the first line is a deliberate, graceful truncation instead.
-        let elements = crate::shape_paragraph(font_system, &[node], content_width_pt);
-        let Some(mut first) = elements.into_iter().next() else { continue };
         let PositionedElement::TextRun { x, y, glyphs, .. } = &mut first else { continue };
         let text_width: f32 = glyphs.iter().map(|g| g.x_advance).sum();
         *x = match align {
@@ -129,6 +151,7 @@ pub fn render_headers_footers(
     // but the document doesn't have multiple "totals".
     let total_pages_display = format_page_number(numbering.start_at + pages.len() as u32 - 1, numbering.format);
     let segments = resolve_numbering_segments(numbering, anchors);
+    let mut shaped_cache: ShapedZoneCache = HashMap::new();
 
     for (i, (page, ctx)) in pages.iter_mut().zip(contexts.iter()).enumerate() {
         let page_display = display_number_for_page(i, &segments);
@@ -147,6 +170,7 @@ pub fn render_headers_footers(
                 margin_pt * 0.6,
                 is_odd_physical_page,
                 font_system,
+                &mut shaped_cache,
             );
         }
         if stylesheet.footer.enabled && !(stylesheet.footer.suppress_on_chapter_start && ctx.is_chapter_opener) && !ctx.suppress_footer {
@@ -162,6 +186,7 @@ pub fn render_headers_footers(
                 full_page_height_pt - margin_pt * 0.6,
                 is_odd_physical_page,
                 font_system,
+                &mut shaped_cache,
             );
         }
     }
