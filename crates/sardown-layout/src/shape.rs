@@ -14,6 +14,17 @@ const PT_TO_PX_SCALE: f32 = 1.0; // 1pt == 1px at our fixed 96/72... kept 1:1 fo
 /// fallback worth depending on. A resolvable check-then-use here makes the fallback explicit and
 /// warned instead.
 fn resolve_family<'a>(db: &fontdb::Database, requested: &'a str) -> Family<'a> {
+    // A literal family name (the `name =>` arm below) is resolved by scanning EVERY loaded face's
+    // alias list -- a full `db.faces()` pass with case-insensitive comparison. That depends only on
+    // the font set, which isn't mutated once layout starts, so cache it per (font database pointer,
+    // name) in a thread-local: each distinct name scans all faces at most ONCE instead of every call
+    // (`shape_rich_paragraph` calls this once per inline node, so one code block's many tokens would
+    // otherwise re-scan the whole DB for the same few names). Keyed by the database instance pointer
+    // so separate font systems never share entries. Mirrors `MONOSPACE_ADVANCE_CACHE`. (The generic-
+    // keyword arms above short-circuit before any scan, exactly as before.)
+    thread_local! {
+        static FAMILY_KNOWN_CACHE: std::cell::RefCell<HashMap<usize, HashMap<String, bool>>> = Default::default();
+    }
     match requested {
         "serif" => Family::Serif,
         "sans-serif" | "sans serif" => Family::SansSerif,
@@ -21,11 +32,25 @@ fn resolve_family<'a>(db: &fontdb::Database, requested: &'a str) -> Family<'a> {
         "cursive" => Family::Cursive,
         "fantasy" => Family::Fantasy,
         name => {
-            let known = db.faces().any(|face| face.families.iter().any(|(family_name, _)| family_name.eq_ignore_ascii_case(name)));
+            let db_key = db as *const fontdb::Database as usize;
+            let known = FAMILY_KNOWN_CACHE.with(|outer| {
+                let mut entries = outer.borrow_mut();
+                match entries.entry(db_key).or_default().get(name) {
+                    Some(&known) => known,
+                    None => {
+                        let k = db.faces().any(|face| face.families.iter().any(|(family_name, _)| family_name.eq_ignore_ascii_case(name)));
+                        if !k {
+                            eprintln!("warning: unknown font family {name:?}; falling back to a sans-serif font");
+                        }
+                        entries.entry(db_key).or_default().insert(name.to_owned(), k);
+                        k
+                    }
+                }
+            });
             if known {
                 Family::Name(name)
             } else {
-                eprintln!("warning: unknown font family {name:?}; falling back to a sans-serif font");
+                // Unknown family: warned on the first (miss) lookup above; cache-hit reuses skip it.
                 Family::SansSerif
             }
         }
