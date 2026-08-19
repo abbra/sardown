@@ -46,6 +46,28 @@ pub fn render_pdf(
     // from disk, and a document can contain many diagrams.
     let svg_options = svg_render_options(font_data);
 
+    // Every raster image is turned into a krilla::Image exactly once here, not once per element
+    // that references it: `Image::from_rgba8` copies the whole pixel buffer, and a figure reused
+    // on several pages (or a watermarked layout) used to pay that copy for every single
+    // placement. `krilla::Image` is `Arc`-backed, so cloning the cache entry per element is
+    // cheap.
+    let mut raster_cache: HashMap<&str, Image> = HashMap::new();
+    for (image_id, decoded) in images {
+        raster_cache.insert(image_id, Image::from_rgba8((*decoded.rgba8).clone(), decoded.width, decoded.height));
+    }
+    // Same idea for vector diagrams: the SVG is parsed into a `usvg::Tree` once per diagram id,
+    // not once per element referencing it (a diagram referenced from N pages used to be parsed
+    // N times). Parse failures are reported once here instead of once per element.
+    let mut svg_cache: HashMap<&str, usvg::Tree> = HashMap::new();
+    for (diagram_id, diagram) in diagrams {
+        match usvg::Tree::from_str(&diagram.svg, &svg_options) {
+            Ok(tree) => {
+                svg_cache.insert(diagram_id, tree);
+            }
+            Err(e) => eprintln!("warning: failed to parse diagram '{diagram_id}' SVG at render time: {e}"),
+        }
+    }
+
     for page_data in pages {
         let mut page = document.start_page_with(PageSettings::new(page_size));
         let mut pending_annotations = Vec::new();
@@ -96,27 +118,19 @@ pub fn render_pdf(
                         surface.draw_path(&path);
                     }
                     PositionedElement::RasterImage { x, y, width, height, image_id } => {
-                        if let Some(decoded) = images.get(image_id) {
-                            let image = Image::from_rgba8(decoded.rgba8.clone(), decoded.width, decoded.height);
+                        if let Some(image) = raster_cache.get(image_id.as_str()) {
                             let size = Size::from_wh(*width, *height).context("invalid image size")?;
                             surface.push_transform(&Transform::from_translate(*x, *y));
-                            surface.draw_image(image, size);
+                            surface.draw_image(image.clone(), size);
                             surface.pop();
                         }
                     }
                     PositionedElement::VectorGraphic { x, y, width, height, diagram_id } => {
-                        if let Some(diagram) = diagrams.get(diagram_id) {
-                            match usvg::Tree::from_str(&diagram.svg, &svg_options) {
-                                Ok(tree) => {
-                                    let size = Size::from_wh(*width, *height).context("invalid diagram size")?;
-                                    surface.push_transform(&Transform::from_translate(*x, *y));
-                                    surface.draw_svg(&tree, size, krilla_svg::SvgSettings::default());
-                                    surface.pop();
-                                }
-                                Err(e) => {
-                                    eprintln!("warning: failed to re-parse diagram '{diagram_id}' SVG at render time: {e}")
-                                }
-                            }
+                        if let Some(tree) = svg_cache.get(diagram_id.as_str()) {
+                            let size = Size::from_wh(*width, *height).context("invalid diagram size")?;
+                            surface.push_transform(&Transform::from_translate(*x, *y));
+                            surface.draw_svg(tree, size, krilla_svg::SvgSettings::default());
+                            surface.pop();
                         }
                     }
                     PositionedElement::LinkAnnotation { rect, destination } => {
