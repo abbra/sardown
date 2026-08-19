@@ -3,6 +3,16 @@ use syntect::easy::HighlightLines;
 use syntect::highlighting::{Style, Theme, ThemeSet};
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 
+/// Whether `ast` contains at least one fenced code block.
+///
+/// `Highlighter::with_style` builds a full syntect `Highlighter` (loading every default syntax
+/// definition and the complete theme) before deciding there is nothing to do -- that load takes
+/// well over a second and is pure overhead for the common case of a document with no code
+/// blocks. Callers use this predicate to skip the construction entirely.
+pub fn ast_contains_code_block(ast: &[BlockNode]) -> bool {
+    ast.iter().any(|block| matches!(block, BlockNode::CodeBlock { .. }))
+}
+
 pub struct Highlighter {
     syntax_set: SyntaxSet,
     theme: Theme,

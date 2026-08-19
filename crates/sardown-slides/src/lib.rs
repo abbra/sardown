@@ -35,7 +35,10 @@ pub fn render_slide_deck(
     // diagram in a slide deck kept `file: None`, so a failed diagram's warning fell back to
     // "line N, column M" instead of naming the deck it came from.
     sardown_ast::tag_diagram_origins(&mut ast, input_file);
-    let ast = sardown_enrich::Highlighter::with_style(stylesheet).highlight(ast);
+    // Only build the (expensive) syntect highlighter when the deck actually contains code
+    // blocks -- `with_style` loads every default syntax definition and the full theme, which is
+    // pure overhead otherwise.
+    let ast = if sardown_enrich::ast_contains_code_block(&ast) { sardown_enrich::Highlighter::with_style(stylesheet).highlight(ast) } else { ast };
     let diagrams = sardown_enrich::compile_diagrams(&ast);
     // group_columns runs per-slide, not once on the whole deck before splitting: doing it before
     // splitting would let a deck author's forgotten `::end` silently swallow every remaining
