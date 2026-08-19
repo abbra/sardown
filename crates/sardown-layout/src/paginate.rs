@@ -533,8 +533,21 @@ fn render_block(
                 // Glyph advances scale linearly with font size for a fixed font/text, so the
                 // scale needed to make the widest line fit can be computed directly from one
                 // measurement at the configured size, rather than re-shaping at candidate sizes.
-                let plain_text: String = tokens.iter().map(|t| t.text.as_str()).collect();
-                let natural_width_pt = measure_widest_line_pt(font_system, &plain_text, code_font_size_pt, &resolved.font_family);
+                // For a monospaced face that "measurement" needs no shaping pass at all -- every
+                // character advances by the same amount, so the widest line's natural width is
+                // exactly its character count times the advance (the old code paid a full
+                // plain-text shaping pass per block here, the dominant cost for code-heavy
+                // books). The estimate is exact because code is shaped with ligatures off (see
+                // `InlinePlacement::ligatures`), so no `fi`/`ff`/`fl` pair collapses into a
+                // single cell. Non-monospaced code faces fall back to the exact shaping
+                // measurement.
+                let natural_width_pt = match crate::estimate_code_natural_width_pt(font_system, tokens, code_font_size_pt, &resolved.font_family) {
+                    Some(est) => est,
+                    None => {
+                        let plain_text: String = tokens.iter().map(|t| t.text.as_str()).collect();
+                        measure_widest_line_pt(font_system, &plain_text, code_font_size_pt, &resolved.font_family)
+                    }
+                };
                 if natural_width_pt > max_width_pt {
                     // A small safety margin, not an exact-fit scale: shaping at the derived size
                     // could otherwise land the line's width back at (or a hair past) max_width_pt

@@ -1,6 +1,7 @@
 use crate::{PositionedElement, PositionedGlyph};
 use cosmic_text::{Align, Attrs, Buffer, Family, Feature, FeatureTag, FontFeatures, FontSystem, Metrics, Shaping, Style, Weight};
-use sardown_ast::{InlineNode, TextStyle};
+use sardown_ast::{HighlightedToken, InlineNode, TextStyle};
+use std::collections::HashMap;
 
 const PT_TO_PX_SCALE: f32 = 1.0; // 1pt == 1px at our fixed 96/72... kept 1:1 for Phase 1 simplicity
 
@@ -118,6 +119,85 @@ pub fn measure_widest_line_pt(font_system: &mut FontSystem, text: &str, size: f3
             _ => 0.0,
         })
         .fold(0.0_f32, f32::max)
+}
+
+/// The advance width, in points, of one character in `font_family` at `size`pt -- `Some` only
+/// when the resolved face is genuinely monospaced, in which case a line's natural (unwrapped)
+/// width is exactly `char_count * advance` and measuring it needs no shaping pass at all. Probes
+/// two characters that are maximally different in width in any proportional face ("m" and "W")
+/// and compares their shaped advances: a difference of more than a hair means the face is not
+/// monospaced and the estimate is unusable (callers fall back to `measure_widest_line_pt`'s full
+/// shaping pass). Cached per (family, size) in a thread-local -- a book's code blocks all share
+/// one or a few (family, size) pairs, so the probe shapes once per pair, not once per block.
+pub fn monospace_advance_pt(font_system: &mut FontSystem, font_family: &str, size: f32) -> Option<f32> {
+    thread_local! {
+        static MONOSPACE_ADVANCE_CACHE: std::cell::RefCell<HashMap<(String, u32), Option<f32>>> = Default::default();
+    }
+    let key = (font_family.to_string(), size.to_bits());
+    if let Some(hit) = MONOSPACE_ADVANCE_CACHE.with(|c| c.borrow().get(&key).copied()) {
+        return hit;
+    }
+    let probe = InlineNode {
+        text: "mW".to_string(),
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: font_family.to_string() },
+        link_target: None,
+    };
+    let mut advances = Vec::new();
+    for element in shape_paragraph(font_system, std::slice::from_ref(&probe), UNCONSTRAINED_WIDTH_PT) {
+        if let PositionedElement::TextRun { glyphs, .. } = element {
+            for g in glyphs {
+                advances.push(g.x_advance);
+            }
+        }
+    }
+    let result = match (advances.first().copied(), advances.get(1).copied()) {
+        (Some(a), Some(b)) if (a - b).abs() <= 0.01 => Some(a),
+        _ => None,
+    };
+    MONOSPACE_ADVANCE_CACHE.with(|c| {
+        c.borrow_mut().insert(key, result);
+    });
+    result
+}
+
+/// The natural (unwrapped) width, in points, of the widest `\n`-delimited line among a code
+/// block's `tokens` -- without any shaping pass. A monospaced face advances every character by
+/// the same amount, so a line's width is exactly its character count times that advance; the
+/// count is a plain string scan over the tokens' text. Returns `None` when the face is not
+/// monospaced (or the probe was inconclusive) -- callers then fall back to
+/// `measure_widest_line_pt`'s full shaping pass, which is what makes this estimate safe: it is
+/// only ever trusted when the face is provably uniform. Returns `None` (callers fall back to the
+/// exact shaping measurement) when any token contains a tab: cosmic-text expands `\t` to an
+/// 8-column tab stop, not a single cell, so a flat `char_count * advance` would understate the
+/// line's width (an unsafe direction -- the block would overflow instead of shrinking).
+pub fn estimate_code_natural_width_pt(font_system: &mut FontSystem, tokens: &[HighlightedToken], size: f32, font_family: &str) -> Option<f32> {
+    let advance = monospace_advance_pt(font_system, font_family, size)?;
+    if tokens.iter().any(|t| t.text.contains('\t')) {
+        return None;
+    }
+    // Per line: the count up to and including the line's last non-whitespace character. Trailing
+    // whitespace is excluded because shaping drops it (cosmic-text emits no advance-carrying
+    // glyph for a line's trailing spaces), so counting it would overstate the line's width and
+    // shrink blocks that actually fit.
+    let mut widest = 0usize;
+    let mut line = 0usize;
+    let mut line_content = 0usize;
+    for token in tokens {
+        for c in token.text.chars() {
+            if c == '\n' {
+                widest = widest.max(line_content);
+                line = 0;
+                line_content = 0;
+            } else {
+                line += 1;
+                if !c.is_whitespace() {
+                    line_content = line;
+                }
+            }
+        }
+    }
+    widest = widest.max(line_content);
+    Some(widest as f32 * advance)
 }
 
 /// One shaped glyph run, tagged with the index into the original `content` slice it came from.
