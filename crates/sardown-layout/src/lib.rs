@@ -4,6 +4,7 @@ mod image;
 mod numbering;
 mod paginate;
 mod shape;
+mod shaping_cache;
 mod table;
 mod toc;
 pub use header_footer::{apply_asymmetric_margins, layout_with_header_footer, render_headers_footers, resolve_template};
@@ -14,6 +15,7 @@ pub use paginate::{layout, layout_impl, layout_with_assets, prepare_layout_asset
 pub use shape::{
     estimate_code_natural_width_pt, measure_widest_line_pt, monospace_advance_pt, shape_paragraph, shape_rich_paragraph, ShapedRun, ShapingOptions,
 };
+pub use shaping_cache::reset_shaping_caches;
 pub use toc::{insert_table_of_contents, TocEntry};
 
 #[doc(hidden)]
