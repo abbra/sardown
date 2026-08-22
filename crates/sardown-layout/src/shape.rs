@@ -1,7 +1,6 @@
 use crate::{PositionedElement, PositionedGlyph};
 use cosmic_text::{Align, Attrs, Buffer, Family, Feature, FeatureTag, FontFeatures, FontSystem, Metrics, Shaping, Style, Weight};
 use sardown_ast::{HighlightedToken, InlineNode, TextStyle};
-use std::collections::HashMap;
 
 const PT_TO_PX_SCALE: f32 = 1.0; // 1pt == 1px at our fixed 96/72... kept 1:1 for Phase 1 simplicity
 
@@ -16,15 +15,13 @@ const PT_TO_PX_SCALE: f32 = 1.0; // 1pt == 1px at our fixed 96/72... kept 1:1 fo
 fn resolve_family<'a>(db: &fontdb::Database, requested: &'a str) -> Family<'a> {
     // A literal family name (the `name =>` arm below) is resolved by scanning EVERY loaded face's
     // alias list -- a full `db.faces()` pass with case-insensitive comparison. That depends only on
-    // the font set, which isn't mutated once layout starts, so cache it per (font database pointer,
-    // name) in a thread-local: each distinct name scans all faces at most ONCE instead of every call
-    // (`shape_rich_paragraph` calls this once per inline node, so one code block's many tokens would
-    // otherwise re-scan the whole DB for the same few names). Keyed by the database instance pointer
-    // so separate font systems never share entries. Mirrors `MONOSPACE_ADVANCE_CACHE`. (The generic-
-    // keyword arms above short-circuit before any scan, exactly as before.)
-    thread_local! {
-        static FAMILY_KNOWN_CACHE: std::cell::RefCell<HashMap<usize, HashMap<String, bool>>> = Default::default();
-    }
+    // the font set, which isn't mutated once layout starts, so the verdict is memoized per name in
+    // the thread-local `FAMILY_KNOWN_CACHE` (`shaping_cache.rs`): each distinct name scans all
+    // faces at most ONCE instead of every call (`shape_rich_paragraph` calls this once per inline
+    // node, so one code block's many tokens would otherwise re-scan the whole DB for the same few
+    // names). Entries belong to one font database -- the scope check in the `shape_*` entry points
+    // guarantees that -- so a second document with different loaded fonts never reuses this
+    // document's verdicts. (The generic-keyword arms above short-circuit before any scan.)
     match requested {
         "serif" => Family::Serif,
         "sans-serif" | "sans serif" => Family::SansSerif,
@@ -32,20 +29,12 @@ fn resolve_family<'a>(db: &fontdb::Database, requested: &'a str) -> Family<'a> {
         "cursive" => Family::Cursive,
         "fantasy" => Family::Fantasy,
         name => {
-            let db_key = db as *const fontdb::Database as usize;
-            let known = FAMILY_KNOWN_CACHE.with(|outer| {
-                let mut entries = outer.borrow_mut();
-                match entries.entry(db_key).or_default().get(name) {
-                    Some(&known) => known,
-                    None => {
-                        let k = db.faces().any(|face| face.families.iter().any(|(family_name, _)| family_name.eq_ignore_ascii_case(name)));
-                        if !k {
-                            eprintln!("warning: unknown font family {name:?}; falling back to a sans-serif font");
-                        }
-                        entries.entry(db_key).or_default().insert(name.to_owned(), k);
-                        k
-                    }
+            let known = crate::shaping_cache::family_known_cached(name, || {
+                let k = db.faces().any(|face| face.families.iter().any(|(family_name, _)| family_name.eq_ignore_ascii_case(name)));
+                if !k {
+                    eprintln!("warning: unknown font family {name:?}; falling back to a sans-serif font");
                 }
+                k
             });
             if known {
                 Family::Name(name)
@@ -58,6 +47,7 @@ fn resolve_family<'a>(db: &fontdb::Database, requested: &'a str) -> Family<'a> {
 }
 
 pub fn shape_paragraph(font_system: &mut FontSystem, content: &[InlineNode], max_width_pt: f32) -> Vec<PositionedElement> {
+    crate::shaping_cache::note_font_system(font_system);
     if content.is_empty() {
         return Vec::new();
     }
@@ -155,34 +145,27 @@ pub fn measure_widest_line_pt(font_system: &mut FontSystem, text: &str, size: f3
 /// shaping pass). Cached per (family, size) in a thread-local -- a book's code blocks all share
 /// one or a few (family, size) pairs, so the probe shapes once per pair, not once per block.
 pub fn monospace_advance_pt(font_system: &mut FontSystem, font_family: &str, size: f32) -> Option<f32> {
-    thread_local! {
-        static MONOSPACE_ADVANCE_CACHE: std::cell::RefCell<HashMap<(String, u32), Option<f32>>> = Default::default();
-    }
+    crate::shaping_cache::note_font_system(font_system);
     let key = (font_family.to_string(), size.to_bits());
-    if let Some(hit) = MONOSPACE_ADVANCE_CACHE.with(|c| c.borrow().get(&key).copied()) {
-        return hit;
-    }
-    let probe = InlineNode {
-        text: "mW".to_string(),
-        style: TextStyle { bold: false, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: font_family.into() },
-        link_target: None,
-    };
-    let mut advances = Vec::new();
-    for element in shape_paragraph(font_system, std::slice::from_ref(&probe), UNCONSTRAINED_WIDTH_PT) {
-        if let PositionedElement::TextRun { glyphs, .. } = element {
-            for g in glyphs {
-                advances.push(g.x_advance);
+    crate::shaping_cache::monospace_cached(&key, || {
+        let probe = InlineNode {
+            text: "mW".to_string(),
+            style: TextStyle { bold: false, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: font_family.into() },
+            link_target: None,
+        };
+        let mut advances = Vec::new();
+        for element in shape_paragraph(font_system, std::slice::from_ref(&probe), UNCONSTRAINED_WIDTH_PT) {
+            if let PositionedElement::TextRun { glyphs, .. } = element {
+                for g in glyphs {
+                    advances.push(g.x_advance);
+                }
             }
         }
-    }
-    let result = match (advances.first().copied(), advances.get(1).copied()) {
-        (Some(a), Some(b)) if (a - b).abs() <= 0.01 => Some(a),
-        _ => None,
-    };
-    MONOSPACE_ADVANCE_CACHE.with(|c| {
-        c.borrow_mut().insert(key, result);
-    });
-    result
+        match (advances.first().copied(), advances.get(1).copied()) {
+            (Some(a), Some(b)) if (a - b).abs() <= 0.01 => Some(a),
+            _ => None,
+        }
+    })
 }
 
 /// The natural (unwrapped) width, in points, of the widest `\n`-delimited line among a code
@@ -277,6 +260,7 @@ impl ShapingOptions {
 }
 
 pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode], max_width_pt: f32, align: Align, options: ShapingOptions) -> Vec<ShapedRun> {
+    crate::shaping_cache::note_font_system(font_system);
     if content.is_empty() {
         return Vec::new();
     }
