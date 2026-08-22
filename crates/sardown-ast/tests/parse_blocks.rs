@@ -387,7 +387,7 @@ fn inline_code_spans_use_a_monospace_font_distinct_from_surrounding_text() {
             let plain = content.iter().find(|n| n.text.contains("Some")).expect("missing plain text run");
             let code = content.iter().find(|n| n.text == "inline code").expect("missing inline code run");
             assert_ne!(code.style.font_family, plain.style.font_family, "expected inline code to use a distinct font family from surrounding text");
-            assert_eq!(code.style.font_family, "monospace");
+            assert_eq!(code.style.font_family.as_ref(), "monospace");
         }
         other => panic!("expected Paragraph, got {other:?}"),
     }

@@ -6,6 +6,8 @@ use cosmic_text::FontSystem;
 use sardown_ast::BlockNode;
 use sardown_enrich::DiagramTable;
 
+use std::sync::Arc;
+
 const PT_PER_MM: f32 = 2.834_645_7;
 const LINE_SPACING_PT: f32 = 4.0; // gap after each block
 
@@ -338,7 +340,7 @@ fn marker_inline_node(marker: &str, typography: &sardown_style::TypographyStyle)
             strikethrough: false,
             size: typography.body_size_pt,
             color: typography.body_color.0,
-            font_family: typography.font_family.clone(),
+            font_family: typography.font_family.as_str().into(),
         },
         link_target: None,
     }
@@ -526,6 +528,9 @@ fn render_block(
         }
         BlockNode::CodeBlock { language, tokens } => {
             let resolved = cursor.style.code_block.resolve(language.as_deref());
+            // One `Arc<str>` for the whole block: every token's `TextStyle` below shares it by
+            // refcount instead of re-allocating the same family name per token.
+            let code_font_family: Arc<str> = resolved.font_family.as_str().into();
             let code_indent_pt = indent_pt + 8.0;
             let max_width_pt = cursor.content_width_pt - code_indent_pt;
             let mut code_font_size_pt = resolved.font_size_pt;
@@ -589,7 +594,7 @@ fn render_block(
                         strikethrough: false,
                         size: code_font_size_pt,
                         color: resolved.label_color.0,
-                        font_family: resolved.font_family.clone(),
+                        font_family: code_font_family.clone(),
                     },
                     link_target: None,
                 };
@@ -617,7 +622,7 @@ fn render_block(
                         strikethrough: false,
                         size: code_font_size_pt,
                         color: resolved.label_color.0,
-                        font_family: resolved.font_family.clone(),
+                        font_family: code_font_family.clone(),
                     },
                     link_target: None,
                 });
@@ -630,7 +635,7 @@ fn render_block(
                     strikethrough: false,
                     size: code_font_size_pt,
                     color: t.color,
-                    font_family: resolved.font_family.clone(),
+                    font_family: code_font_family.clone(),
                 },
                 link_target: None,
             }));
@@ -721,7 +726,7 @@ fn render_block(
                         strikethrough: false,
                         size: code_font_size_pt * 0.8,
                         color: resolved.label_color.0,
-                        font_family: resolved.font_family.clone(),
+                        font_family: code_font_family.clone(),
                     },
                     link_target: None,
                 };

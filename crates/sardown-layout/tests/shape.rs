@@ -24,7 +24,7 @@ fn font_system_with_fallback() -> FontSystem {
 fn plain_run(text: &str) -> InlineNode {
     InlineNode {
         text: text.to_string(),
-        style: TextStyle { bold: false, italic: false, strikethrough: false, size: 12.0, color: [0, 0, 0], font_family: "sans-serif".to_string() },
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size: 12.0, color: [0, 0, 0], font_family: "sans-serif".into() },
         link_target: None,
     }
 }
@@ -32,7 +32,7 @@ fn plain_run(text: &str) -> InlineNode {
 fn colored_run(text: &str, color: [u8; 3]) -> InlineNode {
     InlineNode {
         text: text.to_string(),
-        style: TextStyle { bold: false, italic: false, strikethrough: false, size: 12.0, color, font_family: "sans-serif".to_string() },
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size: 12.0, color, font_family: "sans-serif".into() },
         link_target: None,
     }
 }
@@ -49,7 +49,7 @@ fn font_system_with_distinct_generic_families() -> FontSystem {
 fn run_with_family(text: &str, font_family: &str) -> InlineNode {
     InlineNode {
         text: text.to_string(),
-        style: TextStyle { bold: false, italic: false, strikethrough: false, size: 12.0, color: [0, 0, 0], font_family: font_family.to_string() },
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size: 12.0, color: [0, 0, 0], font_family: font_family.into() },
         link_target: None,
     }
 }

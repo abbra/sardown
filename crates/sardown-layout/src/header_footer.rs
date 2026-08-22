@@ -103,7 +103,7 @@ fn render_band(
                         strikethrough: false,
                         size: style.font_size_pt,
                         color: style.color.0,
-                        font_family: style.font_family.clone(),
+                        font_family: style.font_family.as_str().into(),
                     },
                     link_target: None,
                 };

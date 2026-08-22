@@ -5,7 +5,7 @@ use sardown_style::{Color, SlideLayoutStyle, Stylesheet};
 fn plain(text: &str, size: f32) -> InlineNode {
     InlineNode {
         text: text.to_string(),
-        style: TextStyle { bold: false, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: "sans-serif".to_string() },
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: "sans-serif".into() },
         link_target: None,
     }
 }
@@ -13,7 +13,7 @@ fn plain(text: &str, size: f32) -> InlineNode {
 fn bold(text: &str, size: f32) -> InlineNode {
     InlineNode {
         text: text.to_string(),
-        style: TextStyle { bold: true, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: "sans-serif".to_string() },
+        style: TextStyle { bold: true, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: "sans-serif".into() },
         link_target: None,
     }
 }

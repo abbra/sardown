@@ -7,7 +7,7 @@ use sardown_style::Stylesheet;
 fn plain_inline(text: &str) -> InlineNode {
     InlineNode {
         text: text.to_string(),
-        style: TextStyle { bold: false, italic: false, strikethrough: false, size: 12.0, color: [0, 0, 0], font_family: "sans-serif".to_string() },
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size: 12.0, color: [0, 0, 0], font_family: "sans-serif".into() },
         link_target: None,
     }
 }

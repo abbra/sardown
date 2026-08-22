@@ -1,9 +1,11 @@
 mod columns;
 mod parse;
 mod slug;
+
 pub use columns::group_columns;
 pub use parse::{heading_style_for_level, parse, parse_with_slugs, parse_with_style, tag_diagram_origins};
 pub use slug::{generate_heading_id, SlugGenerator};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BlockNode {
@@ -61,6 +63,11 @@ pub struct InlineNode {
     pub link_target: Option<LinkTarget>,
 }
 
+/// `font_family` is an `Arc<str>` rather than a `String`: every inline run carries its style,
+/// and nearly all runs in a document share one of a handful of family names (body, heading,
+/// monospace). A plain `String` meant a fresh heap allocation + memcpy of the same few names
+/// for every text run at parse time, and again for every code token / list marker / measured
+/// word downstream; `Arc<str>` turns each of those into a refcount bump.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextStyle {
     pub bold: bool,
@@ -68,7 +75,7 @@ pub struct TextStyle {
     pub strikethrough: bool,
     pub size: f32,
     pub color: [u8; 3],
-    pub font_family: String,
+    pub font_family: Arc<str>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
