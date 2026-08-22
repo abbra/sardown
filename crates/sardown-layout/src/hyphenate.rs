@@ -3,6 +3,10 @@ use cosmic_text::FontSystem;
 use hyphenation::{Hyphenator as _, Language, Load, Standard};
 use sardown_ast::InlineNode;
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::sync::Arc;
+
 /// Wraps a loaded `hyphenation` dictionary for one language.
 pub struct Hyphenator {
     dictionary: Standard,
@@ -44,6 +48,17 @@ impl Hyphenator {
 /// pass. Shaping a word per candidate hyphenation prefix -- the previous approach -- turned a
 /// single long word with N dictionary break points into N+1 full cosmic-text shaping passes;
 /// here the whole word costs exactly one pass regardless of how many break candidates exist.
+///
+/// That one pass is itself cached: prose reuses the same few hundred/thousand words over and
+/// over, and the wrap simulation below shapes *every* word of *every* paragraph (to track
+/// running line widths), so an uncached path paid a full cosmic-text `Buffer` construction +
+/// shaping pass per word occurrence -- measured at ~3x layout time on a 2,400-paragraph prose
+/// corpus with hyphenation enabled. Results are memoized per style (family + size + bold/
+/// italic -- the only style fields that affect advance widths; color/strikethrough never do)
+/// in a thread-local, mirroring `shape.rs`'s `MONOSPACE_ADVANCE_CACHE` / `FAMILY_KNOWN_CACHE`
+/// pattern. The inner map is keyed by `str` so cache hits allocate nothing; only misses pay
+/// the boxed-word key.
+#[derive(Clone)]
 struct ShapedWord {
     /// `(cluster_start, cumulative advance up to and including the glyph starting there)`, in
     /// cluster order (which is text order for an unwrapped single word).
@@ -51,7 +66,36 @@ struct ShapedWord {
     total: f32,
 }
 
+/// The style fields `shape_word`'s output actually depends on.
+#[derive(PartialEq, Eq, Hash, Clone)]
+struct WordStyleKey {
+    family: Arc<str>,
+    size_bits: u32,
+    bold: bool,
+    italic: bool,
+}
+
+impl WordStyleKey {
+    fn of(style: &sardown_ast::TextStyle) -> Self {
+        Self { family: Arc::clone(&style.font_family), size_bits: style.size.to_bits(), bold: style.bold, italic: style.italic }
+    }
+}
+
+/// Upper bound on distinct words remembered per style, so a long-lived embedding process can't
+/// grow the cache without limit across arbitrarily many documents. A single render's vocabulary
+/// sits orders of magnitude below this; hitting it just forgets that style's words and starts
+/// over.
+const WORD_CACHE_MAX_ENTRIES: usize = 100_000;
+
+thread_local! {
+    static WORD_SHAPING_CACHE: RefCell<HashMap<WordStyleKey, HashMap<Box<str>, ShapedWord>>> = RefCell::new(HashMap::new());
+}
+
 fn shape_word(font_system: &mut FontSystem, style: &sardown_ast::TextStyle, word: &str) -> ShapedWord {
+    let key = WordStyleKey::of(style);
+    if let Some(hit) = WORD_SHAPING_CACHE.with(|c| c.borrow().get(&key).and_then(|inner| inner.get(word)).cloned()) {
+        return hit;
+    }
     let node = InlineNode { text: word.to_string(), style: style.clone(), link_target: None };
     let elements = shape_paragraph(font_system, std::slice::from_ref(&node), f32::MAX);
     let mut advances = Vec::new();
@@ -64,7 +108,16 @@ fn shape_word(font_system: &mut FontSystem, style: &sardown_ast::TextStyle, word
             }
         }
     }
-    ShapedWord { advances, total }
+    let shaped = ShapedWord { advances, total };
+    WORD_SHAPING_CACHE.with(|c| {
+        let mut outer = c.borrow_mut();
+        let inner = outer.entry(key).or_default();
+        if inner.len() >= WORD_CACHE_MAX_ENTRIES {
+            inner.clear();
+        }
+        inner.insert(Box::from(word), shaped.clone());
+    });
+    shaped
 }
 
 impl ShapedWord {
