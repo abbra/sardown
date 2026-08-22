@@ -357,7 +357,11 @@ pub fn parse_with_style(markdown: &str, slugs: &mut SlugGenerator, next_diagram_
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TASKLISTS);
-    let mut diagram_positions = mermaid_diagram_positions(markdown).into_iter();
+    // A ```mermaid fence implies the substring "mermaid", so this cheap scan gates the second
+    // full pulldown-cmark pass below: documents without a single diagram (the overwhelming
+    // majority) skip the extra tokenization entirely -- the same "gate expensive setup when the
+    // feature is absent" pattern the highlighter's ast_contains_code_block gate uses.
+    let mut diagram_positions = if markdown.contains("mermaid") { mermaid_diagram_positions(markdown).into_iter() } else { Vec::new().into_iter() };
     let typo = Typography {
         heading: &style.heading,
         body_size: style.typography.body_size_pt,
