@@ -11,7 +11,7 @@ use krilla::geom::{Point, Size, Transform};
 use krilla::image::Image;
 use krilla::outline::{Outline, OutlineNode};
 use krilla::page::PageSettings;
-use krilla::text::Font;
+use krilla::text::{Font, KrillaGlyph};
 use krilla::{Data, SerializeSettings};
 use krilla_svg::SurfaceExt;
 use sardown_enrich::DiagramTable;
@@ -43,15 +43,6 @@ pub fn render_pdf(
     // don't reload/re-register the font.
     let mut font_cache: HashMap<fontdb::ID, Font> = HashMap::new();
 
-    // Every raster image is turned into a krilla::Image exactly once here, not once per element
-    // that references it: `Image::from_rgba8` copies the whole pixel buffer, and a figure reused
-    // on several pages (or a watermarked layout) used to pay that copy for every single
-    // placement. `krilla::Image` is `Arc`-backed, so cloning the cache entry per element is
-    // cheap.
-    let mut raster_cache: HashMap<&str, Image> = HashMap::new();
-    for (image_id, decoded) in images {
-        raster_cache.insert(image_id, Image::from_rgba8((*decoded.rgba8).clone(), decoded.width, decoded.height));
-    }
     // Vector diagrams arrive already parsed into render-ready `usvg::Tree`s -- built once per
     // document against the document's own fontdb (see `sardown_enrich::svg_tree_options`) -- so
     // this is just a keyed clone and no SVG markup is ever parsed inside emission. Parse
@@ -61,6 +52,16 @@ pub fn render_pdf(
         svg_cache.insert(diagram_id, diagram.tree.clone());
     }
 
+    // Raster images are converted into a `krilla::Image` lazily, on their first placement:
+    // `Image::from_rgba8` copies the whole pixel buffer, and images whose every placement was
+    // dropped before emission ever saw them (pagination page-breaks, slides auto-shrink
+    // retries) would otherwise pay that copy for nothing. A referenced image is still converted
+    // exactly once per document -- not once per placement -- and `krilla::Image` is
+    // `Arc`-backed, so cloning the entry per placement stays cheap.
+    let mut raster_cache: HashMap<&str, Image> = HashMap::new();
+    // Reused across every TextRun in the document: one scratch buffer instead of one fresh
+    // Vec allocation per emitted text run.
+    let mut krilla_glyphs: Vec<KrillaGlyph> = Vec::new();
     for page_data in pages {
         let mut page = document.start_page_with(PageSettings::new(page_size));
         let mut pending_annotations = Vec::new();
@@ -81,7 +82,8 @@ pub fn render_pdf(
                                 font
                             }
                         };
-                        let krilla_glyphs: Vec<_> = glyphs.iter().map(|g| glyphs::to_krilla_glyph(g, *size)).collect();
+                        krilla_glyphs.clear();
+                        krilla_glyphs.extend(glyphs.iter().map(|g| glyphs::to_krilla_glyph(g, *size)));
                         // `draw_glyphs` has no color parameter of its own — it fills with
                         // whatever `set_fill` last set on the surface, so every text run must set
                         // its own color explicitly or it silently inherits the last shape's fill
@@ -111,6 +113,14 @@ pub fn render_pdf(
                         surface.draw_path(&path);
                     }
                     PositionedElement::RasterImage { x, y, width, height, image_id } => {
+                        // Convert on first placement (see the raster_cache comment above); an id
+                        // with no decoded entry draws nothing, exactly as before.
+                        if !raster_cache.contains_key(image_id.as_str()) {
+                            if let Some(decoded) = images.get(image_id.as_str()) {
+                                let image = Image::from_rgba8((*decoded.rgba8).clone(), decoded.width, decoded.height);
+                                raster_cache.insert(image_id.as_str(), image);
+                            }
+                        }
                         if let Some(image) = raster_cache.get(image_id.as_str()) {
                             let size = Size::from_wh(*width, *height).context("invalid image size")?;
                             surface.push_transform(&Transform::from_translate(*x, *y));
@@ -169,4 +179,3 @@ pub fn render_pdf(
 
     document.finish().context("krilla failed to serialize the document")
 }
-
