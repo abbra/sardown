@@ -134,7 +134,7 @@ const UNCONSTRAINED_WIDTH_PT: f32 = 1_000_000.0;
 pub fn measure_widest_line_pt(font_system: &mut FontSystem, text: &str, size: f32, font_family: &str) -> f32 {
     let node = InlineNode {
         text: text.to_string(),
-        style: TextStyle { bold: false, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: font_family.to_string() },
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: font_family.into() },
         link_target: None,
     };
     shape_paragraph(font_system, std::slice::from_ref(&node), UNCONSTRAINED_WIDTH_PT)
@@ -164,7 +164,7 @@ pub fn monospace_advance_pt(font_system: &mut FontSystem, font_family: &str, siz
     }
     let probe = InlineNode {
         text: "mW".to_string(),
-        style: TextStyle { bold: false, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: font_family.to_string() },
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: font_family.into() },
         link_target: None,
     };
     let mut advances = Vec::new();

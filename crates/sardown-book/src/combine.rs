@@ -164,7 +164,7 @@ fn synthesized_heading(title: &str, slugs: &mut SlugGenerator, style: &sardown_s
                 strikethrough: false,
                 size: resolved.size_pt,
                 color: resolved.color.0,
-                font_family: resolved.font_family.clone(),
+                font_family: resolved.font_family.as_str().into(),
             },
             link_target: None,
         }],

@@ -52,7 +52,7 @@ fn collect_entries_into(ast: &[BlockNode], depth: u8, entries: &mut Vec<TocEntry
 fn shape_line(font_system: &mut FontSystem, text: &str, size: f32, color: [u8; 3], font_family: &str) -> (PositionedElement, f32) {
     let node = InlineNode {
         text: text.to_string(),
-        style: TextStyle { bold: false, italic: false, strikethrough: false, size, color, font_family: font_family.to_string() },
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size, color, font_family: font_family.into() },
         link_target: None,
     };
     let elements = shape_paragraph(font_system, std::slice::from_ref(&node), f32::MAX);

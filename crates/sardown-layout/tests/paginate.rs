@@ -58,7 +58,7 @@ use sardown_ast::{HighlightedToken, InlineNode, TextStyle};
 fn plain_inline(text: &str) -> InlineNode {
     InlineNode {
         text: text.to_string(),
-        style: TextStyle { bold: false, italic: false, strikethrough: false, size: 12.0, color: [0, 0, 0], font_family: "sans-serif".to_string() },
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size: 12.0, color: [0, 0, 0], font_family: "sans-serif".into() },
         link_target: None,
     }
 }
@@ -66,7 +66,7 @@ fn plain_inline(text: &str) -> InlineNode {
 fn sized_inline(text: &str, size: f32) -> InlineNode {
     InlineNode {
         text: text.to_string(),
-        style: TextStyle { bold: false, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: "sans-serif".to_string() },
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: "sans-serif".into() },
         link_target: None,
     }
 }
@@ -680,6 +680,7 @@ fn table_header_separator_line_sits_between_rows_not_through_row_ones_text() {
 
 use sardown_enrich::{CompiledDiagram, DiagramTable};
 
+
 #[test]
 fn mermaid_diagram_produces_a_vector_graphic_element() {
     let ast = vec![BlockNode::MermaidDiagram { id: "d1".to_string(), source: "flowchart TD\n A-->B".to_string(), line: 1, column: 1, file: None }];
@@ -774,7 +775,7 @@ fn heading_after_mermaid_diagram_does_not_overlap_the_diagrams_bottom_edge() {
     let heading_size = 22.0;
     let heading_content = InlineNode {
         text: "Next".to_string(),
-        style: TextStyle { bold: false, italic: false, strikethrough: false, size: heading_size, color: [0, 0, 0], font_family: "sans-serif".to_string() },
+        style: TextStyle { bold: false, italic: false, strikethrough: false, size: heading_size, color: [0, 0, 0], font_family: "sans-serif".into() },
         link_target: None,
     };
     let ast = vec![

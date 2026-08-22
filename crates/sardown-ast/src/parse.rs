@@ -1,6 +1,8 @@
 use crate::{BlockNode, ColumnAlignment, HighlightedToken, ImageSource, InlineNode, LinkTarget, SlugGenerator, TextStyle};
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
+use std::sync::Arc;
+
 const HEADING_SIZES: [f32; 6] = [28.0, 22.0, 18.0, 16.0, 14.0, 12.0];
 const DEFAULT_COLOR: [u8; 3] = [0, 0, 0];
 
@@ -12,7 +14,7 @@ struct Typography<'a> {
     heading: &'a sardown_style::HeadingStyle,
     body_size: f32,
     body_color: [u8; 3],
-    body_font_family: String,
+    body_font_family: Arc<str>,
     table_cell_size: f32,
 }
 
@@ -24,11 +26,11 @@ struct InlineBuilder {
     link_target: Option<LinkTarget>,
     base_size: f32,
     base_color: [u8; 3],
-    base_font_family: String,
+    base_font_family: Arc<str>,
 }
 
 impl InlineBuilder {
-    fn new(base_size: f32, base_color: [u8; 3], base_font_family: String) -> Self {
+    fn new(base_size: f32, base_color: [u8; 3], base_font_family: Arc<str>) -> Self {
         Self { runs: Vec::new(), bold_depth: 0, italic_depth: 0, strikethrough_depth: 0, link_target: None, base_size, base_color, base_font_family }
     }
 
@@ -39,7 +41,7 @@ impl InlineBuilder {
     /// Like `push_text`, but with an explicit font family instead of `base_font_family` --
     /// used for inline code spans, which always render monospace regardless of the surrounding
     /// text's own configured body font.
-    fn push_text_with_font_family(&mut self, text: String, font_family: String) {
+    fn push_text_with_font_family(&mut self, text: String, font_family: Arc<str>) {
         if text.is_empty() {
             return;
         }
@@ -72,7 +74,7 @@ fn link_target_from_url(url: &str) -> LinkTarget {
 fn apply_inline_event(builder: &mut InlineBuilder, event: Event) {
     match event {
         Event::Text(text) => builder.push_text(text.into_string()),
-        Event::Code(text) => builder.push_text_with_font_family(text.into_string(), "monospace".to_string()),
+        Event::Code(text) => builder.push_text_with_font_family(text.into_string(), "monospace".into()),
         Event::Start(Tag::Strong) => builder.bold_depth += 1,
         Event::End(TagEnd::Strong) => builder.bold_depth = builder.bold_depth.saturating_sub(1),
         Event::Start(Tag::Emphasis) => builder.italic_depth += 1,
@@ -97,7 +99,7 @@ fn lower_inline_events<'a, I: Iterator<Item = Event<'a>>>(
     end_tag: TagEnd,
     base_size: f32,
     base_color: [u8; 3],
-    base_font_family: String,
+    base_font_family: Arc<str>,
 ) -> Vec<InlineNode> {
     let mut builder = InlineBuilder::new(base_size, base_color, base_font_family);
     for event in events.by_ref() {
@@ -166,7 +168,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
             Event::Start(Tag::Heading { level, .. }) => {
                 let level_u8 = heading_level_u8(level);
                 let resolved = typo.heading.resolve(level_u8);
-                let content = lower_inline_events(parser, TagEnd::Heading(level), resolved.size_pt, resolved.color.0, resolved.font_family.clone());
+                let content = lower_inline_events(parser, TagEnd::Heading(level), resolved.size_pt, resolved.color.0, resolved.font_family.as_str().into());
                 let text: String = content.iter().map(|n| n.text.as_str()).collect::<Vec<_>>().join("");
                 let id = slugs.generate(&text);
                 blocks.push(BlockNode::Heading { level: level_u8, id, content });
@@ -314,7 +316,7 @@ fn collect_table_cells<'a, I: Iterator<Item = Event<'a>>>(
     while let Some(event) = parser.next() {
         match event {
             Event::Start(Tag::TableCell) => {
-                cells.push(lower_inline_events(parser, TagEnd::TableCell, table_cell_size, DEFAULT_COLOR, table_cell_font_family.to_string()));
+                cells.push(lower_inline_events(parser, TagEnd::TableCell, table_cell_size, DEFAULT_COLOR, table_cell_font_family.into()));
             }
             Event::End(tag) if tag == end_tag => break,
             _ => {}
@@ -355,17 +357,16 @@ pub fn parse_with_style(markdown: &str, slugs: &mut SlugGenerator, next_diagram_
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TASKLISTS);
-
     let mut diagram_positions = mermaid_diagram_positions(markdown).into_iter();
-    let mut parser = Parser::new_ext(markdown, options).peekable();
     let typo = Typography {
         heading: &style.heading,
         body_size: style.typography.body_size_pt,
         body_color: style.typography.body_color.0,
-        body_font_family: style.typography.font_family.clone(),
+        body_font_family: style.typography.font_family.as_str().into(),
         table_cell_size: style.table.text_size_pt,
     };
     // TagEnd::Item is never opened at the top level, so it never matches; used only as a
+    let mut parser = Parser::new_ext(markdown, options).peekable();
     // sentinel that can't legitimately occur, meaning we consume until the iterator is exhausted.
     lower_block_events(&mut parser, TagEnd::Item, slugs, next_diagram_id, &mut diagram_positions, &typo)
 }
@@ -434,7 +435,14 @@ pub fn tag_diagram_origins(blocks: &mut [BlockNode], file: &std::path::Path) {
 /// `HEADING_SIZES`.
 pub fn heading_style_for_level(level: u8) -> TextStyle {
     let size = HEADING_SIZES[(level.clamp(1, 6) - 1) as usize];
-    TextStyle { bold: false, italic: false, strikethrough: false, size, color: DEFAULT_COLOR, font_family: sardown_style::HeadingStyle::default().font_family }
+    TextStyle {
+        bold: false,
+        italic: false,
+        strikethrough: false,
+        size,
+        color: DEFAULT_COLOR,
+        font_family: sardown_style::HeadingStyle::default().font_family.into(),
+    }
 }
 
 fn heading_level_u8(level: HeadingLevel) -> u8 {
