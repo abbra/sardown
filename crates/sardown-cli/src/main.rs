@@ -1,5 +1,8 @@
 use clap::{Parser, Subcommand};
 use sardown_enrich::Highlighter;
+
+mod bench;
+mod benchgen;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -78,6 +81,36 @@ enum Commands {
         /// if neither is given, defaults to today's date.
         #[arg(long)]
         date: Option<String>,
+    },
+    /// Generate seeded complex Markdown input, render it, and report per-stage timings
+    Bench {
+        /// PRNG seed; the same seed regenerates byte-identical benchmark input
+        #[arg(long, default_value_t = 42)]
+        seed: u64,
+        /// What to generate and which production pipeline to drive
+        #[arg(long, value_enum, default_value_t = bench::BenchMode::Render)]
+        mode: bench::BenchMode,
+        /// Output volume: approximate page count (render/book) or slide count (slides)
+        #[arg(long, default_value_t = 25)]
+        pages: usize,
+        /// Full-pipeline repetitions averaged into the timing report
+        #[arg(long, default_value_t = 3)]
+        iterations: usize,
+        /// Path to a stylesheet TOML file passed through to the pipeline. Falls back to
+        /// built-in defaults if omitted.
+        #[arg(long)]
+        style: Option<PathBuf>,
+        /// Write the generated Markdown (render/slides modes) here for inspection or
+        /// regression diffing
+        #[arg(long)]
+        markdown_out: Option<PathBuf>,
+        /// Book mode: directory for the generated book tree. Defaults to a fresh directory
+        /// under the system temp dir; an existing tree is replaced on each run.
+        #[arg(long)]
+        book_dir: Option<PathBuf>,
+        /// Where to write the final rendered PDF. PDF bytes are discarded when omitted.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -279,6 +312,9 @@ fn main() -> anyhow::Result<()> {
             let output_layout =
                 timed_stage("Laying out slides", || sardown_slides::render_slide_deck(&markdown, &input, &base_dir, &mut font_system, &stylesheet))?;
             write_pdf_output(&output_layout, &font_system, &output, "slides")
+        }
+        Commands::Bench { seed, mode, pages, iterations, style, markdown_out, book_dir, output } => {
+            crate::bench::run(bench::BenchArgs { seed, mode, pages, iterations, style, markdown_out, book_dir, output })
         }
     }
 }
