@@ -164,7 +164,31 @@ Ranked by expected impact on the realistic book, *today*:
 
 ---
 
-## Appendix A — module map (where each concern lives)
+## 8. Second optimization pass (independent review, 2026-08)
+
+A fresh review re-verified §2–§6 at HEAD (profile still ~63% cosmic-text internals; no
+sardown-side symbol above ~1.5%) and found five remaining removable costs. All numbers below are
+`cargo build --release` "Laying out pages" wall-clock on the same machine, same corpora as §5.
+
+| # | What was found | Fix | Measured effect |
+|---|---|---|---|
+| 15 | **Hyphenation shaped every word of every paragraph with no cache.** The greedy-wrap simulation in `hyphenate.rs` runs `shape_word` per word occurrence (a full cosmic-text `Buffer` shape each), and `" "`/`"-"` were re-shaped per inline node — while the same crate already cached the monospace probe and family-name lookups. | Thread-local `WORD_SHAPING_CACHE` keyed by (family, size bits, bold, italic, word) — the only style fields that affect advances. Inner map keyed by `str` so hits allocate nothing; capped per style. Space/hyphen widths ride the same cache. | Prose corpus with `hyphenation = true`: **1.30s → 0.48s** (was +183% over hyphenation-off, now +4%). Book with hyphenation on: **6.69s → 5.78s** (+19% → +2.5%). Hyphenation-off numbers unchanged. |
+| 16 | **Slide auto-shrink deep-cloned the slide AST and the full `Stylesheet` on every shrink iteration** — including iteration 1 at scale 1.0, where `rescale_slide_content` provably writes back the values already present (each target is its own parse-time source value ×1.0). | Stylesheet cloned + overridden once per slide; each retry applies only the scale step in place (`apply_slide_scale`, which sets fields from source × scale so retries can't compound). AST clone+rescale skipped at scale 1.0 when no color/body-size overrides are set. | Removes O(iterations × slide bytes) churn per slide; layout call itself unchanged. |
+| 17 | **Every diagram's SVG was parsed twice per document** — once in `sardown-enrich` (mermaid output, `Options::default()`, tree discarded after reading size) and again in `sardown-pdf`'s `svg_cache` (document-fontdb options). Embedded `.svg` files/data URIs had the same split. | `CompiledDiagram` now carries a render-ready `usvg::Tree` built once through `sardown_enrich::svg_tree_options(fontdb)` (the options builder relocated here from sardown-pdf, so text shaping uses the document's own fonts exactly as before). CLI/slides build the font system *before* enrichment; `prepare_layout_assets` threads the same options into embedded-SVG collection. PDF emission clones trees; no SVG markup is parsed at render time. | Book diagram stage 0.09s→0.15s on this corpus (one fontdb clone + tree build up front, amortized); eliminates the per-diagram re-parse entirely and matters proportionally more the more/larger a document's diagrams are. Golden-image visual regression passes byte-identical. |
+| 18 | **A second full pulldown-cmark pass ran on every document** to locate ```mermaid fences, even with zero diagrams. | Gated on `markdown.contains("mermaid")` — a fence implies the substring; the same pattern as #7's highlighter gate. | Skips one full tokenization pass for diagram-free documents (parse stage is tens of ms on the book; pure win). |
+| 19 | **`TextStyle.font_family` was a plain `String`, copied per inline run** at parse time, per code-block token, per list marker, and per measured hyphenation word — all for one of a handful of names. | `Arc<str>`: construction sites convert once (per document/heading/code block); every downstream clone is a refcount bump. | Part of the ~3.7% allocator/memmove profile share; not individually visible at the stage-timing level, which is exactly why it's a type fix and not a hotspot patch. |
+| 20 | **PDF emission converted every raster image eagerly and allocated a fresh `Vec` per text run.** The raster cache cloned every image's full RGBA buffer up front — including images whose placements were dropped by pagination/slides shrink before emission saw them — and each `TextRun` built its own `Vec<KrillaGlyph>`. | Raster conversion is lazy (first placement, still exactly once per referenced image; missing ids draw nothing as before), and one scratch glyph buffer is reused across every run. | Removes O(unreferenced-image bytes) copies and one alloc per emitted run; invisible at stage-timing granularity, which is why both are emission-loop hygiene rather than headline wins. |
+
+### A ceiling this pass documented rather than fixed
+
+`svg_cache` (fix #10) prevents re-*parsing*, but a `VectorGraphic` referenced from N pages is
+still *re-rendered* N times: krilla-svg walks the whole `usvg::Tree` into content ops per
+placement, and (verified in krilla-svg 0.8.1 source) clones its `fontdb` per placement before
+`Arc::make_mut`. No form-XObject reuse is exposed via `draw_svg`, so this is an upstream ask,
+not a sardown-side fix. Don't read #10/#17 as "repeated diagrams are free" — they are merely
+parse-free.
+
+ ## Appendix A — module map (where each concern lives)
 
 ```
 crates/sardown-layout/src/
@@ -174,14 +198,19 @@ crates/sardown-layout/src/
   paginate.rs     block/pagination: layout_with_* entry, CodeBlock arm (uses J+H),
                   table path (#3 shape_row_cells reuse), LayoutAssets hoisting (#4)
   header_footer.rs  ShapedZoneCache (#9), layout_with_header_footer
-  image.rs        decode_images + DecodedImage{rgba8: Arc<Vec<u8>>}, canonical_base, data URIs (#13/#4)
+  image.rs        decode_images + DecodedImage{rgba8: Arc<Vec<u8>>}, canonical_base, data URIs (#13/#4);
+                  collect_svg_diagrams(ast, base_dir, &svg_options) → tree-bearing CompiledDiagram (#17)
   table.rs        column_widths / measure_cell single pass (#2)
-  hyphenate.rs    ShapedWord single-pass prefix widths (#1)
+  hyphenate.rs    ShapedWord single-pass prefix widths (#1); WORD_SHAPING_CACHE per
+                  (family, size, bold, italic, word) (#15)
 
-crates/sardown-pdf/src/lib.rs   render_pdf: raster_cache + svg_cache built once per document (#8/#10)
+crates/sardown-pdf/src/lib.rs   render_pdf: raster_cache + svg_cache built once per document (#8/#10);
+                                svg_cache now clones pre-built trees, no parsing at emission (#17)
 
-crates/sardown-enrich/          lazy syntect gate (ast_contains_code_block → build highlighter, #7)
-crates/sardown-slides/          auto-shrink hoisting via layout_with_assets; DecodedImage Arc reuse (#4)
+crates/sardown-enrich/          lazy syntect gate (ast_contains_code_block → build highlighter, #7);
+                                svg_tree_options(db) + compile_diagrams → tree-bearing CompiledDiagram (#17)
+crates/sardown-slides/          auto-shrink hoisting via layout_with_assets; DecodedImage Arc reuse (#4);
+                                per-slide stylesheet + scale-1.0 no-clone fast path (#16)
 ```
 
 ## Appendix B — how to reproduce the numbers
