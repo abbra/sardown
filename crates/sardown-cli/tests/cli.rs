@@ -810,3 +810,110 @@ fn render_loads_images_when_given_a_bare_relative_filename_from_its_own_director
         doc.objects.values().any(|obj| obj.as_stream().ok().and_then(|s| s.dict.get(b"Subtype").ok()).and_then(|s| s.as_name().ok()) == Some(b"Image"));
     assert!(has_image_xobject, "expected the image to be embedded even with a bare relative input filename");
 }
+
+#[test]
+fn bench_render_is_deterministic_and_covers_every_feature_group() {
+    let dir = std::env::temp_dir().join("sardown-test-bench-render");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    for (i, out) in [(1usize, "run1"), (2, "run2")] {
+        let mut cmd = Command::cargo_bin("sardown").unwrap();
+        cmd.args(["bench", "--seed", "1234", "--pages", "6", "--iterations", &i.to_string(), "--markdown-out"])
+            .arg(dir.join(format!("{out}.md")))
+            .arg("-o")
+            .arg(dir.join(format!("{out}.pdf")));
+        cmd.assert().success();
+    }
+
+    // Same seed => byte-identical generated input.
+    let md1 = std::fs::read(dir.join("run1.md")).expect("markdown not written");
+    let md2 = std::fs::read(dir.join("run2.md")).expect("markdown not written");
+    assert_eq!(md1, md2, "same seed must regenerate byte-identical markdown");
+    let md = String::from_utf8(md1).unwrap();
+
+    // Coverage markers: one per feature group the generator guarantees.
+    for marker in [
+        "```mermaid",
+        "::columns",
+        "data:image/png;base64,",
+        "data:image/svg+xml;base64,",
+        "- [ ]",
+        "- [x]",
+        "|---|",
+        "> > ",
+        "###### Level six heading",
+        "](https://github.com/",
+        "](#conclusion)",
+    ] {
+        assert!(md.contains(marker), "generated markdown missing feature marker: {marker}");
+    }
+
+    let pdf = std::fs::read(dir.join("run1.pdf")).expect("PDF not written");
+    assert!(pdf.starts_with(b"%PDF-"), "bench output is not a PDF");
+}
+
+#[test]
+fn bench_book_mode_materializes_tree_and_renders() {
+    let dir = std::env::temp_dir().join("sardown-test-bench-book");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mut cmd = Command::cargo_bin("sardown").unwrap();
+    cmd.args(["bench", "--mode", "book", "--seed", "5", "--pages", "20", "--iterations", "1", "--book-dir"])
+        .arg(dir.join("tree"))
+        .arg("-o")
+        .arg(dir.join("book.pdf"));
+    cmd.assert().success();
+
+    let tree = dir.join("tree");
+    for rel in ["book.toml", "src/SUMMARY.md", "src/introduction.md", "src/chapter-01.md", "src/deep-dive.md", "src/includes/snippet.md"] {
+        assert!(tree.join(rel).is_file(), "generated book tree missing {rel}");
+    }
+    let summary = std::fs::read_to_string(tree.join("src/SUMMARY.md")).unwrap();
+    assert!(summary.contains("[Introduction](introduction.md)"), "prefix chapter missing from SUMMARY");
+    assert!(summary.contains("  - [Deep Dive](deep-dive.md)"), "nested sub-chapter missing from SUMMARY");
+
+    let ch1 = std::fs::read_to_string(tree.join("src/chapter-01.md")).unwrap();
+    assert!(ch1.contains("{{#include includes/snippet.md}}"), "include directive missing");
+    let ch2 = std::fs::read_to_string(tree.join("src/chapter-02.md")).unwrap();
+    assert!(ch2.contains("```mermaid"), "mermaid diagram missing from chapter two");
+
+    let pdf = std::fs::read(dir.join("book.pdf")).expect("PDF not written");
+    assert!(pdf.starts_with(b"%PDF-"));
+}
+
+#[test]
+fn bench_slides_mode_generates_a_split_deck_and_renders() {
+    let dir = std::env::temp_dir().join("sardown-test-bench-slides");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mut cmd = Command::cargo_bin("sardown").unwrap();
+    cmd.args(["bench", "--mode", "slides", "--seed", "9", "--pages", "6", "--iterations", "1", "--markdown-out"])
+        .arg(dir.join("deck.md"))
+        .arg("-o")
+        .arg(dir.join("deck.pdf"));
+    cmd.assert().success();
+
+    let deck = std::fs::read_to_string(dir.join("deck.md")).unwrap();
+    assert!(deck.matches("\n---\n").count() >= 3, "expected at least four slides in the deck");
+    assert!(deck.contains("::columns"), "columns slide missing");
+    assert!(deck.contains("data:image/png;base64,"), "image slide missing");
+
+    let pdf = std::fs::read(dir.join("deck.pdf")).expect("PDF not written");
+    assert!(pdf.starts_with(b"%PDF-"));
+
+    // The default slides page is 16:9 landscape (338.667 x 190.5 mm); without the bench
+    // runner's overlay the deck would inherit the portrait Letter default and read like a
+    // book instead of a deck.
+    let doc = lopdf::Document::load_mem(&pdf).expect("valid deck PDF");
+    let media = doc
+        .objects
+        .values()
+        .find_map(|obj| obj.as_dict().ok().and_then(|dict| dict.get(b"MediaBox").ok()).and_then(|m| m.as_array().ok()))
+        .expect("deck PDF carries a MediaBox");
+    let dim = |o: &lopdf::Object| o.as_f32().map(f64::from).or(o.as_i64().map(|i| i as f64)).expect("dimension");
+    let (w, h) = (dim(&media[2]), dim(&media[3]));
+    assert!((w / h - 338.667 / 190.5).abs() < 0.01, "expected 16:9 landscape, got {w}x{h}");
+}
