@@ -14,7 +14,7 @@ pub use resolve::resolve_layout;
 use sardown_ast::{BlockNode, ImageSource};
 pub use shrink::{layout_slide_with_shrink, DeckContext};
 pub use split::{split_into_slides, Slide};
-pub use stylesheet_for_slide::build_slide_stylesheet;
+pub use stylesheet_for_slide::{apply_slide_scale, build_slide_stylesheet};
 
 /// Renders a whole slide deck (a Markdown document split into slides on `---`) into one
 /// deck-wide `LayoutOutput`, ready for `sardown_pdf::render_pdf`. See the design spec
