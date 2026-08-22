@@ -28,6 +28,11 @@ pub fn render_slide_deck(
     font_system: &mut cosmic_text::FontSystem,
     stylesheet: &sardown_style::Stylesheet,
 ) -> anyhow::Result<sardown_layout::LayoutOutput> {
+    // One deck = one document: drop any shaping-cache entries a previously rendered document
+    // left on this thread (see sardown-layout's `shaping_cache.rs` for the scoping contract).
+    // The per-slide shrink loop below intentionally does NOT reset -- every slide reuses this
+    // same font system and wants the warm caches.
+    sardown_layout::reset_shaping_caches();
     let mut slugs = sardown_ast::SlugGenerator::new();
     let mut next_diagram_id = 0usize;
     let mut ast = sardown_ast::parse_with_style(markdown, &mut slugs, &mut next_diagram_id, stylesheet);
