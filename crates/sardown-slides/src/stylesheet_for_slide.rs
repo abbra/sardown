@@ -49,3 +49,25 @@ pub fn build_slide_stylesheet(base: &Stylesheet, layout: &SlideLayoutStyle, scal
 
     sheet
 }
+
+/// The scaling step of [`build_slide_stylesheet`] on its own, applied to an already-overridden
+/// sheet in place. Each size-bearing field is set from its own source value (the layout's
+/// override where one exists, the base otherwise) *times* `scale` -- never multiplied off
+/// whatever is currently stored -- so calling it repeatedly with descending scales across a
+/// shrink loop's retries cannot compound. Alignment/color/underline overrides are untouched:
+/// they belong to the override step, which is scale-independent and runs once per slide.
+///
+/// `build_slide_stylesheet(base, layout, scale)` is exactly
+/// `let mut s = <overrides applied to base>; apply_slide_scale(&mut s, base, layout, scale)`;
+/// this split exists so `layout_slide_with_shrink` can pay for the full stylesheet clone once
+/// per slide instead of once per shrink iteration.
+pub fn apply_slide_scale(sheet: &mut Stylesheet, base: &Stylesheet, layout: &SlideLayoutStyle, scale: f32) {
+    sheet.typography.body_size_pt = layout.body_size_pt.unwrap_or(base.typography.body_size_pt) * scale;
+    sheet.table.text_size_pt = base.table.text_size_pt * scale;
+    sheet.code_block.default.font_size_pt = base.code_block.default.font_size_pt * scale;
+    for (lang, lang_style) in sheet.code_block.languages.iter_mut() {
+        if let Some(size) = base.code_block.languages.get(lang).and_then(|s| s.font_size_pt) {
+            lang_style.font_size_pt = Some(size * scale);
+        }
+    }
+}

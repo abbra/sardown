@@ -1,4 +1,4 @@
-use sardown_slides::build_slide_stylesheet;
+use sardown_slides::{apply_slide_scale, build_slide_stylesheet};
 use sardown_style::{SlideLayoutStyle, Stylesheet, TextAlignment};
 
 #[test]
@@ -87,4 +87,36 @@ fn scaling_a_per_language_code_block_font_size_override_leaves_unset_languages_a
     let sheet = build_slide_stylesheet(&base, &layout, 0.5);
     assert_eq!(sheet.code_block.languages.get("rust").unwrap().font_size_pt, Some(7.0));
     assert_eq!(sheet.code_block.languages.get("python").unwrap().font_size_pt, None);
+}
+
+#[test]
+fn in_place_scaling_matches_a_fresh_build_at_every_scale() {
+    let base: Stylesheet = toml::from_str("[code_block.languages.rust]\nfont_size_pt = 14.0\n\n[typography]\nbody_size_pt = 20.0\n").unwrap();
+    let layout = SlideLayoutStyle { body_size_pt: Some(24.0), ..SlideLayoutStyle::default() };
+    // One-shot reference values.
+    let fresh = build_slide_stylesheet(&base, &layout, 0.7);
+    // Incremental path: override step once at scale 1.0, then scale in place -- the shrink
+    // loop's exact sequence.
+    let mut incremental = build_slide_stylesheet(&base, &layout, 1.0);
+    apply_slide_scale(&mut incremental, &base, &layout, 0.7);
+    assert_eq!(incremental.typography.body_size_pt, fresh.typography.body_size_pt, "24.0 (override) * 0.7");
+    assert_eq!(incremental.table.text_size_pt, fresh.table.text_size_pt);
+    assert_eq!(incremental.code_block.default.font_size_pt, fresh.code_block.default.font_size_pt);
+    assert_eq!(
+        incremental.code_block.languages.get("rust").unwrap().font_size_pt,
+        fresh.code_block.languages.get("rust").unwrap().font_size_pt,
+        "per-language overrides must scale identically in both paths"
+    );
+}
+
+#[test]
+fn repeated_in_place_scaling_never_compounds() {
+    let base = Stylesheet::default();
+    let layout = SlideLayoutStyle::default();
+    let mut sheet = build_slide_stylesheet(&base, &layout, 1.0);
+    for scale in [0.95f32, 0.9, 0.85] {
+        apply_slide_scale(&mut sheet, &base, &layout, scale);
+        assert_eq!(sheet.typography.body_size_pt, base.typography.body_size_pt * scale);
+        assert_eq!(sheet.code_block.default.font_size_pt, base.code_block.default.font_size_pt * scale);
+    }
 }

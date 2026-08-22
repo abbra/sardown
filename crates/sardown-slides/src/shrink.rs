@@ -1,5 +1,5 @@
 use crate::rescale::rescale_slide_content;
-use crate::stylesheet_for_slide::build_slide_stylesheet;
+use crate::stylesheet_for_slide::{apply_slide_scale, build_slide_stylesheet};
 use cosmic_text::FontSystem;
 use sardown_ast::BlockNode;
 use sardown_layout::{layout_with_assets, LayoutAssets, LayoutOutput, PageGeometry};
@@ -34,6 +34,15 @@ pub struct DeckContext<'a> {
 /// `layout_impl` alone doesn't shrink already-parsed body/heading/table-cell text no matter what
 /// `Stylesheet` it's given (see `rescale_slide_content`'s doc comment), so this is the mechanism
 /// that actually makes each retry's smaller scale visible in the rendered output.
+///
+/// That clone is paid only when the rescale would actually change something: at scale 1.0 with no
+/// color/size overrides, `rescale_slide_content` writes exactly the values already present in
+/// every node's style (each target is its own parse-time source value times 1.0 -- see
+/// `rescale.rs`'s doc comment), so the first, overwhelmingly common attempt lays out `blocks`
+/// directly with no clone at all. The per-slide `Stylesheet` is likewise cloned and overridden
+/// ONCE (overrides are scale-independent); each retry then applies only the scale step in place
+/// via `apply_slide_scale`, instead of deep-cloning the whole stylesheet (maps + strings) per
+/// iteration.
 pub fn layout_slide_with_shrink(
     blocks: &[BlockNode],
     font_system: &mut FontSystem,
@@ -41,12 +50,20 @@ pub fn layout_slide_with_shrink(
     layout: &SlideLayoutStyle,
     slide_number: usize,
 ) -> LayoutOutput {
+    let mut slide_stylesheet = build_slide_stylesheet(deck.base_stylesheet, layout, 1.0);
+    let rescale_identity_at_full_scale = layout.body_size_pt.is_none() && layout.text_color.is_none() && layout.secondary_text_color.is_none();
     let mut scale = 1.0f32;
     loop {
-        let mut attempt_blocks = blocks.to_vec();
-        rescale_slide_content(&mut attempt_blocks, deck.base_stylesheet, layout, scale);
-        let slide_stylesheet = build_slide_stylesheet(deck.base_stylesheet, layout, scale);
-        let output = layout_with_assets(&attempt_blocks, deck.geometry, font_system, deck.assets, &slide_stylesheet);
+        let mut attempt_blocks_owner;
+        let attempt_blocks: &[BlockNode] = if scale == 1.0 && rescale_identity_at_full_scale {
+            blocks
+        } else {
+            attempt_blocks_owner = blocks.to_vec();
+            rescale_slide_content(&mut attempt_blocks_owner, deck.base_stylesheet, layout, scale);
+            &attempt_blocks_owner
+        };
+        apply_slide_scale(&mut slide_stylesheet, deck.base_stylesheet, layout, scale);
+        let output = layout_with_assets(attempt_blocks, deck.geometry, font_system, deck.assets, &slide_stylesheet);
         let fits = output.pages.len() <= 1;
         let at_floor = scale <= deck.min_scale;
         if fits || at_floor {
