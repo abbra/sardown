@@ -4,8 +4,10 @@
 sardown <COMMAND>
 ```
 
-Two subcommands: `render` (a single Markdown file) and `render-book` (an
-mdBook-style source tree).
+Four subcommands: `render` (a single Markdown file), `render-book` (an
+mdBook-style source tree), `render-slides` (a slide deck split on `---`),
+and `bench` (generate seeded benchmark input and time the pipeline
+rendering it).
 
 ## `render`
 
@@ -71,6 +73,43 @@ Example:
 
 ```bash
 sardown render-slides deck.md -o deck.pdf --style slides-style.toml
+```
+
+
+## `bench`
+
+```
+sardown bench [OPTIONS]
+```
+
+Generates deterministic, feature-complete Markdown input from a seed,
+renders it through the full production pipeline, and prints a per-stage
+timing table (min/mean/max across iterations). Useful for comparing builds
+and for producing reproducible sample documents — the same seed always
+regenerates byte-identical input.
+
+| Argument/Option | Description |
+|---|---|
+| `--seed <SEED>` | PRNG seed (default `42`). Same seed ⇒ byte-identical generated input |
+| `--mode <MODE>` | What to generate and render: `render` (single document, default), `book` (mdBook tree with SUMMARY.md, includes, cross-file links), or `slides` (`---`-split deck) |
+| — | In `slides` mode without `--style`, a 16:9 landscape page (338.667 × 190.5 mm) is applied automatically so the benchmark renders as real slides rather than portrait book pages; passing `--style` keeps full control |
+| `--pages <PAGES>` | Output volume: approximate page count for `render`/`book`, slide count for `slides` (default `25`) |
+| `--iterations <N>` | Full-pipeline repetitions in the timing table (default `3`) |
+| `--style <STYLE>` | Stylesheet TOML passed through to the pipeline |
+| `--markdown-out <PATH>` | Write the generated Markdown here (`render`/`slides` modes) |
+| `--book-dir <DIR>` | Directory for the generated book tree (`book` mode; defaults to a fresh temp directory) |
+| `-o, --output <OUTPUT>` | Where to write the rendered PDF; omitted means bytes are discarded after timing |
+| `-h, --help` | Print help |
+
+The run prints the seed, a coverage summary counting every supported
+construct the generated input contains (headings, lists, tables, code
+blocks, images by type, diagrams, column groups, links), then the timing
+table.
+
+Example:
+
+```bash
+sardown bench --seed 42 --pages 30 --iterations 5 -o bench.pdf
 ```
 
 ## Output and diagnostics
