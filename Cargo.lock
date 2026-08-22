@@ -2737,6 +2737,7 @@ dependencies = [
 name = "sardown-enrich"
 version = "0.1.0"
 dependencies = [
+ "fontdb",
  "merman",
  "sardown-ast",
  "sardown-style",

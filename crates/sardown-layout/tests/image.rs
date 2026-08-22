@@ -1,6 +1,11 @@
 use sardown_ast::{BlockNode, ImageSource};
 use sardown_layout::{collect_svg_diagrams, decode_images};
 
+/// Diagram sizes don't depend on font resolution, so the default options are enough here; real
+/// renders build document-fontdb-aware options via `sardown_enrich::svg_tree_options`.
+fn svg_options() -> usvg::Options<'static> {
+    usvg::Options::default()
+}
 #[test]
 fn decodes_embedded_local_image_and_indexes_by_path() {
     let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
@@ -48,10 +53,10 @@ fn absolute_path_outside_base_dir_is_rejected() {
 fn collects_an_embedded_svg_with_its_intrinsic_size() {
     let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let ast = vec![BlockNode::Image { alt: "test".to_string(), title: None, source: ImageSource::Embedded(std::path::PathBuf::from("test-vector.svg")) }];
-    let table = collect_svg_diagrams(&ast, &base_dir);
+    let table = collect_svg_diagrams(&ast, &base_dir, &svg_options());
     let diagram = table.get("test-vector.svg").expect("svg not found in table");
     assert_eq!((diagram.width, diagram.height), (100.0, 50.0));
-    assert!(diagram.svg.contains("<svg"));
+    assert!(!diagram.tree.root().children().is_empty(), "expected a parsed tree with rendered content");
 }
 
 #[test]
@@ -68,7 +73,7 @@ fn svg_path_traversal_outside_base_dir_is_rejected() {
     // Escapes tests/fixtures/ back up to tests/secret.svg -- a real, valid, .svg-extensioned file
     // that exists and would otherwise be a valid target for the SVG collection path.
     let ast = vec![BlockNode::Image { alt: "traversal".to_string(), title: None, source: ImageSource::Embedded(std::path::PathBuf::from("../secret.svg")) }];
-    let table = collect_svg_diagrams(&ast, &base_dir);
+    let table = collect_svg_diagrams(&ast, &base_dir, &svg_options());
     assert!(table.is_empty(), "path traversal outside base_dir must not be read");
 }
 
@@ -137,17 +142,17 @@ fn an_svg_data_uri_is_absent_from_the_raster_image_table() {
 fn collects_a_base64_data_uri_svg_with_its_intrinsic_size() {
     let uri = format!("data:image/svg+xml;base64,{BASE64_SVG}");
     let ast = vec![BlockNode::Image { alt: "test".to_string(), title: None, source: ImageSource::DataUri(uri.clone()) }];
-    let table = collect_svg_diagrams(&ast, std::path::Path::new("."));
+    let table = collect_svg_diagrams(&ast, std::path::Path::new("."), &svg_options());
     let diagram = table.get(&uri).expect("svg data URI not found in table");
     assert_eq!((diagram.width, diagram.height), (100.0, 50.0));
-    assert!(diagram.svg.contains("<svg"));
+    assert!(!diagram.tree.root().children().is_empty(), "expected a parsed tree with rendered content");
 }
 
 #[test]
 fn an_svg_data_uri_needs_no_base_dir_at_all() {
     let uri = format!("data:image/svg+xml;base64,{BASE64_SVG}");
     let ast = vec![BlockNode::Image { alt: "test".to_string(), title: None, source: ImageSource::DataUri(uri.clone()) }];
-    let table = collect_svg_diagrams(&ast, std::path::Path::new("/nonexistent/does/not/exist"));
+    let table = collect_svg_diagrams(&ast, std::path::Path::new("/nonexistent/does/not/exist"), &svg_options());
     assert!(table.contains_key(&uri), "expected the SVG data URI to be collected without touching base_dir");
 }
 
@@ -155,7 +160,7 @@ fn an_svg_data_uri_needs_no_base_dir_at_all() {
 fn a_non_base64_data_uri_is_rejected_not_mis_decoded() {
     let uri = "data:image/svg+xml,%3Csvg%3E%3C%2Fsvg%3E".to_string();
     let ast = vec![BlockNode::Image { alt: "test".to_string(), title: None, source: ImageSource::DataUri(uri) }];
-    assert!(collect_svg_diagrams(&ast, std::path::Path::new(".")).is_empty());
+    assert!(collect_svg_diagrams(&ast, std::path::Path::new("."), &svg_options()).is_empty());
 }
 
 #[test]
@@ -182,6 +187,6 @@ fn collect_svg_diagrams_recurses_into_columns() {
         title: None,
         source: ImageSource::Embedded(std::path::PathBuf::from("test-vector.svg")),
     }]])];
-    let table = collect_svg_diagrams(&ast, &base_dir);
+    let table = collect_svg_diagrams(&ast, &base_dir, &svg_options());
     assert!(table.contains_key("test-vector.svg"), "expected the SVG inside the column to be collected");
 }

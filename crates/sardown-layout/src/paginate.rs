@@ -1069,13 +1069,19 @@ pub struct LayoutAssets {
     pub hyphenator: Option<crate::Hyphenator>,
 }
 
-pub fn prepare_layout_assets(ast: &[BlockNode], base_dir: &std::path::Path, diagrams: &DiagramTable, stylesheet: &sardown_style::Stylesheet) -> LayoutAssets {
+pub fn prepare_layout_assets(
+    ast: &[BlockNode],
+    base_dir: &std::path::Path,
+    diagrams: &DiagramTable,
+    stylesheet: &sardown_style::Stylesheet,
+    svg_options: &usvg::Options,
+) -> LayoutAssets {
     let images = crate::image::decode_images(ast, base_dir);
     // Embedded .svg images are collected separately from Mermaid-compiled diagrams (a different
     // crate, with no filesystem access) but rendered through the exact same VectorGraphic path --
     // merge them into one local table so render_block doesn't need to know the difference.
     let mut diagrams = diagrams.clone();
-    diagrams.extend(crate::image::collect_svg_diagrams(ast, base_dir));
+    diagrams.extend(crate::image::collect_svg_diagrams(ast, base_dir, svg_options));
     let hyphenator = if stylesheet.typography.hyphenation { crate::Hyphenator::load(&stylesheet.typography.language) } else { None };
     LayoutAssets { images, diagrams, hyphenator }
 }
@@ -1092,7 +1098,10 @@ pub fn layout_impl(
     diagrams: &DiagramTable,
     stylesheet: &sardown_style::Stylesheet,
 ) -> LayoutOutput {
-    let assets = prepare_layout_assets(ast, base_dir, diagrams, stylesheet);
+    // One options construction per layout pass: the document's own fontdb (cloned once) feeds
+    // every embedded-SVG parse below, exactly as Mermaid compilation does in sardown-enrich.
+    let svg_options = sardown_enrich::svg_tree_options(font_system.db());
+    let assets = prepare_layout_assets(ast, base_dir, diagrams, stylesheet, &svg_options);
     layout_with_assets(ast, geometry, font_system, &assets, stylesheet)
 }
 

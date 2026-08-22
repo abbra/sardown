@@ -176,9 +176,14 @@ fn timed_stage<T>(label: &str, f: impl FnOnce() -> anyhow::Result<T>) -> anyhow:
 /// The syntect highlighter is only constructed when the document actually contains code blocks:
 /// `with_style` loads every default syntax definition and the complete theme (well over a second
 /// of work) and would do nothing for a document without any.
+///
+/// Takes the font system because diagram compilation parses each rendered Mermaid SVG against
+/// the document's own font database (`sardown_enrich::svg_tree_options`) -- so the font system
+/// must exist before diagrams compile, not just before layout.
 fn highlight_and_compile_diagrams(
     ast: Vec<sardown_ast::BlockNode>,
     stylesheet: &sardown_style::Stylesheet,
+    font_system: &cosmic_text::FontSystem,
 ) -> anyhow::Result<(Vec<sardown_ast::BlockNode>, sardown_enrich::DiagramTable)> {
     let ast = if sardown_enrich::ast_contains_code_block(&ast) {
         let highlighter = Highlighter::with_style(stylesheet);
@@ -186,7 +191,8 @@ fn highlight_and_compile_diagrams(
     } else {
         ast
     };
-    let diagrams = timed_stage("Compiling diagrams", || Ok(sardown_enrich::compile_diagrams(&ast)))?;
+    let svg_options = sardown_enrich::svg_tree_options(font_system.db());
+    let diagrams = timed_stage("Compiling diagrams", || Ok(sardown_enrich::compile_diagrams(&ast, &svg_options)))?;
     Ok((ast, diagrams))
 }
 
@@ -228,11 +234,13 @@ fn main() -> anyhow::Result<()> {
             let mut ast = timed_stage("Parsing markdown", || Ok(sardown_ast::parse_with_style(&markdown, &mut slugs, &mut next_diagram_id, &stylesheet)))?;
             sardown_ast::tag_diagram_origins(&mut ast, &input);
 
-            let (ast, diagrams) = highlight_and_compile_diagrams(ast, &stylesheet)?;
+            // Fonts load before enrichment: Mermaid compilation parses each rendered SVG against
+            // the document's own fontdb, so it needs the loaded font system in hand.
+            let mut font_system = timed_stage("Loading fonts", || Ok(build_font_system(&stylesheet.typography)))?;
+
+            let (ast, diagrams) = highlight_and_compile_diagrams(ast, &stylesheet, &font_system)?;
 
             let base_dir = base_dir_of(&input);
-
-            let mut font_system = timed_stage("Loading fonts", || Ok(build_font_system(&stylesheet.typography)))?;
 
             let output_layout =
                 timed_stage("Laying out pages", || Ok(sardown_layout::layout_with_header_footer(&ast, &mut font_system, &base_dir, &diagrams, &stylesheet)))?;
@@ -244,9 +252,11 @@ fn main() -> anyhow::Result<()> {
 
             let ast = timed_stage("Loading book", || sardown_book::load_book(&book_root, &stylesheet))?;
 
-            let (ast, diagrams) = highlight_and_compile_diagrams(ast, &stylesheet)?;
-
+            // As in Commands::Render: fonts before enrichment, because diagram compilation
+            // parses against the document's own fontdb.
             let mut font_system = timed_stage("Loading fonts", || Ok(build_font_system(&stylesheet.typography)))?;
+
+            let (ast, diagrams) = highlight_and_compile_diagrams(ast, &stylesheet, &font_system)?;
 
             // Every embedded image path was already rewritten to absolute during load_book (each
             // chapter can live in a different subdirectory), so base_dir is never actually

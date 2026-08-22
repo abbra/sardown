@@ -39,12 +39,16 @@ pub fn render_slide_deck(
     // blocks -- `with_style` loads every default syntax definition and the full theme, which is
     // pure overhead otherwise.
     let ast = if sardown_enrich::ast_contains_code_block(&ast) { sardown_enrich::Highlighter::with_style(stylesheet).highlight(ast) } else { ast };
-    let diagrams = sardown_enrich::compile_diagrams(&ast);
+    // Mermaid diagrams are parsed into render-ready trees against the deck's own fontdb here;
+    // the same options feed every embedded-SVG parse below and in prepare_layout_assets, so no
+    // diagram's markup is ever parsed twice.
+    let svg_options = sardown_enrich::svg_tree_options(font_system.db());
+    let diagrams = sardown_enrich::compile_diagrams(&ast, &svg_options);
     // Decode images, parse embedded SVGs, and load the hyphenation dictionary ONCE for the whole
     // deck, before splitting into slides: the per-slide auto-shrink loop re-lays-out each slide
     // at up to ~16 successively smaller scales, and every retry reuses these assets instead of
     // re-decoding and re-parsing them from scratch.
-    let assets = sardown_layout::prepare_layout_assets(&ast, base_dir, &diagrams, stylesheet);
+    let assets = sardown_layout::prepare_layout_assets(&ast, base_dir, &diagrams, stylesheet, &svg_options);
     // group_columns runs per-slide, not once on the whole deck before splitting: doing it before
     // splitting would let a deck author's forgotten `::end` silently swallow every remaining
     // block in the *entire rest of the deck*, including slides after the next `---`, instead of
@@ -93,7 +97,7 @@ pub fn render_slide_deck(
             if attempted_background_paths.insert(key.clone()) {
                 let synthetic_ast = [BlockNode::Image { alt: String::new(), title: None, source: ImageSource::Embedded(image.path.clone()) }];
                 background_images.extend(sardown_layout::decode_images(&synthetic_ast, base_dir));
-                background_diagrams.extend(sardown_layout::collect_svg_diagrams(&synthetic_ast, base_dir));
+                background_diagrams.extend(sardown_layout::collect_svg_diagrams(&synthetic_ast, base_dir, &svg_options));
                 // If decoding failed, decode_images/collect_svg_diagrams already printed a
                 // warning -- matches this project's "skip the one broken piece, don't fail the
                 // whole render" convention.

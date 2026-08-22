@@ -42,9 +42,6 @@ pub fn render_pdf(
     // Cache one krilla::text::Font per fontdb::ID so repeated glyphs on the same page
     // don't reload/re-register the font.
     let mut font_cache: HashMap<fontdb::ID, Font> = HashMap::new();
-    // Built once (not per-diagram): cloning the database is far cheaper than re-scanning fonts
-    // from disk, and a document can contain many diagrams.
-    let svg_options = svg_render_options(font_data);
 
     // Every raster image is turned into a krilla::Image exactly once here, not once per element
     // that references it: `Image::from_rgba8` copies the whole pixel buffer, and a figure reused
@@ -55,17 +52,13 @@ pub fn render_pdf(
     for (image_id, decoded) in images {
         raster_cache.insert(image_id, Image::from_rgba8((*decoded.rgba8).clone(), decoded.width, decoded.height));
     }
-    // Same idea for vector diagrams: the SVG is parsed into a `usvg::Tree` once per diagram id,
-    // not once per element referencing it (a diagram referenced from N pages used to be parsed
-    // N times). Parse failures are reported once here instead of once per element.
+    // Vector diagrams arrive already parsed into render-ready `usvg::Tree`s -- built once per
+    // document against the document's own fontdb (see `sardown_enrich::svg_tree_options`) -- so
+    // this is just a keyed clone and no SVG markup is ever parsed inside emission. Parse
+    // failures are reported once at compile/collection time instead of here.
     let mut svg_cache: HashMap<&str, usvg::Tree> = HashMap::new();
     for (diagram_id, diagram) in diagrams {
-        match usvg::Tree::from_str(&diagram.svg, &svg_options) {
-            Ok(tree) => {
-                svg_cache.insert(diagram_id, tree);
-            }
-            Err(e) => eprintln!("warning: failed to parse diagram '{diagram_id}' SVG at render time: {e}"),
-        }
+        svg_cache.insert(diagram_id, diagram.tree.clone());
     }
 
     for page_data in pages {
@@ -177,45 +170,3 @@ pub fn render_pdf(
     document.finish().context("krilla failed to serialize the document")
 }
 
-/// usvg needs a font database to shape `<text>` elements into glyph outlines. Reuses the
-/// document's own font database (already respects `typography.font_dirs`/`use_system_fonts`, and
-/// was already loaded once for the rest of the document's text) instead of building a fresh,
-/// system-fonts-only one from scratch -- cheaper (cloning metadata beats re-scanning disk), and
-/// gives diagram text access to the same custom fonts the rest of the document uses instead of
-/// silently ignoring `font_dirs` for diagrams specifically.
-///
-/// Real-world SVGs (e.g. Graphviz output, which commonly emits
-/// `font-family="Helvetica,sans-Serif"` -- note the capital S) often name literal fonts that
-/// aren't installed, and usvg's own font-family parser only recognizes the lowercase CSS generic
-/// keywords, so "sans-Serif" parses as a literal name too and also fails to match. usvg's default
-/// font selector unconditionally appends `fontdb::Family::Serif` as its last-resort fallback once
-/// every requested family fails -- but a fontconfig-advertised generic alias (e.g. serif ->
-/// "FreeSerif") can point at a font that isn't actually installed, and `fontdb::Database::query`
-/// has no further fallback of its own once every requested family fails to match a loaded face.
-/// So both the serif and sans-serif generic aliases are repointed at whatever's actually loaded,
-/// guaranteeing usvg's last-resort fallback always resolves to a real, usable font instead of
-/// silently dropping the text -- this was a real, reported bug: diagram shapes rendered fine
-/// (pure geometry, no font dependency) while every text label silently vanished.
-fn svg_render_options(font_data: &fontdb::Database) -> usvg::Options<'static> {
-    let mut fontdb = font_data.clone();
-    ensure_resolvable_generic_families(&mut fontdb);
-    usvg::Options { fontdb: std::sync::Arc::new(fontdb), ..Default::default() }
-}
-
-fn ensure_resolvable_generic_families(fontdb: &mut fontdb::Database) {
-    let Some(fallback) = fontdb.faces().next().and_then(|face| face.families.first().map(|(name, _)| name.clone())) else {
-        return;
-    };
-    for family in [fontdb::Family::Serif, fontdb::Family::SansSerif] {
-        let alias = fontdb.family_name(&family).to_string();
-        let alias_resolves = fontdb.faces().any(|face| face.families.iter().any(|(name, _)| *name == alias));
-        if alias_resolves {
-            continue;
-        }
-        match family {
-            fontdb::Family::Serif => fontdb.set_serif_family(fallback.clone()),
-            fontdb::Family::SansSerif => fontdb.set_sans_serif_family(fallback.clone()),
-            _ => unreachable!("only Serif and SansSerif are iterated above"),
-        }
-    }
-}

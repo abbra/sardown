@@ -680,12 +680,18 @@ fn table_header_separator_line_sits_between_rows_not_through_row_ones_text() {
 
 use sardown_enrich::{CompiledDiagram, DiagramTable};
 
+/// A `CompiledDiagram` whose tree carries no geometry: layout only reads `width`/`height` and
+/// forwards the tree to PDF emission, so the minimal namespaced SVG is all these tests need.
+fn dummy_diagram(width: f32, height: f32) -> CompiledDiagram {
+    let tree = usvg::Tree::from_str("<svg xmlns=\"http://www.w3.org/2000/svg\"/>", &usvg::Options::default()).expect("valid minimal svg");
+    CompiledDiagram { width, height, tree }
+}
 
 #[test]
 fn mermaid_diagram_produces_a_vector_graphic_element() {
     let ast = vec![BlockNode::MermaidDiagram { id: "d1".to_string(), source: "flowchart TD\n A-->B".to_string(), line: 1, column: 1, file: None }];
     let mut diagrams = DiagramTable::new();
-    diagrams.insert("d1".to_string(), CompiledDiagram { svg: "<svg/>".to_string(), width: 300.0, height: 150.0 });
+    diagrams.insert("d1".to_string(), dummy_diagram(300.0, 150.0));
 
     let mut fs = test_font_system();
     let output = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &diagrams);
@@ -708,7 +714,7 @@ fn mermaid_diagram_taller_than_a_full_page_is_scaled_down_to_fit_one_page() {
     let ast = vec![BlockNode::MermaidDiagram { id: "d1".to_string(), source: "flowchart TD\n A-->B".to_string(), line: 1, column: 1, file: None }];
     let mut diagrams = DiagramTable::new();
     // Far taller (aspect-wise) than a US Letter page's content area at 1in margins (~648pt).
-    diagrams.insert("d1".to_string(), CompiledDiagram { svg: "<svg/>".to_string(), width: 100.0, height: 2000.0 });
+    diagrams.insert("d1".to_string(), dummy_diagram(100.0, 2000.0));
 
     let mut fs = test_font_system();
     let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &diagrams).pages;
@@ -783,7 +789,7 @@ fn heading_after_mermaid_diagram_does_not_overlap_the_diagrams_bottom_edge() {
         BlockNode::Heading { level: 2, id: "next".to_string(), content: vec![heading_content] },
     ];
     let mut diagrams = DiagramTable::new();
-    diagrams.insert("d1".to_string(), CompiledDiagram { svg: "<svg/>".to_string(), width: 140.0, height: 278.0 });
+    diagrams.insert("d1".to_string(), dummy_diagram(140.0, 278.0));
 
     let mut fs = test_font_system();
     let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &diagrams).pages;

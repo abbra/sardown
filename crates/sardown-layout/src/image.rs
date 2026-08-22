@@ -159,7 +159,7 @@ fn collect(ast: &[BlockNode], base_dir: &Path, canonical_base: Option<&Path>, ta
 /// determines whether it renders as a `RasterImage` or a `VectorGraphic`. Reuses the exact same
 /// `resolve_within_base` security boundary as raster images: an SVG file is still Markdown-author-
 /// controlled input, and needs the same protection against path traversal.
-pub fn collect_svg_diagrams(ast: &[BlockNode], base_dir: &Path) -> DiagramTable {
+pub fn collect_svg_diagrams(ast: &[BlockNode], base_dir: &Path, svg_options: &usvg::Options) -> DiagramTable {
     let mut table = HashMap::new();
     // A `data:` URI needs no filesystem access, so it can always be collected even when `base_dir`
     // can't be resolved. Only filesystem-backed (`Embedded`) SVGs require a canonical base; if it
@@ -171,11 +171,11 @@ pub fn collect_svg_diagrams(ast: &[BlockNode], base_dir: &Path) -> DiagramTable 
             None
         }
     };
-    collect_svgs(ast, base_dir, canonical_base.as_deref(), &mut table);
+    collect_svgs(ast, base_dir, canonical_base.as_deref(), &mut table, svg_options);
     table
 }
 
-fn collect_svgs(ast: &[BlockNode], base_dir: &Path, canonical_base: Option<&Path>, table: &mut DiagramTable) {
+fn collect_svgs(ast: &[BlockNode], base_dir: &Path, canonical_base: Option<&Path>, table: &mut DiagramTable, svg_options: &usvg::Options) {
     for block in ast {
         match block {
             BlockNode::Image { source: ImageSource::Embedded(path), .. } if is_svg_path(path) => {
@@ -188,10 +188,10 @@ fn collect_svgs(ast: &[BlockNode], base_dir: &Path, canonical_base: Option<&Path
                 };
                 match resolve_within_base(base_dir, canonical_base, path) {
                     Ok(resolved) => match std::fs::read_to_string(&resolved) {
-                        Ok(svg) => match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
+                        Ok(svg) => match usvg::Tree::from_str(&svg, svg_options) {
                             Ok(tree) => {
                                 let size = tree.size();
-                                table.insert(key, CompiledDiagram { svg, width: size.width(), height: size.height() });
+                                table.insert(key, CompiledDiagram { width: size.width(), height: size.height(), tree });
                             }
                             Err(e) => eprintln!("warning: failed to parse SVG image {key}: {e}"),
                         },
@@ -206,10 +206,10 @@ fn collect_svgs(ast: &[BlockNode], base_dir: &Path, canonical_base: Option<&Path
                 }
                 match decode_data_uri(uri) {
                     Ok(bytes) => match String::from_utf8(bytes) {
-                        Ok(svg) => match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
+                        Ok(svg) => match usvg::Tree::from_str(&svg, svg_options) {
                             Ok(tree) => {
                                 let size = tree.size();
-                                table.insert(uri.clone(), CompiledDiagram { svg, width: size.width(), height: size.height() });
+                                table.insert(uri.clone(), CompiledDiagram { width: size.width(), height: size.height(), tree });
                             }
                             Err(e) => eprintln!("warning: failed to parse embedded {} image: {e}", data_uri_label(uri)),
                         },
@@ -218,15 +218,15 @@ fn collect_svgs(ast: &[BlockNode], base_dir: &Path, canonical_base: Option<&Path
                     Err(e) => eprintln!("warning: refusing to load embedded {} image: {e}", data_uri_label(uri)),
                 }
             }
-            BlockNode::Blockquote { content } => collect_svgs(content, base_dir, canonical_base, table),
+            BlockNode::Blockquote { content } => collect_svgs(content, base_dir, canonical_base, table, svg_options),
             BlockNode::List { items, .. } => {
                 for item in items {
-                    collect_svgs(item, base_dir, canonical_base, table);
+                    collect_svgs(item, base_dir, canonical_base, table, svg_options);
                 }
             }
             BlockNode::Columns(columns) => {
                 for column in columns {
-                    collect_svgs(column, base_dir, canonical_base, table);
+                    collect_svgs(column, base_dir, canonical_base, table, svg_options);
                 }
             }
             _ => {}

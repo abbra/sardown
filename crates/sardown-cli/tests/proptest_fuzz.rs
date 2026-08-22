@@ -46,7 +46,7 @@ proptest! {
         font_db.load_system_fonts();
         let mut font_system = cosmic_text::FontSystem::new_with_locale_and_db("en-US".to_string(), font_db);
 
-        let diagrams = sardown_enrich::compile_diagrams(&ast);
+        let diagrams = sardown_enrich::compile_diagrams(&ast, &sardown_enrich::svg_tree_options(font_system.db()));
         let output = sardown_layout::layout(&ast, &sardown_layout::PageGeometry {
             page_width_mm: 215.9, page_height_mm: 279.4, margin_mm: 25.4, ..Default::default()
         }, &mut font_system, std::path::Path::new("."), &diagrams);

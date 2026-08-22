@@ -104,19 +104,22 @@ use sardown_ast::LinkTarget;
 use sardown_enrich::{CompiledDiagram, DiagramTable};
 use sardown_layout::{AnchorPosition, AnchorTable, Rect};
 
-fn valid_test_svg() -> String {
+fn valid_test_tree() -> usvg::Tree {
     // Minimal but well-formed SVG usvg can parse — a single rectangle.
-    r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50" viewBox="0 0 100 50">
+    usvg::Tree::from_str(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50" viewBox="0 0 100 50">
         <rect x="0" y="0" width="100" height="50" fill="#ff0000"/>
-    </svg>"##
-        .to_string()
+    </svg>"##,
+        &usvg::Options::default(),
+    )
+    .expect("valid test svg")
 }
 
 #[test]
 fn renders_a_page_with_a_diagram_and_both_link_kinds() {
     let db = test_font_db();
     let mut diagrams = DiagramTable::new();
-    diagrams.insert("d1".to_string(), CompiledDiagram { svg: valid_test_svg(), width: 100.0, height: 50.0 });
+    diagrams.insert("d1".to_string(), CompiledDiagram { width: 100.0, height: 50.0, tree: valid_test_tree() });
 
     let mut anchors = AnchorTable::new();
     anchors.insert("target".to_string(), AnchorPosition { page: 0, x: 72.0, y: 100.0 });
