@@ -1098,6 +1098,13 @@ pub fn layout_impl(
     diagrams: &DiagramTable,
     stylesheet: &sardown_style::Stylesheet,
 ) -> LayoutOutput {
+    // A fresh document must not inherit shaping-cache entries from an earlier document
+    // rendered on this thread: the caches in `shaping_cache.rs` are keyed by style only, and
+    // a newly constructed FontSystem can reuse a previous system's database address, which
+    // the address-change guard cannot detect (the ABA case). Every public entry that starts
+    // a document resets here; `layout_with_assets` deliberately does NOT -- the slide
+    // auto-shrink loop re-enters it many times per document against one unchanged system.
+    crate::shaping_cache::reset_shaping_caches();
     // One options construction per layout pass: the document's own fontdb (cloned once) feeds
     // every embedded-SVG parse below, exactly as Mermaid compilation does in sardown-enrich.
     let svg_options = sardown_enrich::svg_tree_options(font_system.db());
