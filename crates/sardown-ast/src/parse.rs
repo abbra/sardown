@@ -306,13 +306,15 @@ fn collect_table_cells<'a, I: Iterator<Item = Event<'a>>>(
     parser: &mut std::iter::Peekable<I>,
     end_tag: TagEnd,
     table_cell_size: f32,
-    table_cell_font_family: &str,
+    table_cell_font_family: &Arc<str>,
 ) -> Vec<Vec<InlineNode>> {
     let mut cells = Vec::new();
     while let Some(event) = parser.next() {
         match event {
             Event::Start(Tag::TableCell) => {
-                cells.push(lower_inline_events(parser, TagEnd::TableCell, table_cell_size, DEFAULT_COLOR, table_cell_font_family.into()));
+                // Share the one family `Arc` like the body-row path does; `.into()` here would
+                // re-allocate the name for every header cell.
+                cells.push(lower_inline_events(parser, TagEnd::TableCell, table_cell_size, DEFAULT_COLOR, Arc::clone(table_cell_font_family)));
             }
             Event::End(tag) if tag == end_tag => break,
             _ => {}
