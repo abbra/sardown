@@ -684,7 +684,7 @@ use sardown_enrich::{CompiledDiagram, DiagramTable};
 /// forwards the tree to PDF emission, so the minimal namespaced SVG is all these tests need.
 fn dummy_diagram(width: f32, height: f32) -> CompiledDiagram {
     let tree = usvg::Tree::from_str("<svg xmlns=\"http://www.w3.org/2000/svg\"/>", &usvg::Options::default()).expect("valid minimal svg");
-    CompiledDiagram { width, height, tree }
+    CompiledDiagram { width, height, tree: std::sync::Arc::new(tree) }
 }
 
 #[test]

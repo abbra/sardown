@@ -1,4 +1,4 @@
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use sardown_ast::{BlockNode, ImageSource};
 use sardown_enrich::{CompiledDiagram, DiagramTable};
 use std::collections::HashMap;
@@ -191,7 +191,7 @@ fn collect_svgs(ast: &[BlockNode], base_dir: &Path, canonical_base: Option<&Path
                         Ok(svg) => match usvg::Tree::from_str(&svg, svg_options) {
                             Ok(tree) => {
                                 let size = tree.size();
-                                table.insert(key, CompiledDiagram { width: size.width(), height: size.height(), tree });
+                                table.insert(key, CompiledDiagram { width: size.width(), height: size.height(), tree: Arc::new(tree) });
                             }
                             Err(e) => eprintln!("warning: failed to parse SVG image {key}: {e}"),
                         },
@@ -209,7 +209,7 @@ fn collect_svgs(ast: &[BlockNode], base_dir: &Path, canonical_base: Option<&Path
                         Ok(svg) => match usvg::Tree::from_str(&svg, svg_options) {
                             Ok(tree) => {
                                 let size = tree.size();
-                                table.insert(uri.clone(), CompiledDiagram { width: size.width(), height: size.height(), tree });
+                                table.insert(uri.clone(), CompiledDiagram { width: size.width(), height: size.height(), tree: Arc::new(tree) });
                             }
                             Err(e) => eprintln!("warning: failed to parse embedded {} image: {e}", data_uri_label(uri)),
                         },
