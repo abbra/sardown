@@ -74,18 +74,7 @@ fn fmt_bytes(n: usize) -> String {
 }
 
 fn emit_pdf(t: &mut Timings, font_system: &cosmic_text::FontSystem, output: &sardown_layout::LayoutOutput) -> anyhow::Result<Vec<u8>> {
-    t.time("rendering pdf", || {
-        sardown_pdf::render_pdf(
-            &output.pages,
-            font_system.db(),
-            &output.images,
-            &output.diagrams,
-            &output.anchors,
-            output.page_width_pt,
-            output.page_height_pt,
-            &output.toc_entries,
-        )
-    })
+    t.time("rendering pdf", || sardown_pdf::render_pdf(&output.pages, &sardown_pdf::RenderAssets::from_layout(output, font_system.db()), &output.toc_entries))
 }
 
 /// Entry point for `sardown bench`. Generation is untimed; each iteration re-runs the full

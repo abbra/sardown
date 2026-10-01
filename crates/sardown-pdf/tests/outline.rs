@@ -1,5 +1,6 @@
 use sardown_enrich::DiagramTable;
 use sardown_layout::{AnchorPosition, AnchorTable, ImageTable, PositionedElement, PositionedGlyph, PositionedPage, TocEntry};
+use sardown_pdf::RenderAssets;
 use sardown_pdf::render_pdf;
 
 fn test_font_db() -> fontdb::Database {
@@ -32,7 +33,14 @@ fn toc_entries_produce_a_non_empty_pdf_outline() {
     anchors.insert("chapter-one".to_string(), AnchorPosition { page: 0, x: 72.0, y: 72.0 });
     let toc_entries = vec![TocEntry { level: 1, id: "chapter-one".to_string(), text: "Chapter One".to_string() }];
 
-    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &anchors, 612.0, 792.0, &toc_entries).unwrap();
+    let images = ImageTable::new();
+    let diagrams = DiagramTable::new();
+    let pdf_bytes = render_pdf(
+        &[page],
+        &RenderAssets { font_data: &db, images: &images, diagrams: &diagrams, anchors: &anchors, page_width_pt: 612.0, page_height_pt: 792.0 },
+        &toc_entries,
+    )
+    .unwrap();
     let doc = lopdf::Document::load_mem(&pdf_bytes).unwrap();
     let has_outlines = doc.catalog().ok().and_then(|cat| cat.get(b"Outlines").ok()).is_some();
     assert!(has_outlines, "expected a non-empty /Outlines entry in the document catalog");
@@ -43,7 +51,13 @@ fn no_toc_entries_means_no_pdf_outline() {
     let db = test_font_db();
     let font_id = db.faces().next().unwrap().id;
     let page = one_page_with_text(font_id);
-    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0, &[]).unwrap();
+    let (images, diagrams, anchors) = (ImageTable::new(), DiagramTable::new(), AnchorTable::new());
+    let pdf_bytes = render_pdf(
+        &[page],
+        &RenderAssets { font_data: &db, images: &images, diagrams: &diagrams, anchors: &anchors, page_width_pt: 612.0, page_height_pt: 792.0 },
+        &[],
+    )
+    .unwrap();
     let doc = lopdf::Document::load_mem(&pdf_bytes).unwrap();
     let has_outlines = doc.catalog().ok().and_then(|cat| cat.get(b"Outlines").ok()).is_some();
     assert!(!has_outlines, "expected no /Outlines entry when there are no TOC entries");

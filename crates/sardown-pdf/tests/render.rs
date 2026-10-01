@@ -1,10 +1,20 @@
 use sardown_layout::{PositionedElement, PositionedGlyph, PositionedPage};
-use sardown_pdf::render_pdf;
+use sardown_pdf::{RenderAssets, render_pdf};
 
 fn test_font_db() -> fontdb::Database {
     let mut db = fontdb::Database::new();
     db.load_font_file(concat!(env!("CARGO_MANIFEST_DIR"), "/../sardown-layout/tests/fixtures/DroidSans.ttf")).expect("failed to load test font");
     db
+}
+
+/// Renders a single page with empty asset tables at the standard test page size.
+fn render_page(db: &fontdb::Database, page: PositionedPage) -> anyhow::Result<Vec<u8>> {
+    let (images, diagrams, anchors) = (sardown_layout::ImageTable::new(), sardown_enrich::DiagramTable::new(), sardown_layout::AnchorTable::new());
+    render_pdf(
+        &[page],
+        &RenderAssets { font_data: db, images: &images, diagrams: &diagrams, anchors: &anchors, page_width_pt: 612.0, page_height_pt: 792.0 },
+        &[],
+    )
 }
 
 #[test]
@@ -27,7 +37,7 @@ fn renders_a_single_page_with_one_text_run_to_valid_pdf_bytes() {
         }],
     };
 
-    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0, &[]).expect("render_pdf failed");
+    let pdf_bytes = render_page(&db, page).expect("render_pdf failed");
 
     assert!(pdf_bytes.starts_with(b"%PDF-"), "output does not start with a PDF header");
     let doc = lopdf::Document::load_mem(&pdf_bytes).expect("krilla output is not a valid PDF");
@@ -57,7 +67,14 @@ fn renders_a_page_with_a_stroked_path_and_a_raster_image() {
         ],
     };
 
-    let pdf_bytes = render_pdf(&[page], &db, &images, &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0, &[]).expect("render_pdf failed");
+    let empty_diagrams = DiagramTable::new();
+    let empty_anchors = AnchorTable::new();
+    let pdf_bytes = render_pdf(
+        &[page],
+        &RenderAssets { font_data: &db, images: &images, diagrams: &empty_diagrams, anchors: &empty_anchors, page_width_pt: 612.0, page_height_pt: 792.0 },
+        &[],
+    )
+    .expect("render_pdf failed");
     let doc = lopdf::Document::load_mem(&pdf_bytes).expect("output is not a valid PDF");
     assert_eq!(doc.get_pages().len(), 1);
 }
@@ -92,7 +109,7 @@ fn text_after_a_stroked_path_is_not_drawn_in_fill_and_stroke_mode() {
         ],
     };
 
-    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0, &[]).expect("render_pdf failed");
+    let pdf_bytes = render_page(&db, page).expect("render_pdf failed");
     let doc = lopdf::Document::load_mem(&pdf_bytes).expect("output is not a valid PDF");
     let page_id = *doc.get_pages().values().next().expect("expected one page");
     let content = doc.get_page_content(page_id);
@@ -119,7 +136,7 @@ fn valid_test_tree() -> usvg::Tree {
 fn renders_a_page_with_a_diagram_and_both_link_kinds() {
     let db = test_font_db();
     let mut diagrams = DiagramTable::new();
-    diagrams.insert("d1".to_string(), CompiledDiagram { width: 100.0, height: 50.0, tree: valid_test_tree() });
+    diagrams.insert("d1".to_string(), CompiledDiagram { width: 100.0, height: 50.0, tree: std::sync::Arc::new(valid_test_tree()) });
 
     let mut anchors = AnchorTable::new();
     anchors.insert("target".to_string(), AnchorPosition { page: 0, x: 72.0, y: 100.0 });
@@ -139,7 +156,13 @@ fn renders_a_page_with_a_diagram_and_both_link_kinds() {
         ],
     };
 
-    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &diagrams, &anchors, 612.0, 792.0, &[]).expect("render_pdf failed");
+    let empty_images = ImageTable::new();
+    let pdf_bytes = render_pdf(
+        &[page],
+        &RenderAssets { font_data: &db, images: &empty_images, diagrams: &diagrams, anchors: &anchors, page_width_pt: 612.0, page_height_pt: 792.0 },
+        &[],
+    )
+    .expect("render_pdf failed");
     let doc = lopdf::Document::load_mem(&pdf_bytes).expect("output is not a valid PDF");
     assert_eq!(doc.get_pages().len(), 1);
 
@@ -164,7 +187,12 @@ fn renders_a_page_with_a_diagram_and_both_link_kinds() {
             },
         ],
     };
-    let control_bytes = render_pdf(&[page_without_diagram], &db, &ImageTable::new(), &diagrams, &anchors, 612.0, 792.0, &[]).expect("render_pdf failed");
+    let control_bytes = render_pdf(
+        &[page_without_diagram],
+        &RenderAssets { font_data: &db, images: &empty_images, diagrams: &diagrams, anchors: &anchors, page_width_pt: 612.0, page_height_pt: 792.0 },
+        &[],
+    )
+    .expect("render_pdf failed");
     let control_doc = lopdf::Document::load_mem(&control_bytes).unwrap();
     let control_page_id = *control_doc.get_pages().values().next().unwrap();
     let control_content_len = control_doc.get_page_content(control_page_id).len();
@@ -188,7 +216,7 @@ fn dangling_internal_anchor_is_skipped_not_errored() {
             destination: LinkTarget::InternalAnchor("does-not-exist".to_string()),
         }],
     };
-    let result = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0, &[]);
+    let result = render_page(&db, page);
     assert!(result.is_ok(), "a dangling internal link should be silently skipped, not fail the whole render");
 }
 
@@ -206,7 +234,7 @@ fn cross_file_anchor_reaching_pdf_render_is_skipped_not_errored() {
             destination: LinkTarget::CrossFileAnchor { file: std::path::PathBuf::from("other.md"), fragment: None },
         }],
     };
-    let result = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0, &[]);
+    let result = render_page(&db, page);
     assert!(result.is_ok(), "a CrossFileAnchor reaching the renderer should be skipped, not fail the whole render");
 }
 
@@ -228,7 +256,7 @@ fn embedded_font_is_subsetted_not_fully_embedded() {
             color: [0, 0, 0],
         }],
     };
-    let pdf_bytes = render_pdf(&[page], &db, &ImageTable::new(), &DiagramTable::new(), &AnchorTable::new(), 612.0, 792.0, &[]).unwrap();
+    let pdf_bytes = render_page(&db, page).unwrap();
 
     // krilla doesn't set the (spec-optional) `Length1` key on FontFile2 streams, so the only
     // reliable way to find the embedded font program is to follow FontDescriptor -> FontFile2

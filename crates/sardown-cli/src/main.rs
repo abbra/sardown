@@ -238,16 +238,7 @@ fn write_pdf_output(
     item_noun: &str,
 ) -> anyhow::Result<()> {
     let pdf_bytes = timed_stage("Rendering PDF", || {
-        sardown_pdf::render_pdf(
-            &output_layout.pages,
-            font_system.db(),
-            &output_layout.images,
-            &output_layout.diagrams,
-            &output_layout.anchors,
-            output_layout.page_width_pt,
-            output_layout.page_height_pt,
-            &output_layout.toc_entries,
-        )
+        sardown_pdf::render_pdf(&output_layout.pages, &sardown_pdf::RenderAssets::from_layout(output_layout, font_system.db()), &output_layout.toc_entries)
     })?;
     timed_stage("Writing output", || Ok(std::fs::write(output_path, pdf_bytes)?))?;
     eprintln!("Wrote {} ({} {item_noun})", output_path.display(), output_layout.pages.len());
