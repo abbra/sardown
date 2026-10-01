@@ -1,6 +1,7 @@
-use sardown_ast::{generate_heading_id, BlockNode, InlineNode, LinkTarget};
+use sardown_ast::{BlockNode, InlineNode, LinkTarget, generate_heading_id};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use crate::summary::SummaryItem;
 
@@ -96,13 +97,14 @@ fn classify_inline(content: &mut [InlineNode], chapter_dir: &Path, known_chapter
 /// pure `generate_heading_id` (no cross-chapter deduplication); the final slug is whatever the
 /// shared `SlugGenerator` actually assigned once merged, which may differ if another chapter
 /// already claimed the same text.
-pub(crate) fn record_heading_slugs(blocks: &[BlockNode], chapter_path: &Path, slug_map: &mut HashMap<(PathBuf, String), String>) {
+pub(crate) fn record_heading_slugs(blocks: &[BlockNode], chapter_path: &Rc<Path>, slug_map: &mut HashMap<(Rc<Path>, String), String>) {
     for block in blocks {
         match block {
             BlockNode::Heading { id, content, .. } => {
                 let text: String = content.iter().map(|n| n.text.as_str()).collect();
                 let original = generate_heading_id(&text);
-                slug_map.insert((chapter_path.to_path_buf(), original), id.clone());
+                // One shared path across every heading of the chapter; a key is a refcount bump.
+                slug_map.insert((Rc::clone(chapter_path), original), id.clone());
             }
             BlockNode::Blockquote { content } => record_heading_slugs(content, chapter_path, slug_map),
             BlockNode::List { items, .. } => {
@@ -123,7 +125,7 @@ pub(crate) fn record_heading_slugs(blocks: &[BlockNode], chapter_path: &Path, sl
 /// Rewrites every `CrossFileAnchor` in the fully-combined `blocks` into an `InternalAnchor`
 /// using `slug_map` (fragment links) or `chapter_start_map` (whole-file links), or drops it to
 /// inert (unlinked) text if it can't be resolved.
-pub(crate) fn resolve_links(blocks: &mut [BlockNode], slug_map: &HashMap<(PathBuf, String), String>, chapter_start_map: &HashMap<PathBuf, String>) {
+pub(crate) fn resolve_links(blocks: &mut [BlockNode], slug_map: &HashMap<(Rc<Path>, String), String>, chapter_start_map: &HashMap<PathBuf, String>) {
     for block in blocks {
         match block {
             BlockNode::Heading { content, .. } | BlockNode::Paragraph { content } => {
@@ -155,11 +157,11 @@ pub(crate) fn resolve_links(blocks: &mut [BlockNode], slug_map: &HashMap<(PathBu
     }
 }
 
-fn resolve_inline(content: &mut [InlineNode], slug_map: &HashMap<(PathBuf, String), String>, chapter_start_map: &HashMap<PathBuf, String>) {
+fn resolve_inline(content: &mut [InlineNode], slug_map: &HashMap<(Rc<Path>, String), String>, chapter_start_map: &HashMap<PathBuf, String>) {
     for node in content {
         if let Some(LinkTarget::CrossFileAnchor { file, fragment }) = &node.link_target {
             let resolved = match fragment {
-                Some(frag) => slug_map.get(&(file.clone(), frag.clone())).cloned(),
+                Some(frag) => slug_map.get(&(Rc::from(file.as_path()), frag.clone())).cloned(),
                 None => chapter_start_map.get(file).cloned(),
             };
             node.link_target = resolved.map(LinkTarget::InternalAnchor);
