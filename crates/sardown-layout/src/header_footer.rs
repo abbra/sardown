@@ -70,21 +70,29 @@ fn zones_for(style: &HeaderFooterStyle, is_odd_physical_page: bool) -> &HeaderZo
 /// The font size is stored as its `f32` bit pattern (`f32` itself is neither `Hash` nor `Eq`).
 type ShapedZoneCache = HashMap<(String, u32, String, [u8; 3]), PositionedElement>;
 
-#[allow(clippy::too_many_arguments)]
+/// Everything a band render reads that is not the band's own style or the page it is drawn on:
+/// the page's context/placeholders, the document metadata templates resolve against, and the
+/// page geometry the alignment math uses. Bundled so `render_band`'s signature carries only what
+/// actually varies per call, and the two header/footer call sites cannot drift argument order.
+struct BandContext<'a> {
+    ctx: &'a PageContext,
+    page_display: &'a str,
+    total_pages_display: &'a str,
+    document: &'a DocumentStyle,
+    margin_pt: f32,
+    content_width_pt: f32,
+    is_odd_physical_page: bool,
+}
+
 fn render_band(
     page: &mut PositionedPage,
     style: &HeaderFooterStyle,
-    ctx: &PageContext,
-    page_display: &str,
-    total_pages_display: &str,
-    document: &DocumentStyle,
-    margin_pt: f32,
-    content_width_pt: f32,
+    band: &BandContext<'_>,
     baseline_y: f32,
-    is_odd_physical_page: bool,
     font_system: &mut FontSystem,
     shaped_cache: &mut ShapedZoneCache,
 ) {
+    let BandContext { ctx, page_display, total_pages_display, document, margin_pt, content_width_pt, is_odd_physical_page } = *band;
     let zones = zones_for(style, is_odd_physical_page);
     for (template, align) in [(&zones.left, Align::Left), (&zones.center, Align::Center), (&zones.right, Align::Right)] {
         let resolved = resolve_template(template, ctx, page_display, total_pages_display, document);
@@ -156,38 +164,21 @@ pub fn render_headers_footers(
     for (i, (page, ctx)) in pages.iter_mut().zip(contexts.iter()).enumerate() {
         let page_display = display_number_for_page(i, &segments);
         let is_odd_physical_page = i % 2 == 0;
+        let band = BandContext {
+            ctx,
+            page_display: &page_display,
+            total_pages_display: &total_pages_display,
+            document: &stylesheet.document,
+            margin_pt,
+            content_width_pt,
+            is_odd_physical_page,
+        };
 
         if stylesheet.header.enabled && !(stylesheet.header.suppress_on_chapter_start && ctx.is_chapter_opener) && !ctx.suppress_header {
-            render_band(
-                page,
-                &stylesheet.header,
-                ctx,
-                &page_display,
-                &total_pages_display,
-                &stylesheet.document,
-                margin_pt,
-                content_width_pt,
-                margin_pt * 0.6,
-                is_odd_physical_page,
-                font_system,
-                &mut shaped_cache,
-            );
+            render_band(page, &stylesheet.header, &band, margin_pt * 0.6, font_system, &mut shaped_cache);
         }
         if stylesheet.footer.enabled && !(stylesheet.footer.suppress_on_chapter_start && ctx.is_chapter_opener) && !ctx.suppress_footer {
-            render_band(
-                page,
-                &stylesheet.footer,
-                ctx,
-                &page_display,
-                &total_pages_display,
-                &stylesheet.document,
-                margin_pt,
-                content_width_pt,
-                full_page_height_pt - margin_pt * 0.6,
-                is_odd_physical_page,
-                font_system,
-                &mut shaped_cache,
-            );
+            render_band(page, &stylesheet.footer, &band, full_page_height_pt - margin_pt * 0.6, font_system, &mut shaped_cache);
         }
     }
 }
