@@ -22,11 +22,12 @@ pub struct HeadingStyle {
     /// `0.0` (the default) draws no underline at all -- see `resolve()`.
     pub underline_width_pt: f32,
     pub underline_color: Color,
-    /// Keyed by the level as a string ("1".."6"), matching TOML's `[heading.levels.1]` table
-    /// syntax. Left empty by `Default` on purpose -- TOML's map deserialization *replaces* this
+    /// Keyed by the level number directly -- TOML bare keys like `[heading.levels.1]` deserialize
+    /// into integer map keys, so `resolve()` can look a level up without formatting one per
+    /// heading. Left empty by `Default` on purpose -- TOML's map deserialization *replaces* this
     /// field outright rather than merging key-by-key with any pre-populated defaults, so level
     /// fallback is resolved by hand in `resolve()` against `DEFAULT_LEVEL_SIZES_PT` instead.
-    pub levels: BTreeMap<String, HeadingLevelStyle>,
+    pub levels: BTreeMap<u8, HeadingLevelStyle>,
 }
 
 impl Default for HeadingStyle {
@@ -56,7 +57,7 @@ impl HeadingStyle {
     /// color/font_family/underline, and on top of this crate's built-in per-level size table for
     /// `size_pt`.
     pub fn resolve(&self, level: u8) -> ResolvedHeadingStyle {
-        let level_override = self.levels.get(&level.to_string());
+        let level_override = self.levels.get(&level);
         let size_pt = level_override.and_then(|l| l.size_pt).unwrap_or_else(|| DEFAULT_LEVEL_SIZES_PT[(level.clamp(1, 6) - 1) as usize]);
         let color = level_override.and_then(|l| l.color).unwrap_or(self.color);
         let font_family = level_override.and_then(|l| l.font_family.clone()).unwrap_or_else(|| self.font_family.clone());

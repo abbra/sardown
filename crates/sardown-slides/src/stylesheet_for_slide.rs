@@ -34,7 +34,7 @@ pub fn build_slide_stylesheet(base: &Stylesheet, layout: &SlideLayoutStyle, scal
         // leaving those alone would keep the base document's underline color on any level that
         // configures one, even though this layout wants its own accent color throughout.
         for level in 1..=6u8 {
-            sheet.heading.levels.entry(level.to_string()).or_default().underline_color = Some(text_color);
+            sheet.heading.levels.entry(level).or_default().underline_color = Some(text_color);
         }
     }
 

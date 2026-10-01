@@ -1,11 +1,11 @@
-use sardown_ast::{parse_with_slugs, parse_with_style, BlockNode, SlugGenerator};
+use sardown_ast::{BlockNode, SlugGenerator, parse_with_slugs, parse_with_style};
 use sardown_style::{Color, HeadingLevelStyle, Stylesheet};
 
 #[test]
 fn heading_uses_the_configured_level_override_size_and_color() {
     let mut style = Stylesheet::default();
     style.heading.levels.insert(
-        "1".to_string(),
+        1,
         HeadingLevelStyle { size_pt: Some(40.0), color: Some(Color([255, 0, 0])), font_family: None, underline_width_pt: None, underline_color: None },
     );
     let mut slugs = SlugGenerator::new();
