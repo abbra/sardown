@@ -3,7 +3,6 @@ use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Par
 
 use std::sync::Arc;
 
-const HEADING_SIZES: [f32; 6] = [28.0, 22.0, 18.0, 16.0, 14.0, 12.0];
 const DEFAULT_COLOR: [u8; 3] = [0, 0, 0];
 
 /// Bundles the per-parse typography choices that need to reach deep into the recursive block/
@@ -427,23 +426,6 @@ pub fn tag_diagram_origins(blocks: &mut [BlockNode], file: &std::path::Path) {
             }
             _ => {}
         }
-    }
-}
-
-/// The `TextStyle` a heading of `level` gets from `parse()` -- same size table, non-bold,
-/// non-italic, default color. Lets callers outside the parser (sardown-book, synthesizing a
-/// chapter's title heading from its SUMMARY.md entry) build a `BlockNode::Heading` that matches
-/// what parsing that same text as `# Title` would have produced, without duplicating
-/// `HEADING_SIZES`.
-pub fn heading_style_for_level(level: u8) -> TextStyle {
-    let size = HEADING_SIZES[(level.clamp(1, 6) - 1) as usize];
-    TextStyle {
-        bold: false,
-        italic: false,
-        strikethrough: false,
-        size,
-        color: DEFAULT_COLOR,
-        font_family: sardown_style::HeadingStyle::default().font_family.into(),
     }
 }
 
