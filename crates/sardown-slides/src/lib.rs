@@ -8,12 +8,12 @@ mod stylesheet_for_slide;
 
 use anyhow::Context;
 pub use concat::concat_slide_layouts;
-pub use postprocess::{center_vertically, draw_background_diagram, draw_background_image, fill_background};
+pub use postprocess::{BackgroundPlacement, center_vertically, draw_background_diagram, draw_background_image, fill_background};
 pub use rescale::rescale_slide_content;
 pub use resolve::resolve_layout;
 use sardown_ast::{BlockNode, ImageSource};
-pub use shrink::{layout_slide_with_shrink, DeckContext};
-pub use split::{split_into_slides, Slide};
+pub use shrink::{DeckContext, layout_slide_with_shrink};
+pub use split::{Slide, split_into_slides};
 pub use stylesheet_for_slide::{apply_slide_scale, build_slide_stylesheet};
 
 /// Renders a whole slide deck (a Markdown document split into slides on `---`) into one
@@ -107,22 +107,37 @@ pub fn render_slide_deck(
                 // warning -- matches this project's "skip the one broken piece, don't fail the
                 // whole render" convention.
             }
-            let (page_width_pt, page_height_pt) = (output.page_width_pt, output.page_height_pt);
             if let Some(decoded) = background_images.get(&key) {
                 // A zero-width source image would otherwise divide-by-zero into a NaN/infinite
                 // height_pt; only reachable via a pathological (empty or corrupt) source file.
                 if decoded.width > 0 {
                     let height_pt = image.width_pt * (decoded.height as f32 / decoded.width as f32);
+                    let placement = BackgroundPlacement {
+                        corner: image.corner,
+                        width_pt: image.width_pt,
+                        height_pt,
+                        margin_pt: image.margin_pt,
+                        page_width_pt: output.page_width_pt,
+                        page_height_pt: output.page_height_pt,
+                    };
                     for page in &mut output.pages {
-                        draw_background_image(page, &key, image.corner, image.width_pt, height_pt, image.margin_pt, page_width_pt, page_height_pt);
+                        draw_background_image(page, &key, &placement);
                     }
                 }
-            } else if let Some(diagram) = background_diagrams.get(&key) {
-                if diagram.width > 0.0 {
-                    let height_pt = image.width_pt * (diagram.height / diagram.width);
-                    for page in &mut output.pages {
-                        draw_background_diagram(page, &key, image.corner, image.width_pt, height_pt, image.margin_pt, page_width_pt, page_height_pt);
-                    }
+            } else if let Some(diagram) = background_diagrams.get(&key)
+                && diagram.width > 0.0
+            {
+                let height_pt = image.width_pt * (diagram.height / diagram.width);
+                let placement = BackgroundPlacement {
+                    corner: image.corner,
+                    width_pt: image.width_pt,
+                    height_pt,
+                    margin_pt: image.margin_pt,
+                    page_width_pt: output.page_width_pt,
+                    page_height_pt: output.page_height_pt,
+                };
+                for page in &mut output.pages {
+                    draw_background_diagram(page, &key, &placement);
                 }
             }
         }
