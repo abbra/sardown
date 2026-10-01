@@ -1,4 +1,4 @@
-use sardown_layout::{shift_element, PathCommand, PositionedElement, PositionedPage};
+use sardown_layout::{PathCommand, PositionedElement, PositionedPage, shift_element};
 use sardown_style::{Color, ImageCorner};
 
 /// Shifts every element on `page` down by `(page_height_pt - content_height_pt) / 2 - top_y`,
@@ -37,12 +37,28 @@ pub fn fill_background(page: &mut PositionedPage, color: Color, page_width_pt: f
     page.elements.insert(0, rect);
 }
 
-fn corner_position(corner: ImageCorner, width_pt: f32, height_pt: f32, margin_pt: f32, page_width_pt: f32, page_height_pt: f32) -> (f32, f32) {
-    match corner {
-        ImageCorner::TopLeft => (margin_pt, margin_pt),
-        ImageCorner::TopRight => (page_width_pt - margin_pt - width_pt, margin_pt),
-        ImageCorner::BottomLeft => (margin_pt, page_height_pt - margin_pt - height_pt),
-        ImageCorner::BottomRight => (page_width_pt - margin_pt - width_pt, page_height_pt - margin_pt - height_pt),
+/// The geometry both background drawers share: where the image anchors (corner + margin), its
+/// size, and the page it anchors to. Bundled so the corner math lives in exactly one place
+/// (`position()`) and the two drawers take one named value instead of five positional floats a
+/// caller could silently swap.
+pub struct BackgroundPlacement {
+    pub corner: ImageCorner,
+    pub width_pt: f32,
+    pub height_pt: f32,
+    pub margin_pt: f32,
+    pub page_width_pt: f32,
+    pub page_height_pt: f32,
+}
+
+impl BackgroundPlacement {
+    fn position(&self) -> (f32, f32) {
+        let Self { corner, width_pt, height_pt, margin_pt, page_width_pt, page_height_pt } = *self;
+        match corner {
+            ImageCorner::TopLeft => (margin_pt, margin_pt),
+            ImageCorner::TopRight => (page_width_pt - margin_pt - width_pt, margin_pt),
+            ImageCorner::BottomLeft => (margin_pt, page_height_pt - margin_pt - height_pt),
+            ImageCorner::BottomRight => (page_width_pt - margin_pt - width_pt, page_height_pt - margin_pt - height_pt),
+        }
     }
 }
 
@@ -52,19 +68,9 @@ fn corner_position(corner: ImageCorner, width_pt: f32, height_pt: f32, margin_pt
 /// so the final paint order comes out fill (bottom), then image, then the slide's own content:
 /// each `insert(0, ..)` pushes the previous first element to index 1, so inserting in that order
 /// naturally produces it.
-#[allow(clippy::too_many_arguments)]
-pub fn draw_background_image(
-    page: &mut PositionedPage,
-    image_id: &str,
-    corner: ImageCorner,
-    width_pt: f32,
-    height_pt: f32,
-    margin_pt: f32,
-    page_width_pt: f32,
-    page_height_pt: f32,
-) {
-    let (x, y) = corner_position(corner, width_pt, height_pt, margin_pt, page_width_pt, page_height_pt);
-    page.elements.insert(0, PositionedElement::RasterImage { x, y, width: width_pt, height: height_pt, image_id: image_id.to_string() });
+pub fn draw_background_image(page: &mut PositionedPage, image_id: &str, placement: &BackgroundPlacement) {
+    let (x, y) = placement.position();
+    page.elements.insert(0, PositionedElement::RasterImage { x, y, width: placement.width_pt, height: placement.height_pt, image_id: image_id.to_string() });
 }
 
 /// The SVG sibling of `draw_background_image`, for a background image whose path ends in `.svg`
@@ -72,19 +78,10 @@ pub fn draw_background_image(
 /// embedded SVG images use) instead of `RasterImage`, using an already-compiled entry from the
 /// deck's own `DiagramTable`. Same corner math, same insert-before-`fill_background` ordering
 /// contract as `draw_background_image`.
-#[allow(clippy::too_many_arguments)]
-pub fn draw_background_diagram(
-    page: &mut PositionedPage,
-    diagram_id: &str,
-    corner: ImageCorner,
-    width_pt: f32,
-    height_pt: f32,
-    margin_pt: f32,
-    page_width_pt: f32,
-    page_height_pt: f32,
-) {
-    let (x, y) = corner_position(corner, width_pt, height_pt, margin_pt, page_width_pt, page_height_pt);
-    page.elements.insert(0, PositionedElement::VectorGraphic { x, y, width: width_pt, height: height_pt, diagram_id: diagram_id.to_string() });
+pub fn draw_background_diagram(page: &mut PositionedPage, diagram_id: &str, placement: &BackgroundPlacement) {
+    let (x, y) = placement.position();
+    page.elements
+        .insert(0, PositionedElement::VectorGraphic { x, y, width: placement.width_pt, height: placement.height_pt, diagram_id: diagram_id.to_string() });
 }
 
 fn vertical_extent(page: &PositionedPage) -> Option<(f32, f32)> {

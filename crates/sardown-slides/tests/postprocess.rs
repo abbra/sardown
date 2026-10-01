@@ -1,12 +1,11 @@
 use sardown_layout::{PathCommand, PositionedElement, PositionedPage};
-use sardown_slides::{center_vertically, draw_background_diagram, draw_background_image, fill_background};
+use sardown_slides::{BackgroundPlacement, center_vertically, draw_background_diagram, draw_background_image, fill_background};
 use sardown_style::{Color, ImageCorner};
 
 fn test_font_id() -> fontdb::ID {
     let mut db = fontdb::Database::new();
     db.load_font_file(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/DroidSans.ttf")).unwrap();
-    let id = db.faces().next().unwrap().id;
-    id
+    db.faces().next().unwrap().id
 }
 
 fn text_run_at(y: f32, size: f32) -> PositionedElement {
@@ -75,9 +74,15 @@ fn fill_background_prepends_a_full_page_filled_rectangle() {
     assert!(matches!(page.elements[1], PositionedElement::TextRun { .. }), "the original text must still be present, drawn after the background");
 }
 
+/// The shared test geometry: a 60x40pt image, 10pt margin from both nearest edges, on a
+/// 300x200pt page.
+fn placement(corner: ImageCorner) -> BackgroundPlacement {
+    BackgroundPlacement { corner, width_pt: 60.0, height_pt: 40.0, margin_pt: 10.0, page_width_pt: 300.0, page_height_pt: 200.0 }
+}
+
 fn image_position(corner: ImageCorner) -> (f32, f32) {
     let mut page = PositionedPage { page_number: 0, elements: Vec::new() };
-    draw_background_image(&mut page, "logo.png", corner, 60.0, 40.0, 10.0, 300.0, 200.0);
+    draw_background_image(&mut page, "logo.png", &placement(corner));
     match &page.elements[0] {
         PositionedElement::RasterImage { x, y, .. } => (*x, *y),
         other => panic!("expected RasterImage, got {other:?}"),
@@ -86,7 +91,6 @@ fn image_position(corner: ImageCorner) -> (f32, f32) {
 
 #[test]
 fn draw_background_image_positions_each_corner_correctly() {
-    // 300x200pt page, a 60x40pt image, 10pt margin from both nearest edges.
     assert_eq!(image_position(ImageCorner::TopLeft), (10.0, 10.0));
     assert_eq!(image_position(ImageCorner::TopRight), (300.0 - 10.0 - 60.0, 10.0));
     assert_eq!(image_position(ImageCorner::BottomLeft), (10.0, 200.0 - 10.0 - 40.0));
@@ -96,7 +100,7 @@ fn draw_background_image_positions_each_corner_correctly() {
 #[test]
 fn draw_background_image_inserts_before_existing_content() {
     let mut page = PositionedPage { page_number: 0, elements: vec![text_run_at(20.0, 12.0)] };
-    draw_background_image(&mut page, "logo.png", ImageCorner::BottomRight, 60.0, 40.0, 10.0, 300.0, 200.0);
+    draw_background_image(&mut page, "logo.png", &placement(ImageCorner::BottomRight));
     assert_eq!(page.elements.len(), 2);
     assert!(matches!(page.elements[0], PositionedElement::RasterImage { .. }));
     assert!(matches!(page.elements[1], PositionedElement::TextRun { .. }));
@@ -105,7 +109,7 @@ fn draw_background_image_inserts_before_existing_content() {
 #[test]
 fn draw_background_diagram_positions_using_the_same_corner_math_as_the_raster_version() {
     let mut page = PositionedPage { page_number: 0, elements: Vec::new() };
-    draw_background_diagram(&mut page, "logo.svg", ImageCorner::TopRight, 60.0, 40.0, 10.0, 300.0, 200.0);
+    draw_background_diagram(&mut page, "logo.svg", &placement(ImageCorner::TopRight));
     match &page.elements[0] {
         PositionedElement::VectorGraphic { x, y, width, height, diagram_id } => {
             assert_eq!((*x, *y), (300.0 - 10.0 - 60.0, 10.0));
@@ -119,7 +123,7 @@ fn draw_background_diagram_positions_using_the_same_corner_math_as_the_raster_ve
 #[test]
 fn draw_background_diagram_inserts_before_existing_content() {
     let mut page = PositionedPage { page_number: 0, elements: vec![text_run_at(20.0, 12.0)] };
-    draw_background_diagram(&mut page, "logo.svg", ImageCorner::BottomRight, 60.0, 40.0, 10.0, 300.0, 200.0);
+    draw_background_diagram(&mut page, "logo.svg", &placement(ImageCorner::BottomRight));
     assert_eq!(page.elements.len(), 2);
     assert!(matches!(page.elements[0], PositionedElement::VectorGraphic { .. }));
     assert!(matches!(page.elements[1], PositionedElement::TextRun { .. }));
@@ -131,7 +135,7 @@ fn a_background_image_drawn_before_fill_background_ends_up_between_the_fill_and_
     // index 0, so calling them in that order produces the correct final paint order: fill
     // (bottom), then image, then whatever content was already on the page.
     let mut page = PositionedPage { page_number: 0, elements: vec![text_run_at(20.0, 12.0)] };
-    draw_background_image(&mut page, "logo.png", ImageCorner::BottomRight, 60.0, 40.0, 10.0, 300.0, 200.0);
+    draw_background_image(&mut page, "logo.png", &placement(ImageCorner::BottomRight));
     fill_background(&mut page, Color([27, 13, 51]), 300.0, 200.0);
     assert!(matches!(page.elements[0], PositionedElement::Path { .. }), "background fill paints first (bottommost)");
     assert!(matches!(page.elements[1], PositionedElement::RasterImage { .. }), "then the background image");
