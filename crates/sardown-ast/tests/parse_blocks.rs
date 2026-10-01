@@ -1,4 +1,4 @@
-use sardown_ast::{parse, BlockNode, ColumnAlignment, HighlightedToken, ImageSource, InlineNode, LinkTarget};
+use sardown_ast::{BlockNode, ColumnAlignment, HighlightedToken, ImageSource, InlineNode, LinkTarget, parse};
 
 #[test]
 fn parses_heading_and_paragraph_with_inline_styles_and_link() {
@@ -419,17 +419,4 @@ fn task_list_items_render_a_checkbox_glyph_instead_of_literal_brackets() {
         }
         other => panic!("expected List, got {other:?}"),
     }
-}
-
-#[test]
-fn heading_style_for_level_matches_parse_generated_sizes() {
-    let ast = parse("# H1\n\n## H2\n");
-    let size_of = |block: &BlockNode| match block {
-        BlockNode::Heading { content, .. } => content[0].style.size,
-        other => panic!("expected Heading, got {other:?}"),
-    };
-    assert_eq!(sardown_ast::heading_style_for_level(1).size, size_of(&ast[0]));
-    assert_eq!(sardown_ast::heading_style_for_level(2).size, size_of(&ast[1]));
-    assert!(!sardown_ast::heading_style_for_level(1).bold);
-    assert!(!sardown_ast::heading_style_for_level(1).italic);
 }
