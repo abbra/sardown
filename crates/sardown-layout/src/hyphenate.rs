@@ -71,7 +71,7 @@ fn shape_word(font_system: &mut FontSystem, style: &sardown_ast::TextStyle, word
         return hit;
     }
     let node = InlineNode { text: word.to_string(), style: style.clone(), link_target: None };
-    let elements = shape_paragraph(font_system, std::slice::from_ref(&node), f32::MAX);
+    let elements = shape_paragraph(font_system, std::slice::from_ref(&node), crate::shape::UNCONSTRAINED_WIDTH_PT);
     let mut advances = Vec::new();
     let mut total = 0.0f32;
     for element in elements {

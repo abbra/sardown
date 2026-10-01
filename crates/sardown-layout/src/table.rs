@@ -122,7 +122,7 @@ fn max_min_fair_allocation(needs: &[f32], available: f32) -> Vec<f32> {
 /// kerning unit at most -- below the column floor's and the proportional distribution's own
 /// smoothing, and below the visual-regression pixel threshold.
 fn measure_cell(font_system: &mut FontSystem, cell: &[InlineNode]) -> CellMeasure {
-    let elements = shape_paragraph(font_system, cell, f32::MAX);
+    let elements = shape_paragraph(font_system, cell, crate::shape::UNCONSTRAINED_WIDTH_PT);
     let mut longest_line = 0.0f32;
     let mut longest_word = 0.0f32;
     for element in elements {

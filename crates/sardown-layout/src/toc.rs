@@ -55,8 +55,10 @@ fn shape_line(font_system: &mut FontSystem, text: &str, size: f32, color: [u8; 3
         style: TextStyle { bold: false, italic: false, strikethrough: false, size, color, font_family: font_family.into() },
         link_target: None,
     };
-    let elements = shape_paragraph(font_system, std::slice::from_ref(&node), f32::MAX);
-    let element = elements.into_iter().next().unwrap_or(PositionedElement::TextRun {
+    let elements = shape_paragraph(font_system, std::slice::from_ref(&node), crate::shape::UNCONSTRAINED_WIDTH_PT);
+    // `unwrap_or_else` so the fallback -- an allocation plus a fontdb face scan that can panic --
+    // is only built when shaping actually produced nothing.
+    let element = elements.into_iter().next().unwrap_or_else(|| PositionedElement::TextRun {
         x: 0.0,
         y: 0.0,
         glyphs: Vec::new(),
