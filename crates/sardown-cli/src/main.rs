@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use sardown_enrich::Highlighter;
 
 mod bench;
@@ -12,6 +12,26 @@ struct Cli {
     command: Commands,
 }
 
+/// The document-metadata flags every render subcommand shares. `#[command(flatten)]` merges
+/// them into each subcommand's own arguments, so the flag definitions, help text, and override
+/// semantics live in exactly one place instead of being copy-pasted per subcommand.
+#[derive(Args)]
+struct DocumentMeta {
+    /// Document title, available to header/footer templates as {title}. Overrides
+    /// \[document\].title from the stylesheet if both are given.
+    #[arg(long)]
+    title: Option<String>,
+    /// Document author, available to header/footer templates as {author}. Overrides
+    /// \[document\].author from the stylesheet if both are given.
+    #[arg(long)]
+    author: Option<String>,
+    /// Document date ("YYYY-MM-DD" or any other literal string), available to header/footer
+    /// templates as {date}. Overrides \[document\].date from the stylesheet if both are given;
+    /// if neither is given, defaults to today's date.
+    #[arg(long)]
+    date: Option<String>,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Render a Markdown file to PDF
@@ -22,19 +42,8 @@ enum Commands {
         /// Path to a stylesheet TOML file. Falls back to built-in defaults if omitted.
         #[arg(long)]
         style: Option<PathBuf>,
-        /// Document title, available to header/footer templates as {title}. Overrides
-        /// \[document\].title from the stylesheet if both are given.
-        #[arg(long)]
-        title: Option<String>,
-        /// Document author, available to header/footer templates as {author}. Overrides
-        /// \[document\].author from the stylesheet if both are given.
-        #[arg(long)]
-        author: Option<String>,
-        /// Document date ("YYYY-MM-DD" or any other literal string), available to header/footer
-        /// templates as {date}. Overrides \[document\].date from the stylesheet if both are given;
-        /// if neither is given, defaults to today's date.
-        #[arg(long)]
-        date: Option<String>,
+        #[command(flatten)]
+        meta: DocumentMeta,
     },
     /// Render an mdBook source tree (a directory containing book.toml and/or src/SUMMARY.md) to
     /// one combined PDF
@@ -46,19 +55,8 @@ enum Commands {
         /// then to built-in defaults.
         #[arg(long)]
         style: Option<PathBuf>,
-        /// Document title, available to header/footer templates as {title}. Overrides
-        /// \[document\].title from the stylesheet if both are given.
-        #[arg(long)]
-        title: Option<String>,
-        /// Document author, available to header/footer templates as {author}. Overrides
-        /// \[document\].author from the stylesheet if both are given.
-        #[arg(long)]
-        author: Option<String>,
-        /// Document date ("YYYY-MM-DD" or any other literal string), available to header/footer
-        /// templates as {date}. Overrides \[document\].date from the stylesheet if both are given;
-        /// if neither is given, defaults to today's date.
-        #[arg(long)]
-        date: Option<String>,
+        #[command(flatten)]
+        meta: DocumentMeta,
     },
     /// Render a Markdown slide deck (split into slides on `---`) to PDF
     RenderSlides {
@@ -68,19 +66,8 @@ enum Commands {
         /// Path to a stylesheet TOML file. Falls back to built-in defaults if omitted.
         #[arg(long)]
         style: Option<PathBuf>,
-        /// Document title, available to header/footer templates as {title}. Overrides
-        /// \[document\].title from the stylesheet if both are given.
-        #[arg(long)]
-        title: Option<String>,
-        /// Document author, available to header/footer templates as {author}. Overrides
-        /// \[document\].author from the stylesheet if both are given.
-        #[arg(long)]
-        author: Option<String>,
-        /// Document date ("YYYY-MM-DD" or any other literal string), available to header/footer
-        /// templates as {date}. Overrides \[document\].date from the stylesheet if both are given;
-        /// if neither is given, defaults to today's date.
-        #[arg(long)]
-        date: Option<String>,
+        #[command(flatten)]
+        meta: DocumentMeta,
     },
     /// Generate seeded complex Markdown input, render it, and report per-stage timings
     Bench {
@@ -119,7 +106,8 @@ enum Commands {
 /// its default of `""`) passes through unchanged. `date` is the one exception: an empty result
 /// (neither the flag nor the stylesheet set one) falls back to today's date rather than staying
 /// empty, since "no date was configured" should still show *something* sensible in a template.
-fn apply_document_overrides(stylesheet: &mut sardown_style::Stylesheet, title: Option<String>, author: Option<String>, date: Option<String>) {
+fn apply_document_overrides(stylesheet: &mut sardown_style::Stylesheet, meta: DocumentMeta) {
+    let DocumentMeta { title, author, date } = meta;
     if let Some(title) = title {
         stylesheet.document.title = title;
     }
@@ -248,9 +236,9 @@ fn write_pdf_output(
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Render { input, output, style, title, author, date } => {
+        Commands::Render { input, output, style, meta } => {
             let mut stylesheet = timed_stage("Resolving stylesheet", || sardown_style::Stylesheet::resolve(style.as_deref(), None))?;
-            apply_document_overrides(&mut stylesheet, title, author, date);
+            apply_document_overrides(&mut stylesheet, meta);
 
             let markdown = std::fs::read_to_string(&input)?;
             let mut slugs = sardown_ast::SlugGenerator::new();
@@ -270,9 +258,9 @@ fn main() -> anyhow::Result<()> {
                 timed_stage("Laying out pages", || Ok(sardown_layout::layout_with_header_footer(&ast, &mut font_system, &base_dir, &diagrams, &stylesheet)))?;
             write_pdf_output(&output_layout, &font_system, &output, "pages")
         }
-        Commands::RenderBook { book_root, output, style, title, author, date } => {
+        Commands::RenderBook { book_root, output, style, meta } => {
             let mut stylesheet = timed_stage("Resolving stylesheet", || sardown_style::Stylesheet::resolve(style.as_deref(), Some(&book_root)))?;
-            apply_document_overrides(&mut stylesheet, title, author, date);
+            apply_document_overrides(&mut stylesheet, meta);
 
             let ast = timed_stage("Loading book", || sardown_book::load_book(&book_root, &stylesheet))?;
 
@@ -292,9 +280,9 @@ fn main() -> anyhow::Result<()> {
                 timed_stage("Laying out pages", || Ok(sardown_layout::layout_with_header_footer(&ast, &mut font_system, &book_root, &diagrams, &stylesheet)))?;
             write_pdf_output(&output_layout, &font_system, &output, "pages")
         }
-        Commands::RenderSlides { input, output, style, title, author, date } => {
+        Commands::RenderSlides { input, output, style, meta } => {
             let mut stylesheet = timed_stage("Resolving stylesheet", || sardown_style::Stylesheet::resolve(style.as_deref(), None))?;
-            apply_document_overrides(&mut stylesheet, title, author, date);
+            apply_document_overrides(&mut stylesheet, meta);
 
             let markdown = std::fs::read_to_string(&input)?;
             let base_dir = base_dir_of(&input);
