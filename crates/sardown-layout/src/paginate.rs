@@ -31,6 +31,11 @@ const LINE_SPACING_PT: f32 = 4.0; // gap after each block
 /// does nothing.
 struct Cursor<'a> {
     y: f32,
+    /// The page margin every element's `x` is measured from, and the `y` a page break resets
+    /// to. Constant for a document's cursor; `Cursor::isolated` (a `::columns` column laid out
+    /// in its own local coordinates) uses 0.0. Carrying it on the cursor instead of threading
+    /// it through `render_block`/`break_page`/`InlinePlacement` keeps one real source of truth.
+    margin_pt: f32,
     page_height_pt: f32,
     content_width_pt: f32,
     pages: Vec<PositionedPage>,
@@ -49,6 +54,7 @@ impl<'a> Cursor<'a> {
         let margin_pt = geometry.margin_mm * PT_PER_MM;
         Self {
             y: margin_pt,
+            margin_pt,
             page_height_pt: geometry.page_height_mm * PT_PER_MM - margin_pt, // bottom boundary
             content_width_pt: geometry.page_width_mm * PT_PER_MM - geometry.horizontal_margin_budget_mm() * PT_PER_MM,
             pages: Vec::new(),
@@ -71,6 +77,7 @@ impl<'a> Cursor<'a> {
     fn isolated(content_width_pt: f32, style: &'a sardown_style::Stylesheet, current_h1: Option<String>, current_h2: Option<String>) -> Self {
         Self {
             y: 0.0,
+            margin_pt: 0.0,
             page_height_pt: f32::MAX,
             content_width_pt,
             pages: Vec::new(),
@@ -99,12 +106,12 @@ impl<'a> Cursor<'a> {
         });
     }
 
-    fn break_page(&mut self, margin_pt: f32) {
+    fn break_page(&mut self) {
         let elements = std::mem::take(&mut self.current);
         self.pages.push(PositionedPage { page_number: self.page_number, elements });
         self.snapshot_page_context();
         self.page_number += 1;
-        self.y = margin_pt;
+        self.y = self.margin_pt;
     }
 
     fn finish(mut self) -> (Vec<PositionedPage>, AnchorTable, Vec<PageContext>) {
@@ -149,7 +156,6 @@ fn to_cosmic_align(alignment: sardown_style::TextAlignment) -> cosmic_text::Alig
 /// `place_shaped_runs`.
 #[derive(Clone, Copy)]
 struct InlinePlacement<'a> {
-    margin_pt: f32,
     indent_pt: f32,
     max_width_pt: f32,
     align: cosmic_text::Align,
@@ -164,7 +170,7 @@ struct InlinePlacement<'a> {
 /// text (both its width *and* its actual start position, which shifts under `Align::Center`/
 /// `Align::Right`) rather than assuming it always starts at `margin_pt + indent_pt`.
 fn place_inline_content(cursor: &mut Cursor, content: &[sardown_ast::InlineNode], placement: InlinePlacement, font_system: &mut FontSystem) -> (f32, f32) {
-    let InlinePlacement { margin_pt: _, indent_pt: _, max_width_pt, align, hyphenator, ligatures } = placement;
+    let InlinePlacement { indent_pt: _, max_width_pt, align, hyphenator, ligatures } = placement;
     let hyphenated;
     let content = match hyphenator {
         Some(h) => {
@@ -185,12 +191,12 @@ fn place_inline_content(cursor: &mut Cursor, content: &[sardown_ast::InlineNode]
 /// cell placement. `content` must be the same slice the runs were shaped from (it is only
 /// consulted for each run's link target and strikethrough flags via `source_index`).
 fn place_shaped_runs(cursor: &mut Cursor, shaped: Vec<crate::ShapedRun>, content: &[sardown_ast::InlineNode], placement: InlinePlacement) -> (f32, f32) {
-    let InlinePlacement { margin_pt, indent_pt, .. } = placement;
+    let InlinePlacement { indent_pt, .. } = placement;
     let mut iter = shaped.into_iter().peekable();
 
     let mut content_start_y = cursor.y;
     let mut first_line_y: Option<f32> = None;
-    let line_start_x = margin_pt + indent_pt;
+    let line_start_x = cursor.margin_pt + indent_pt;
     let mut min_start_x = f32::MAX;
     let mut max_end_x = line_start_x;
 
@@ -220,7 +226,7 @@ fn place_shaped_runs(cursor: &mut Cursor, shaped: Vec<crate::ShapedRun>, content
 
         let mut placed_y = content_start_y + (line_y - baseline_line_y);
         if cursor.page_height_pt - placed_y < line_height && !cursor.current.is_empty() {
-            cursor.break_page(margin_pt);
+            cursor.break_page();
             content_start_y = cursor.y;
             first_line_y = Some(line_y);
             placed_y = content_start_y;
@@ -234,7 +240,7 @@ fn place_shaped_runs(cursor: &mut Cursor, shaped: Vec<crate::ShapedRun>, content
             let mut element = shaped_run.element;
             let (rect, strike_line) = match &mut element {
                 PositionedElement::TextRun { x, y, glyphs, size, .. } => {
-                    *x += margin_pt + indent_pt;
+                    *x += cursor.margin_pt + indent_pt;
                     *y = placed_y;
                     let width: f32 = glyphs.iter().map(|g| g.x_advance).sum();
                     let rect = Rect { x: *x, y: placed_y - *size, width, height: *size * 1.2 };
@@ -316,15 +322,13 @@ fn shape_row_cells(
 /// A rough "how tall is this block's first line" estimate, used only to reserve enough gap
 /// after a code block that its background doesn't reach up into the next block's ascender (see
 /// the `BlockNode::CodeBlock` arm). Blocks without an obvious first-line size (tables, images,
-/// diagrams, thematic breaks) fall back to `DEFAULT_BODY_SIZE_PT`, matching typical body text --
-/// the only block kind whose ascent meaningfully exceeds that by enough to matter here is a
+/// diagrams, thematic breaks) fall back to the document's configured body size, matching typical
+/// body text -- the only block kind whose ascent meaningfully exceeds that by enough to matter here is a
 /// heading, since `HEADING_SIZES` (sardown-ast) run well above body text.
-fn estimate_next_block_ascent_pt(next_block: Option<&BlockNode>) -> f32 {
-    const DEFAULT_BODY_SIZE_PT: f32 = 12.0;
+fn estimate_next_block_ascent_pt(next_block: Option<&BlockNode>, body_size_pt: f32) -> f32 {
     let size = match next_block {
-        Some(BlockNode::Heading { content, .. }) => content.first().map(|n| n.style.size).unwrap_or(DEFAULT_BODY_SIZE_PT),
-        Some(BlockNode::Paragraph { content }) => content.first().map(|n| n.style.size).unwrap_or(DEFAULT_BODY_SIZE_PT),
-        _ => DEFAULT_BODY_SIZE_PT,
+        Some(BlockNode::Heading { content, .. }) | Some(BlockNode::Paragraph { content }) => content.first().map(|n| n.style.size).unwrap_or(body_size_pt),
+        _ => body_size_pt,
     };
     size * 0.8
 }
@@ -346,21 +350,14 @@ fn marker_inline_node(marker: &str, typography: &sardown_style::TypographyStyle)
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn render_block(
-    block: &BlockNode,
-    cursor: &mut Cursor,
-    margin_pt: f32,
-    indent_pt: f32,
-    font_system: &mut FontSystem,
-    images: &ImageTable,
-    diagrams: &DiagramTable,
-    hyphenator: Option<&crate::Hyphenator>,
-    next_block: Option<&BlockNode>,
-) {
+fn render_block(block: &BlockNode, cursor: &mut Cursor, indent_pt: f32, font_system: &mut FontSystem, assets: &LayoutAssets, next_block: Option<&BlockNode>) {
+    // Local aliases so the body reads exactly like the parameter names it used to take.
+    let margin_pt = cursor.margin_pt;
+    let diagrams = &assets.diagrams;
+    let hyphenator = assets.hyphenator.as_ref();
     match block {
         BlockNode::Heading { level, content, id } => {
-            let heading_size = content.first().map(|c| c.style.size).unwrap_or(12.0);
+            let heading_size = content.first().map(|c| c.style.size).unwrap_or(cursor.style.typography.body_size_pt);
             // Skipped at the very top of a page/column, where extra leading whitespace isn't
             // wanted (e.g. a chapter's own title heading right after its PageBreak).
             if !cursor.current.is_empty() {
@@ -368,7 +365,7 @@ fn render_block(
             }
             let heading_h = estimate_line_height(heading_size);
             if cursor.remaining_height() < heading_h && !cursor.current.is_empty() {
-                cursor.break_page(margin_pt);
+                cursor.break_page();
             }
             // A level-1 heading landing as the very first thing on a page -- whether because it
             // naturally opens there or because it just got pushed there by the fit check above --
@@ -376,12 +373,11 @@ fn render_block(
             if cursor.current.is_empty() && *level == 1 {
                 cursor.chapter_opener_pending = true;
             }
-            let heading_text: String = content.iter().map(|n| n.text.as_str()).collect();
             if *level == 1 {
-                cursor.current_h1 = Some(heading_text);
+                cursor.current_h1 = Some(content.iter().map(|n| n.text.as_str()).collect());
                 cursor.current_h2 = None;
             } else if *level == 2 {
-                cursor.current_h2 = Some(heading_text);
+                cursor.current_h2 = Some(content.iter().map(|n| n.text.as_str()).collect());
             }
             let anchor_y = cursor.y;
             let max_width_pt = cursor.content_width_pt - indent_pt;
@@ -395,7 +391,7 @@ fn render_block(
             let (heading_start_x, heading_end_x) = place_inline_content(
                 cursor,
                 content,
-                InlinePlacement { margin_pt, indent_pt, max_width_pt, align: heading_align, hyphenator: None, ligatures: true },
+                InlinePlacement { indent_pt, max_width_pt, align: heading_align, hyphenator: None, ligatures: true },
                 font_system,
             );
             let resolved_heading = cursor.style.heading.resolve(*level);
@@ -418,7 +414,7 @@ fn render_block(
             place_inline_content(
                 cursor,
                 content,
-                InlinePlacement { margin_pt, indent_pt, max_width_pt, align: to_cosmic_align(cursor.style.typography.alignment), hyphenator, ligatures: true },
+                InlinePlacement { indent_pt, max_width_pt, align: to_cosmic_align(cursor.style.typography.alignment), hyphenator, ligatures: true },
                 font_system,
             );
         }
@@ -428,7 +424,7 @@ fn render_block(
             let child_indent_pt = indent_pt + cursor.style.blockquote.indent_pt;
             for (i, child) in content.iter().enumerate() {
                 let child_next = content.get(i + 1).or(next_block);
-                render_block(child, cursor, margin_pt, child_indent_pt, font_system, images, diagrams, hyphenator, child_next);
+                render_block(child, cursor, child_indent_pt, font_system, assets, child_next);
             }
             let end_y = cursor.y;
             let end_page = cursor.page_number;
@@ -438,7 +434,7 @@ fn render_block(
             // already includes the gap reserved for whatever block comes next. Left uncorrected
             // the border started visibly too low and ran down into the following block's own
             // text, same root cause as the CodeBlock background's ascender/gap padding.
-            let pad = estimate_next_block_ascent_pt(content.first());
+            let pad = estimate_next_block_ascent_pt(content.first(), cursor.style.typography.body_size_pt);
             let border_x = margin_pt + indent_pt + 4.0;
             let border_color = cursor.style.blockquote.border_color.0;
             let border_width = cursor.style.blockquote.border_width_pt;
@@ -478,7 +474,7 @@ fn render_block(
         }
         BlockNode::PageBreak => {
             if !cursor.current.is_empty() {
-                cursor.break_page(margin_pt);
+                cursor.break_page();
             }
         }
         BlockNode::List { ordered, start, items } => {
@@ -495,34 +491,34 @@ fn render_block(
                     // first thing in an item has no natural place to attach one without a
                     // separate, page-break-synchronized gutter element, and is rare enough in
                     // real Markdown not to be worth that complexity.
-                    if child_i == 0 {
-                        if let BlockNode::Paragraph { content } = child {
-                            let mut marked_content = vec![marker_inline_node(&marker_text, &cursor.style.typography)];
-                            marked_content.extend(content.iter().cloned());
-                            let max_width_pt = cursor.content_width_pt - child_indent_pt;
-                            // The marker shares this paragraph's own shaped line (see the design
-                            // note above), so under a justified stylesheet cosmic-text would
-                            // otherwise treat its trailing spaces as ordinary inter-word
-                            // justification-expansion points -- on a short first line (marker
-                            // plus only a word or two before the item wraps), most of the stretch
-                            // needed to fill the line lands in that one gap. Forcing Left avoids
-                            // this the same way headings already do; it's visually identical to
-                            // Justified for an item that never wraps, since cosmic-text already
-                            // skips justifying a paragraph's only/last line on its own.
-                            let item_align = match cursor.style.typography.alignment {
-                                sardown_style::TextAlignment::Justify => cosmic_text::Align::Left,
-                                other => to_cosmic_align(other),
-                            };
-                            place_inline_content(
-                                cursor,
-                                &marked_content,
-                                InlinePlacement { margin_pt, indent_pt: child_indent_pt, max_width_pt, align: item_align, hyphenator, ligatures: true },
-                                font_system,
-                            );
-                            continue;
-                        }
+                    if child_i == 0
+                        && let BlockNode::Paragraph { content } = child
+                    {
+                        let mut marked_content = vec![marker_inline_node(&marker_text, &cursor.style.typography)];
+                        marked_content.extend(content.iter().cloned());
+                        let max_width_pt = cursor.content_width_pt - child_indent_pt;
+                        // The marker shares this paragraph's own shaped line (see the design
+                        // note above), so under a justified stylesheet cosmic-text would
+                        // otherwise treat its trailing spaces as ordinary inter-word
+                        // justification-expansion points -- on a short first line (marker
+                        // plus only a word or two before the item wraps), most of the stretch
+                        // needed to fill the line lands in that one gap. Forcing Left avoids
+                        // this the same way headings already do; it's visually identical to
+                        // Justified for an item that never wraps, since cosmic-text already
+                        // skips justifying a paragraph's only/last line on its own.
+                        let item_align = match cursor.style.typography.alignment {
+                            sardown_style::TextAlignment::Justify => cosmic_text::Align::Left,
+                            other => to_cosmic_align(other),
+                        };
+                        place_inline_content(
+                            cursor,
+                            &marked_content,
+                            InlinePlacement { indent_pt: child_indent_pt, max_width_pt, align: item_align, hyphenator, ligatures: true },
+                            font_system,
+                        );
+                        continue;
                     }
-                    render_block(child, cursor, margin_pt, child_indent_pt, font_system, images, diagrams, hyphenator, child_next);
+                    render_block(child, cursor, child_indent_pt, font_system, assets, child_next);
                 }
             }
         }
@@ -571,7 +567,7 @@ fn render_block(
             if label_style == sardown_style::LabelStyle::HeaderBar {
                 let header_bar_height_pt = code_font_size_pt + 8.0;
                 if cursor.remaining_height() < header_bar_height_pt + estimate_line_height(code_font_size_pt) && !cursor.current.is_empty() {
-                    cursor.break_page(margin_pt);
+                    cursor.break_page();
                 }
                 let header_bar_top_y = cursor.y;
                 let header_bar_bottom_y = header_bar_top_y + header_bar_height_pt;
@@ -646,7 +642,7 @@ fn render_block(
             place_inline_content(
                 cursor,
                 &combined,
-                InlinePlacement { margin_pt, indent_pt: code_indent_pt, max_width_pt, align: cosmic_text::Align::Left, hyphenator: None, ligatures: false },
+                InlinePlacement { indent_pt: code_indent_pt, max_width_pt, align: cosmic_text::Align::Left, hyphenator: None, ligatures: false },
                 font_system,
             );
             let end_y = cursor.y;
@@ -772,7 +768,7 @@ fn render_block(
             // opaque background (observed: an H2 heading's top visibly sliced by the code
             // block's bottom edge). Reserve whatever extra the next block's actual ascent needs
             // beyond what LINE_SPACING_PT already provides.
-            let next_ascent_pt = estimate_next_block_ascent_pt(next_block);
+            let next_ascent_pt = estimate_next_block_ascent_pt(next_block, cursor.style.typography.body_size_pt);
             let extra_gap_needed_pt = (next_ascent_pt + BOTTOM_PAD_PT - LINE_SPACING_PT).max(0.0);
             cursor.y += extra_gap_needed_pt;
         }
@@ -810,7 +806,7 @@ fn render_block(
             // belonging to the page the row started on.
             let (header_height, shaped_headers) = shape_row_cells(headers, &widths, cell_padding_pt, MIN_CELL_WRAP_WIDTH_PT, min_row_height, font_system);
             if cursor.remaining_height() < header_height && !cursor.current.is_empty() {
-                cursor.break_page(margin_pt);
+                cursor.break_page();
             }
 
             let table_top_y = cursor.y;
@@ -832,7 +828,6 @@ fn render_block(
                     shaped,
                     header,
                     InlinePlacement {
-                        margin_pt,
                         indent_pt: col_x - margin_pt + cell_padding_x_pt,
                         max_width_pt: cell_max_width_pt,
                         align: cosmic_text::Align::Left,
@@ -866,7 +861,7 @@ fn render_block(
             for row in rows {
                 let (row_height, shaped_cells) = shape_row_cells(row, &widths, cell_padding_pt, MIN_CELL_WRAP_WIDTH_PT, min_row_height, font_system);
                 if cursor.remaining_height() < row_height && !cursor.current.is_empty() {
-                    cursor.break_page(margin_pt);
+                    cursor.break_page();
                     segments.push(Segment { page: cursor.page_number, top_y: cursor.y - table_top_pad_pt, bottom_y: cursor.y, header_bottom_y: None });
                 }
 
@@ -881,7 +876,6 @@ fn render_block(
                         shaped,
                         cell,
                         InlinePlacement {
-                            margin_pt,
                             indent_pt: col_x - margin_pt + cell_padding_x_pt,
                             max_width_pt: cell_max_width_pt,
                             align: cosmic_text::Align::Left,
@@ -906,10 +900,10 @@ fn render_block(
             }
         }
         BlockNode::Image { source: sardown_ast::ImageSource::Embedded(path), .. } => {
-            render_keyed_image(cursor, margin_pt, indent_pt, path.to_string_lossy().to_string(), images, diagrams);
+            render_keyed_image(cursor, indent_pt, &path.to_string_lossy(), assets);
         }
         BlockNode::Image { source: sardown_ast::ImageSource::DataUri(uri), .. } => {
-            render_keyed_image(cursor, margin_pt, indent_pt, uri.clone(), images, diagrams);
+            render_keyed_image(cursor, indent_pt, uri, assets);
         }
         BlockNode::Image { source: sardown_ast::ImageSource::External(_), .. } => {} // skipped, see decode_images
         BlockNode::MermaidDiagram { id, .. } => {
@@ -918,7 +912,7 @@ fn render_block(
                 let max_height = cursor.page_height_pt - margin_pt;
                 let (width, height) = fit_vector_graphic(diagram.width, diagram.height, max_width, max_height);
                 if cursor.remaining_height() < height && !cursor.current.is_empty() {
-                    cursor.break_page(margin_pt);
+                    cursor.break_page();
                 }
                 cursor.current.push(PositionedElement::VectorGraphic { x: margin_pt + indent_pt, y: cursor.y, width, height, diagram_id: id.clone() });
                 cursor.y += height;
@@ -927,7 +921,7 @@ fn render_block(
                 // a diagram has a crisp bottom border, so any following block whose first line's
                 // ascender extends further than the flat LINE_SPACING_PT gap visibly punches
                 // into the diagram instead of sitting cleanly below it.
-                let next_ascent_pt = estimate_next_block_ascent_pt(next_block);
+                let next_ascent_pt = estimate_next_block_ascent_pt(next_block, cursor.style.typography.body_size_pt);
                 cursor.y += (next_ascent_pt - LINE_SPACING_PT).max(0.0);
             }
         }
@@ -952,7 +946,7 @@ fn render_block(
             for (i, column_blocks) in columns.iter().enumerate() {
                 let mut sub_cursor = Cursor::isolated(column_width_pt, cursor.style, cursor.current_h1.clone(), cursor.current_h2.clone());
                 for (j, block) in column_blocks.iter().enumerate() {
-                    render_block(block, &mut sub_cursor, 0.0, 0.0, font_system, images, diagrams, hyphenator, column_blocks.get(j + 1));
+                    render_block(block, &mut sub_cursor, 0.0, font_system, assets, column_blocks.get(j + 1));
                     sub_cursor.y += LINE_SPACING_PT;
                 }
                 let column_height_pt = sub_cursor.y;
@@ -993,26 +987,30 @@ fn render_block(
 /// `ImageSource::Embedded` and `ImageSource::DataUri`, which differ only in how `key` is derived
 /// (a file path vs. the raw `data:` URI string) but are otherwise decoded into the exact same two
 /// tables by `decode_images`/`collect_svg_diagrams`.
-fn render_keyed_image(cursor: &mut Cursor, margin_pt: f32, indent_pt: f32, key: String, images: &ImageTable, diagrams: &DiagramTable) {
-    if let Some(decoded) = images.get(&key) {
+fn render_keyed_image(cursor: &mut Cursor, indent_pt: f32, key: &str, assets: &LayoutAssets) {
+    let margin_pt = cursor.margin_pt;
+    // The key is only owned on the paths that actually use it as an element id; an image that
+    // failed to decode (already warned about during `decode_images`) hits neither arm and pays
+    // nothing.
+    if let Some(decoded) = assets.images.get(key) {
         let max_width = cursor.content_width_pt - indent_pt;
         let max_height = cursor.page_height_pt - margin_pt;
         let (width, height) = fit_vector_graphic(decoded.width as f32, decoded.height as f32, max_width, max_height);
         if cursor.remaining_height() < height && !cursor.current.is_empty() {
-            cursor.break_page(margin_pt);
+            cursor.break_page();
         }
-        cursor.current.push(PositionedElement::RasterImage { x: margin_pt + indent_pt, y: cursor.y, width, height, image_id: key });
+        cursor.current.push(PositionedElement::RasterImage { x: margin_pt + indent_pt, y: cursor.y, width, height, image_id: key.to_owned() });
         cursor.y += height;
-    } else if let Some(diagram) = diagrams.get(&key) {
+    } else if let Some(diagram) = assets.diagrams.get(key) {
         // An embedded .svg file/data URI (collect_svg_diagrams) rather than a raster image --
         // rendered through the exact same VectorGraphic path Mermaid diagrams use.
         let max_width = cursor.content_width_pt - indent_pt;
         let max_height = cursor.page_height_pt - margin_pt;
         let (width, height) = fit_vector_graphic(diagram.width, diagram.height, max_width, max_height);
         if cursor.remaining_height() < height && !cursor.current.is_empty() {
-            cursor.break_page(margin_pt);
+            cursor.break_page();
         }
-        cursor.current.push(PositionedElement::VectorGraphic { x: margin_pt + indent_pt, y: cursor.y, width, height, diagram_id: key });
+        cursor.current.push(PositionedElement::VectorGraphic { x: margin_pt + indent_pt, y: cursor.y, width, height, diagram_id: key.to_owned() });
         cursor.y += height;
     }
 }
@@ -1124,10 +1122,9 @@ pub fn layout_with_assets(
     assets: &LayoutAssets,
     stylesheet: &sardown_style::Stylesheet,
 ) -> LayoutOutput {
-    let margin_pt = geometry.margin_mm * PT_PER_MM;
     let mut cursor = Cursor::new(geometry, stylesheet);
     for (i, block) in ast.iter().enumerate() {
-        render_block(block, &mut cursor, margin_pt, 0.0, font_system, &assets.images, &assets.diagrams, assets.hyphenator.as_ref(), ast.get(i + 1));
+        render_block(block, &mut cursor, 0.0, font_system, assets, ast.get(i + 1));
         cursor.y += LINE_SPACING_PT;
     }
     let (pages, anchors, page_contexts) = cursor.finish();
