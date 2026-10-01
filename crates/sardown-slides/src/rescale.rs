@@ -31,19 +31,24 @@ pub fn rescale_slide_content(blocks: &mut [BlockNode], base: &Stylesheet, layout
     let table_cell_size_pt = base.table.text_size_pt * scale;
     let primary_color = layout.text_color.map(|c| c.0);
     let secondary_color = layout.secondary_text_color.map(|c| c.0).or(primary_color);
-    rescale_blocks(blocks, base, scale, body_size_pt, table_cell_size_pt, primary_color, secondary_color);
+    rescale_blocks(blocks, &RescaleTargets { base, scale, body_size_pt, table_cell_size_pt, primary_color, secondary_color });
 }
 
-#[allow(clippy::too_many_arguments)]
-fn rescale_blocks(
-    blocks: &mut [BlockNode],
-    base: &Stylesheet,
+/// The per-attempt target sizes/colors computed once by `rescale_slide_content` and then threaded
+/// unchanged through every recursive `rescale_blocks` call -- bundled (the same pattern
+/// `DeckContext` uses) so the recursion carries one named context value instead of six positional
+/// arguments a future target could silently reorder.
+struct RescaleTargets<'a> {
+    base: &'a Stylesheet,
     scale: f32,
     body_size_pt: f32,
     table_cell_size_pt: f32,
     primary_color: Option<[u8; 3]>,
     secondary_color: Option<[u8; 3]>,
-) {
+}
+
+fn rescale_blocks(blocks: &mut [BlockNode], targets: &RescaleTargets<'_>) {
+    let RescaleTargets { base, scale, body_size_pt, table_cell_size_pt, primary_color, secondary_color } = *targets;
     for block in blocks {
         match block {
             BlockNode::Heading { level, content, .. } => {
@@ -51,15 +56,15 @@ fn rescale_blocks(
                 set_inline_style(content, size, primary_color, primary_color);
             }
             BlockNode::Paragraph { content } => set_inline_style(content, body_size_pt, secondary_color, primary_color),
-            BlockNode::Blockquote { content } => rescale_blocks(content, base, scale, body_size_pt, table_cell_size_pt, primary_color, secondary_color),
+            BlockNode::Blockquote { content } => rescale_blocks(content, targets),
             BlockNode::List { items, .. } => {
                 for item in items {
-                    rescale_blocks(item, base, scale, body_size_pt, table_cell_size_pt, primary_color, secondary_color);
+                    rescale_blocks(item, targets);
                 }
             }
             BlockNode::Columns(columns) => {
                 for column in columns {
-                    rescale_blocks(column, base, scale, body_size_pt, table_cell_size_pt, primary_color, secondary_color);
+                    rescale_blocks(column, targets);
                 }
             }
             BlockNode::Table { headers, rows, .. } => {
