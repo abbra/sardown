@@ -3,7 +3,10 @@ use krilla::geom::PathBuilder;
 use krilla::paint::{Fill, Stroke};
 use sardown_layout::{PathCommand, StrokeStyle};
 
-pub fn build_path(commands: &[PathCommand]) -> krilla::geom::Path {
+/// Returns `None` for a degenerate command list (krilla's `finish()` rejects paths with no
+/// segments); the emission loop draws nothing for it, matching how missing raster/diagram
+/// entries and dangling anchors degrade instead of panicking.
+pub fn build_path(commands: &[PathCommand]) -> Option<krilla::geom::Path> {
     let mut builder = PathBuilder::new();
     for command in commands {
         match *command {
@@ -13,7 +16,7 @@ pub fn build_path(commands: &[PathCommand]) -> krilla::geom::Path {
             PathCommand::Close => builder.close(),
         }
     }
-    builder.finish().expect("path builder produced an empty/invalid path")
+    builder.finish()
 }
 
 pub fn krilla_fill(color: [u8; 3]) -> Fill {

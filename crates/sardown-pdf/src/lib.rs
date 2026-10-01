@@ -98,10 +98,11 @@ pub fn render_pdf(
                         );
                     }
                     PositionedElement::Path { points, fill, stroke } => {
-                        let path = paths::build_path(points);
-                        surface.set_fill(fill.map(paths::krilla_fill));
-                        surface.set_stroke(stroke.as_ref().map(paths::krilla_stroke));
-                        surface.draw_path(&path);
+                        if let Some(path) = paths::build_path(points) {
+                            surface.set_fill(fill.map(paths::krilla_fill));
+                            surface.set_stroke(stroke.as_ref().map(paths::krilla_stroke));
+                            surface.draw_path(&path);
+                        }
                     }
                     PositionedElement::RasterImage { x, y, width, height, image_id } => {
                         // Convert on first placement (see the raster_cache comment above); an id
