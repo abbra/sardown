@@ -148,8 +148,7 @@ pub fn measure_widest_line_pt(font_system: &mut FontSystem, text: &str, size: f3
 /// one or a few (family, size) pairs, so the probe shapes once per pair, not once per block.
 pub fn monospace_advance_pt(font_system: &mut FontSystem, font_family: &str, size: f32) -> Option<f32> {
     crate::shaping_cache::note_font_system(font_system);
-    let key = (font_family.to_string(), size.to_bits());
-    crate::shaping_cache::monospace_cached(&key, || {
+    crate::shaping_cache::monospace_cached(size.to_bits(), font_family, || {
         let probe = InlineNode {
             text: "mW".to_string(),
             style: TextStyle { bold: false, italic: false, strikethrough: false, size, color: [0, 0, 0], font_family: font_family.into() },
