@@ -2,6 +2,7 @@ use crate::{PositionedElement, shape_paragraph};
 use cosmic_text::FontSystem;
 use hyphenation::{Hyphenator as _, Language, Load, Standard};
 use sardown_ast::InlineNode;
+use std::rc::Rc;
 
 /// Wraps a loaded `hyphenation` dictionary for one language.
 pub struct Hyphenator {
@@ -56,7 +57,8 @@ impl Hyphenator {
 /// misses pay the boxed-word key. Cache scope is one font database, not the thread -- see
 /// `shaping_cache.rs` for the two-layer invalidation that keeps a second document rendered
 /// through a different `FontSystem` from inheriting this document's word widths.
-#[derive(Clone)]
+/// Shared through the word cache via `Rc` so a cache hit is a refcount bump rather than a
+/// copy of the whole advance table (see `shaping_cache.rs`).
 pub(crate) struct ShapedWord {
     /// `(cluster_start, cumulative advance up to and including the glyph starting there)`, in
     /// cluster order (which is text order for an unwrapped single word).
@@ -64,7 +66,7 @@ pub(crate) struct ShapedWord {
     total: f32,
 }
 
-fn shape_word(font_system: &mut FontSystem, style: &sardown_ast::TextStyle, word: &str) -> ShapedWord {
+fn shape_word(font_system: &mut FontSystem, style: &sardown_ast::TextStyle, word: &str) -> Rc<ShapedWord> {
     crate::shaping_cache::note_font_system(font_system);
     let key = crate::shaping_cache::WordStyleKey::of(style);
     if let Some(hit) = crate::shaping_cache::word_cache_lookup(&key, word) {
@@ -82,8 +84,8 @@ fn shape_word(font_system: &mut FontSystem, style: &sardown_ast::TextStyle, word
             }
         }
     }
-    let shaped = ShapedWord { advances, total };
-    crate::shaping_cache::word_cache_insert(key, word, shaped.clone());
+    let shaped = Rc::new(ShapedWord { advances, total });
+    crate::shaping_cache::word_cache_insert(key, word, Rc::clone(&shaped));
     shaped
 }
 

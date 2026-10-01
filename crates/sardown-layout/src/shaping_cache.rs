@@ -41,6 +41,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use cosmic_text::FontSystem;
@@ -69,12 +70,18 @@ impl WordStyleKey {
     }
 }
 
+type WordCache = RefCell<HashMap<WordStyleKey, HashMap<Box<str>, Rc<ShapedWord>>>>;
+type MonospaceCache = RefCell<HashMap<u32, HashMap<Box<str>, Option<f32>>>>;
+
 thread_local! {
-    /// Address of the font database whose entries the three caches below hold, so a switch
+    /// Address of the font database whose entries the three caches below hold, so switching
     /// between different systems on one thread can invalidate them ([`note_font_system`]).
     static LAST_FONT_DB_ADDR: Cell<usize> = const { Cell::new(0) };
-    static WORD_SHAPING_CACHE: RefCell<HashMap<WordStyleKey, HashMap<Box<str>, ShapedWord>>> = RefCell::new(HashMap::new());
-    static MONOSPACE_ADVANCE_CACHE: RefCell<HashMap<(String, u32), Option<f32>>> = RefCell::new(HashMap::new());
+    static WORD_SHAPING_CACHE: WordCache = RefCell::new(HashMap::new());
+    // Nested so a lookup borrows: `Box<str>: Borrow<str>` lets the inner get take a plain
+    // `&str`, which a flat `(String, u32)` key cannot do -- a flat key would allocate the
+    // family String on every hit, in the hottest shaping path there is.
+    static MONOSPACE_ADVANCE_CACHE: MonospaceCache = RefCell::new(HashMap::new());
     static FAMILY_KNOWN_CACHE: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
 }
 
@@ -111,15 +118,16 @@ fn clear_all() {
 }
 
 /// `shape_word`'s memoized lookup. The caller has already run [`note_font_system`], so any
-/// entries found here belong to the active system.
-pub(crate) fn word_cache_lookup(key: &WordStyleKey, word: &str) -> Option<ShapedWord> {
+/// entries found here belong to the active system. Entries are `Rc`-shared so a hit is a
+/// refcount increment, not a copy of the whole advance table.
+pub(crate) fn word_cache_lookup(key: &WordStyleKey, word: &str) -> Option<Rc<ShapedWord>> {
     WORD_SHAPING_CACHE.with(|c| c.borrow().get(key).and_then(|inner| inner.get(word)).cloned())
 }
 
 /// `shape_word`'s memoized store. Inner map is keyed by `str` so hits allocate nothing; only
 /// misses pay the boxed-word key. Hitting the size bound forgets that style's words rather
 /// than growing without limit.
-pub(crate) fn word_cache_insert(key: WordStyleKey, word: &str, shaped: ShapedWord) {
+pub(crate) fn word_cache_insert(key: WordStyleKey, word: &str, shaped: Rc<ShapedWord>) {
     WORD_SHAPING_CACHE.with(|c| {
         let mut outer = c.borrow_mut();
         let inner = outer.entry(key).or_default();
