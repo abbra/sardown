@@ -10,3 +10,6 @@ anyhow = "1.0.104"
 sardown-ast = { version = "0.1.0", path = "../sardown-ast" }
 sardown-style = { version = "0.1.0", path = "../sardown-style" }
 toml = "1.1.4"
+
+[lints]
+workspace = true

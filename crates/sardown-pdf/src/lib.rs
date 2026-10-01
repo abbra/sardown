@@ -125,11 +125,11 @@ pub fn render_pdf(pages: &[PositionedPage], assets: &RenderAssets<'_>, toc_entri
                     PositionedElement::RasterImage { x, y, width, height, image_id } => {
                         // Convert on first placement (see the raster_cache comment above); an id
                         // with no decoded entry draws nothing, exactly as before.
-                        if !raster_cache.contains_key(image_id.as_str()) {
-                            if let Some(decoded) = images.get(image_id.as_str()) {
-                                let image = Image::from_rgba8((*decoded.rgba8).clone(), decoded.width, decoded.height);
-                                raster_cache.insert(image_id.as_str(), image);
-                            }
+                        if !raster_cache.contains_key(image_id.as_str())
+                            && let Some(decoded) = images.get(image_id.as_str())
+                        {
+                            let image = Image::from_rgba8((*decoded.rgba8).clone(), decoded.width, decoded.height);
+                            raster_cache.insert(image_id.as_str(), image);
                         }
                         if let Some(image) = raster_cache.get(image_id.as_str()) {
                             let size = Size::from_wh(*width, *height).context("invalid image size")?;

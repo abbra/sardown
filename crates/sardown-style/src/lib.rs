@@ -85,10 +85,10 @@ impl Stylesheet {
         if self.code_block.min_font_size_pt <= 0.0 {
             anyhow::bail!("[code_block] min_font_size_pt must be greater than 0.0, got {}", self.code_block.min_font_size_pt);
         }
-        if let Some(name) = &self.slides.default_layout {
-            if !self.slides.layouts.contains_key(name) {
-                anyhow::bail!("[slides] default_layout = {name:?} has no matching [slides.layouts.{name}] table");
-            }
+        if let Some(name) = &self.slides.default_layout
+            && !self.slides.layouts.contains_key(name)
+        {
+            anyhow::bail!("[slides] default_layout = {name:?} has no matching [slides.layouts.{name}] table");
         }
         if self.slides.min_scale <= 0.0 || self.slides.min_scale > 1.0 {
             anyhow::bail!("[slides] min_scale must be greater than 0.0 and at most 1.0, got {}", self.slides.min_scale);

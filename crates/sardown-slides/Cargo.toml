@@ -16,3 +16,6 @@ sardown-style = { version = "0.1.0", path = "../sardown-style" }
 [dev-dependencies]
 fontdb = "0.23"
 toml = "1.1.4"
+
+[lints]
+workspace = true

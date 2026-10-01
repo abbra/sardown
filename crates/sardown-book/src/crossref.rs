@@ -17,10 +17,10 @@ pub(crate) fn known_chapter_files(items: &[SummaryItem], src_dir: &Path) -> Hash
 fn collect(items: &[SummaryItem], src_dir: &Path, files: &mut HashSet<PathBuf>) {
     for item in items {
         if let SummaryItem::Chapter { path, children, .. } = item {
-            if let Some(rel_path) = path {
-                if let Ok(canonical) = std::fs::canonicalize(src_dir.join(rel_path)) {
-                    files.insert(canonical);
-                }
+            if let Some(rel_path) = path
+                && let Ok(canonical) = std::fs::canonicalize(src_dir.join(rel_path))
+            {
+                files.insert(canonical);
             }
             collect(children, src_dir, files);
         }
@@ -83,10 +83,10 @@ fn classify_inline(content: &mut [InlineNode], chapter_dir: &Path, known_chapter
             if file_part.is_empty() {
                 continue;
             }
-            if let Ok(canonical) = std::fs::canonicalize(chapter_dir.join(file_part)) {
-                if known_chapter_files.contains(&canonical) {
-                    node.link_target = Some(LinkTarget::CrossFileAnchor { file: canonical, fragment: fragment.map(str::to_string) });
-                }
+            if let Ok(canonical) = std::fs::canonicalize(chapter_dir.join(file_part))
+                && known_chapter_files.contains(&canonical)
+            {
+                node.link_target = Some(LinkTarget::CrossFileAnchor { file: canonical, fragment: fragment.map(str::to_string) });
             }
         }
     }

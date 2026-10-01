@@ -194,17 +194,17 @@ fn blockquote_border_spanning_pages_draws_a_segment_on_each_page_it_touches() {
     let mut total_segments = 0;
     for page in &pages {
         for element in &page.elements {
-            if let PositionedElement::Path { points, stroke: Some(_), .. } = element {
-                if let [sardown_layout::PathCommand::MoveTo(_, y0), sardown_layout::PathCommand::LineTo(_, y1)] = points.as_slice() {
-                    total_segments += 1;
-                    let span = (y1 - y0).abs();
-                    assert!(
-                        span <= MAX_PAGE_CONTENT_HEIGHT_PT,
-                        "border segment on page {} spans {span}pt, more than a single page's content height -- \
-                         it likely combined coordinates from two different pages",
-                        page.page_number
-                    );
-                }
+            if let PositionedElement::Path { points, stroke: Some(_), .. } = element
+                && let [sardown_layout::PathCommand::MoveTo(_, y0), sardown_layout::PathCommand::LineTo(_, y1)] = points.as_slice()
+            {
+                total_segments += 1;
+                let span = (y1 - y0).abs();
+                assert!(
+                    span <= MAX_PAGE_CONTENT_HEIGHT_PT,
+                    "border segment on page {} spans {span}pt, more than a single page's content height -- \
+                     it likely combined coordinates from two different pages",
+                    page.page_number
+                );
             }
         }
     }
@@ -670,10 +670,10 @@ fn table_header_separator_line_sits_between_rows_not_through_row_ones_text() {
     // A horizontal segment is a MoveTo/LineTo pair sharing the same y; none should fall inside
     // row 1's visual text extent.
     for window in grid.windows(2) {
-        if let (sardown_layout::PathCommand::MoveTo(_, y1), sardown_layout::PathCommand::LineTo(_, y2)) = (&window[0], &window[1]) {
-            if (y1 - y2).abs() < 0.01 {
-                assert!(*y1 < row1_top || *y1 > row1_bottom, "a horizontal grid line at y={y1} falls inside row 1's text extent [{row1_top}, {row1_bottom}]");
-            }
+        if let (sardown_layout::PathCommand::MoveTo(_, y1), sardown_layout::PathCommand::LineTo(_, y2)) = (&window[0], &window[1])
+            && (y1 - y2).abs() < 0.01
+        {
+            assert!(*y1 < row1_top || *y1 > row1_bottom, "a horizontal grid line at y={y1} falls inside row 1's text extent [{row1_top}, {row1_bottom}]");
         }
     }
 }

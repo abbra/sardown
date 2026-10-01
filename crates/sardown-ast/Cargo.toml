@@ -8,3 +8,6 @@ repository.workspace = true
 [dependencies]
 sardown-style = { version = "0.1.0", path = "../sardown-style" }
 pulldown-cmark = "0.13.4"
+
+[lints]
+workspace = true
