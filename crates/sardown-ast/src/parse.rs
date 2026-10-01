@@ -350,10 +350,7 @@ pub fn parse_with_slugs(markdown: &str, slugs: &mut SlugGenerator, next_diagram_
 /// Like `parse_with_slugs`, but takes a `Stylesheet` controlling heading and body typography
 /// (size, color, and font family) and table-cell text size.
 pub fn parse_with_style(markdown: &str, slugs: &mut SlugGenerator, next_diagram_id: &mut usize, style: &sardown_style::Stylesheet) -> Vec<BlockNode> {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TASKLISTS);
+    let options = parser_options();
     // A ```mermaid fence implies the substring "mermaid", so this cheap scan gates the second
     // full pulldown-cmark pass below: documents without a single diagram (the overwhelming
     // majority) skip the extra tokenization entirely -- the same "gate expensive setup when the
@@ -384,6 +381,17 @@ fn line_col_at(markdown: &str, byte_offset: usize) -> (usize, usize) {
     (line, column)
 }
 
+/// The single source of the extension flags both the main lowering pass and the mermaid
+/// position pre-scan parse with. The two passes must agree exactly or the pre-scanned diagram
+/// positions desync from the main pass; one shared builder makes that drift impossible.
+fn parser_options() -> Options {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+    options
+}
+
 /// The (line, column) of every mermaid fenced code block's opening fence, in the order they
 /// appear. Found via a small, separate scan using pulldown-cmark's byte-offset-tracking
 /// iterator, rather than threading offsets through the main lowering pass (which only ever
@@ -391,12 +399,7 @@ fn line_col_at(markdown: &str, byte_offset: usize) -> (usize, usize) {
 /// per document that parsing the text twice is cheap, and this keeps the main, already-well-
 /// tested lowering pipeline untouched.
 fn mermaid_diagram_positions(markdown: &str) -> Vec<(usize, usize)> {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TASKLISTS);
-
-    Parser::new_ext(markdown, options)
+    Parser::new_ext(markdown, parser_options())
         .into_offset_iter()
         .filter_map(|(event, range)| match event {
             Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(lang))) if lang.as_ref() == "mermaid" => Some(line_col_at(markdown, range.start)),
