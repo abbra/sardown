@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use std::fmt::Write;
 
 fn generate_book(chapters: usize) -> String {
@@ -31,17 +31,7 @@ fn bench_full_render(c: &mut Criterion) {
                 std::path::Path::new("."),
                 &diagrams,
             );
-            sardown_pdf::render_pdf(
-                &output.pages,
-                font_system.db(),
-                &output.images,
-                &output.diagrams,
-                &output.anchors,
-                output.page_width_pt,
-                output.page_height_pt,
-                &output.toc_entries,
-            )
-            .unwrap()
+            sardown_pdf::render_pdf(&output.pages, &sardown_pdf::RenderAssets::from_layout(&output, font_system.db()), &output.toc_entries).unwrap()
         })
     });
 }

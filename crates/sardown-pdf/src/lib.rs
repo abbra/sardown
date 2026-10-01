@@ -15,24 +15,42 @@ use krilla::text::{Font, KrillaGlyph};
 use krilla::{Data, SerializeSettings};
 use krilla_svg::SurfaceExt;
 use sardown_enrich::DiagramTable;
-use sardown_layout::{AnchorTable, ImageTable, PositionedElement, PositionedPage};
+use sardown_layout::{AnchorTable, ImageTable, LayoutOutput, PositionedElement, PositionedPage};
 use std::collections::HashMap;
 
 fn pdf_a2b_configuration() -> anyhow::Result<Configuration> {
     ConfigurationBuilder::new().with_archival_validator(Archival::A2_B).finish().map_err(|e| anyhow::anyhow!("invalid krilla configuration: {e:?}"))
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn render_pdf(
-    pages: &[PositionedPage],
-    font_data: &fontdb::Database,
-    images: &ImageTable,
-    diagrams: &DiagramTable,
-    anchors: &AnchorTable,
-    page_width_pt: f32,
-    page_height_pt: f32,
-    toc_entries: &[sardown_layout::TocEntry],
-) -> anyhow::Result<Vec<u8>> {
+/// The asset tables and page dimensions every caller always passes together with a layout
+/// result; bundling them names each field at the call site and keeps `render_pdf`'s signature
+/// stable as new cross-cutting context is added.
+pub struct RenderAssets<'a> {
+    pub font_data: &'a fontdb::Database,
+    pub images: &'a ImageTable,
+    pub diagrams: &'a DiagramTable,
+    pub anchors: &'a AnchorTable,
+    pub page_width_pt: f32,
+    pub page_height_pt: f32,
+}
+
+impl<'a> RenderAssets<'a> {
+    /// Bundles the asset tables and page dimensions carried by a `LayoutOutput` alongside the
+    /// document's font database.
+    pub fn from_layout(output: &'a LayoutOutput, font_data: &'a fontdb::Database) -> Self {
+        Self {
+            font_data,
+            images: &output.images,
+            diagrams: &output.diagrams,
+            anchors: &output.anchors,
+            page_width_pt: output.page_width_pt,
+            page_height_pt: output.page_height_pt,
+        }
+    }
+}
+
+pub fn render_pdf(pages: &[PositionedPage], assets: &RenderAssets<'_>, toc_entries: &[sardown_layout::TocEntry]) -> anyhow::Result<Vec<u8>> {
+    let RenderAssets { font_data, images, diagrams, anchors, page_width_pt, page_height_pt } = *assets;
     let configuration = pdf_a2b_configuration()?;
     let settings = SerializeSettings { configuration, ..Default::default() };
     let mut document = Document::new_with(settings);
