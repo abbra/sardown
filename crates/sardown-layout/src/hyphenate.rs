@@ -100,7 +100,9 @@ impl ShapedWord {
     fn prefix_width(&self, offset: usize) -> f32 {
         // First entry whose cluster start is >= offset; everything before it is inside the prefix.
         let idx = self.advances.partition_point(|(start, _)| *start < offset);
-        self.advances.get(idx - 1).map(|(_, w)| *w).unwrap_or(0.0)
+        // `idx` can be 0 for an empty advance table (e.g. a word whose glyphs all resolved to
+        // `.notdef`); `checked_sub` keeps that a 0.0 answer instead of a debug-mode overflow panic.
+        idx.checked_sub(1).and_then(|i| self.advances.get(i)).map(|(_, w)| *w).unwrap_or(0.0)
     }
 }
 
