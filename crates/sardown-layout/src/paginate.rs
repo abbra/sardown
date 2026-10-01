@@ -302,7 +302,7 @@ fn shape_row_cells(
                 _ => unreachable!("shape_rich_paragraph only produces TextRun elements"),
             })
             .collect();
-        ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        ys.sort_unstable_by(|a, b| a.total_cmp(b));
         ys.dedup_by(|a, b| (*a - *b).abs() < 0.01);
         if let (Some(&first), Some(&last)) = (ys.first(), ys.last()) {
             let size = cell[0].style.size;
