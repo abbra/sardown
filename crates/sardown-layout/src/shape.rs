@@ -111,7 +111,9 @@ pub fn shape_paragraph(font_system: &mut FontSystem, content: &[InlineNode], max
 /// A generous, finite width (rather than `f32::MAX`) for `measure_widest_line_pt`'s unconstrained
 /// shaping pass -- keeps `Buffer`'s internal wrap-width arithmetic away from any overflow edge
 /// case, while still being far wider than any real code line needs.
-const UNCONSTRAINED_WIDTH_PT: f32 = 1_000_000.0;
+/// Every unconstrained shaping call in this crate uses this constant rather than a raw
+/// `f32::MAX` for exactly the reason above.
+pub(crate) const UNCONSTRAINED_WIDTH_PT: f32 = 1_000_000.0;
 
 /// The natural (unwrapped) width, in points, of the widest `\n`-delimited line in `text` when
 /// shaped at `size`pt in `font_family` -- used by code blocks' `shrink_to_fit` to decide whether a
