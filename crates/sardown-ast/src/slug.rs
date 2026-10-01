@@ -12,7 +12,8 @@ impl SlugGenerator {
     pub fn generate(&mut self, heading_text: &str) -> String {
         let base = Self::slugify(heading_text);
         let count = self.seen.entry(base.clone()).or_insert(0);
-        let slug = if *count == 0 { base.clone() } else { format!("{}-{}", base, count) };
+        // The fresh-heading case (by far the common one) moves `base` out instead of copying it.
+        let slug = if *count == 0 { base } else { format!("{base}-{count}") };
         *count += 1;
         slug
     }
