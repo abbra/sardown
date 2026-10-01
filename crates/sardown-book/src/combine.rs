@@ -1,8 +1,9 @@
 use sardown_ast::{BlockNode, ImageSource, InlineNode, SlugGenerator};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
-use crate::summary::{parse_summary, SummaryItem};
+use crate::summary::{SummaryItem, parse_summary};
 
 /// Loads an mdBook project rooted at `book_root` into one combined `Vec<BlockNode>`: every
 /// chapter listed in `SUMMARY.md`, depth-first in listing order, each starting with a
@@ -18,87 +19,90 @@ pub fn load_book(book_root: &Path, style: &sardown_style::Stylesheet) -> anyhow:
 
     let known_files = crate::crossref::known_chapter_files(&summary.items, &src_dir);
 
-    let mut slugs = SlugGenerator::new();
-    let mut next_diagram_id = 0usize;
-    let mut slug_map = HashMap::new();
-    let mut chapter_start_map = HashMap::new();
-    let mut combined = Vec::new();
-    collect_chapters(
-        &summary.items,
+    let mut builder = BookBuilder {
         book_root,
-        &src_dir,
-        &known_files,
-        &mut slugs,
-        &mut next_diagram_id,
-        &mut slug_map,
-        &mut chapter_start_map,
-        &mut combined,
+        src_dir: &src_dir,
+        known_files: &known_files,
         style,
-    );
-    crate::crossref::resolve_links(&mut combined, &slug_map, &chapter_start_map);
-    Ok(combined)
+        slugs: SlugGenerator::new(),
+        next_diagram_id: 0,
+        slug_map: HashMap::new(),
+        chapter_start_map: HashMap::new(),
+        out: Vec::new(),
+    };
+    builder.collect(&summary.items);
+    crate::crossref::resolve_links(&mut builder.out, &builder.slug_map, &builder.chapter_start_map);
+    Ok(builder.out)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn collect_chapters(
-    items: &[SummaryItem],
-    book_root: &Path,
-    src_dir: &Path,
-    known_files: &HashSet<PathBuf>,
-    slugs: &mut SlugGenerator,
-    next_diagram_id: &mut usize,
-    slug_map: &mut HashMap<(PathBuf, String), String>,
-    chapter_start_map: &mut HashMap<PathBuf, String>,
-    out: &mut Vec<BlockNode>,
-    style: &sardown_style::Stylesheet,
-) {
-    for item in items {
-        match item {
-            SummaryItem::Chapter { title, path, children } => {
-                if let Some(rel_path) = path {
-                    let chapter_path = src_dir.join(rel_path);
-                    match std::fs::read_to_string(&chapter_path) {
-                        Ok(text) => {
-                            let chapter_dir = chapter_path.parent().unwrap_or(src_dir).to_path_buf();
-                            let text = crate::include::resolve_includes(&text, &chapter_dir, book_root);
-                            let mut blocks = sardown_ast::parse_with_style(&text, slugs, next_diagram_id, style);
-                            // Tagged with the same relative path SUMMARY.md itself names this
-                            // chapter by, not the full absolute filesystem path -- that's what
-                            // the book's author will actually recognize in a diagram warning.
-                            sardown_ast::tag_diagram_origins(&mut blocks, rel_path);
-                            absolutize_image_paths(&mut blocks, &chapter_dir);
-                            crate::crossref::classify_links(&mut blocks, &chapter_dir, known_files);
-                            prepend_chapter_start(&mut blocks, title, slugs, style);
+/// The shared state of one book assembly: the immutable inputs plus the mutable maps and
+/// generators threaded unchanged through every level of the recursive chapter walk. Grouped
+/// into one struct (the same pattern sardown-slides' `DeckContext` uses) so the recursion's
+/// shared state is explicit and a new cross-chapter concern is a new field, not a new
+/// parameter at every call site.
+struct BookBuilder<'a> {
+    book_root: &'a Path,
+    src_dir: &'a Path,
+    known_files: &'a HashSet<PathBuf>,
+    style: &'a sardown_style::Stylesheet,
+    slugs: SlugGenerator,
+    next_diagram_id: usize,
+    slug_map: HashMap<(Rc<Path>, String), String>,
+    chapter_start_map: HashMap<PathBuf, String>,
+    out: Vec<BlockNode>,
+}
 
-                            let canonical_chapter_path = std::fs::canonicalize(&chapter_path).unwrap_or_else(|_| chapter_path.clone());
-                            crate::crossref::record_heading_slugs(&blocks, &canonical_chapter_path, slug_map);
-                            if let Some(first_heading_id) = first_heading_id(&blocks) {
-                                chapter_start_map.insert(canonical_chapter_path, first_heading_id);
+impl BookBuilder<'_> {
+    fn collect(&mut self, items: &[SummaryItem]) {
+        for item in items {
+            match item {
+                SummaryItem::Chapter { title, path, children } => {
+                    if let Some(rel_path) = path {
+                        let chapter_path = self.src_dir.join(rel_path);
+                        match std::fs::read_to_string(&chapter_path) {
+                            Ok(text) => {
+                                let chapter_dir = chapter_path.parent().unwrap_or(self.src_dir).to_path_buf();
+                                let text = crate::include::resolve_includes(&text, &chapter_dir, self.book_root);
+                                let mut blocks = sardown_ast::parse_with_style(&text, &mut self.slugs, &mut self.next_diagram_id, self.style);
+                                // Tagged with the same relative path SUMMARY.md itself names this
+                                // chapter by, not the full absolute filesystem path -- that's what
+                                // the book's author will actually recognize in a diagram warning.
+                                sardown_ast::tag_diagram_origins(&mut blocks, rel_path);
+                                absolutize_image_paths(&mut blocks, &chapter_dir);
+                                crate::crossref::classify_links(&mut blocks, &chapter_dir, self.known_files);
+                                prepend_chapter_start(&mut blocks, title, &mut self.slugs, self.style);
+
+                                // `Rc` so recording every heading's slug shares one path instead of
+                                // copying it per heading.
+                                let canonical_chapter_path: Rc<Path> = Rc::from(std::fs::canonicalize(&chapter_path).unwrap_or_else(|_| chapter_path.clone()));
+                                crate::crossref::record_heading_slugs(&blocks, &canonical_chapter_path, &mut self.slug_map);
+                                if let Some(first_heading_id) = first_heading_id(&blocks) {
+                                    self.chapter_start_map.insert(canonical_chapter_path.as_ref().to_path_buf(), first_heading_id);
+                                }
+
+                                self.out.extend(blocks);
                             }
-
-                            out.extend(blocks);
-                        }
-                        Err(e) => {
-                            eprintln!("warning: failed to read chapter {}: {e}", chapter_path.display());
+                            Err(e) => {
+                                eprintln!("warning: failed to read chapter {}: {e}", chapter_path.display());
+                            }
                         }
                     }
+                    // Recurse into children regardless of whether this entry itself had content --
+                    // mdBook allows a draft parent (no link) with real, linked sub-chapters.
+                    self.collect(children);
                 }
-                // Recurse into children regardless of whether this entry itself had content --
-                // mdBook allows a draft parent (no link) with real, linked sub-chapters.
-                collect_chapters(children, book_root, src_dir, known_files, slugs, next_diagram_id, slug_map, chapter_start_map, out, style);
-            }
-            SummaryItem::PartTitle(title) => {
-                out.push(BlockNode::PageBreak);
-                out.push(synthesized_heading(title, slugs, style));
-            }
-            SummaryItem::Separator => {
-                // SUMMARY.md's thematic breaks are a sidebar-only grouping cue with no title
-                // text of their own -- nothing to render as a heading.
+                SummaryItem::PartTitle(title) => {
+                    self.out.push(BlockNode::PageBreak);
+                    self.out.push(synthesized_heading(title, &mut self.slugs, self.style));
+                }
+                SummaryItem::Separator => {
+                    // SUMMARY.md's thematic breaks are a sidebar-only grouping cue with no title
+                    // text of their own -- nothing to render as a heading.
+                }
             }
         }
     }
 }
-
 fn first_heading_id(blocks: &[BlockNode]) -> Option<String> {
     blocks.iter().find_map(|b| match b {
         BlockNode::Heading { id, .. } => Some(id.clone()),
