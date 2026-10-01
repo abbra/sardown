@@ -181,7 +181,11 @@ sardown-side symbol above ~1.5%) and found five remaining removable costs. All n
 
 ### A ceiling this pass documented rather than fixed
 
-`svg_cache` (fix #10) prevents re-*parsing*, but a `VectorGraphic` referenced from N pages is
+`svg_cache` (fix #10) prevented re-*parsing*; it was later removed outright (the review pass of
+2026-10-01) because `CompiledDiagram` now carries the pre-built tree and `render_pdf` borrows the
+`DiagramTable` directly -- an eager per-document clone of every tree was pure overhead, and
+`CompiledDiagram.tree` is `Arc`-shared so even the layout-side table clone is a refcount bump.
+What remains is the real ceiling: a `VectorGraphic` referenced from N pages is
 still *re-rendered* N times: krilla-svg walks the whole `usvg::Tree` into content ops per
 placement, and (verified in krilla-svg 0.8.1 source) clones its `fontdb` per placement before
 `Arc::make_mut`. No form-XObject reuse is exposed via `draw_svg`, so this is an upstream ask,
@@ -208,8 +212,9 @@ crates/sardown-layout/src/
                   entry + document-entry resets; reset_shaping_caches() is pub for
                   embedders driving their own FontSystems
 
-crates/sardown-pdf/src/lib.rs   render_pdf: raster_cache + svg_cache built once per document (#8/#10);
-                                svg_cache now clones pre-built trees, no parsing at emission (#17)
+crates/sardown-pdf/src/lib.rs   render_pdf: lazy raster_cache (#8/#20); borrows Arc-shared trees
+                                from the borrowed DiagramTable at placement, no per-document
+                                clone and no parsing at emission (#10/#17, svg_cache removed)
 
 crates/sardown-enrich/          lazy syntect gate (ast_contains_code_block → build highlighter, #7);
                                 svg_tree_options(db) + compile_diagrams → tree-bearing CompiledDiagram (#17)

@@ -43,15 +43,6 @@ pub fn render_pdf(
     // don't reload/re-register the font.
     let mut font_cache: HashMap<fontdb::ID, Font> = HashMap::new();
 
-    // Vector diagrams arrive already parsed into render-ready `usvg::Tree`s -- built once per
-    // document against the document's own fontdb (see `sardown_enrich::svg_tree_options`) -- so
-    // this is just a keyed clone and no SVG markup is ever parsed inside emission. Parse
-    // failures are reported once at compile/collection time instead of here.
-    let mut svg_cache: HashMap<&str, usvg::Tree> = HashMap::new();
-    for (diagram_id, diagram) in diagrams {
-        svg_cache.insert(diagram_id, diagram.tree.clone());
-    }
-
     // Raster images are converted into a `krilla::Image` lazily, on their first placement:
     // `Image::from_rgba8` copies the whole pixel buffer, and images whose every placement was
     // dropped before emission ever saw them (pagination page-breaks, slides auto-shrink
@@ -129,10 +120,17 @@ pub fn render_pdf(
                         }
                     }
                     PositionedElement::VectorGraphic { x, y, width, height, diagram_id } => {
-                        if let Some(tree) = svg_cache.get(diagram_id.as_str()) {
+                        // Diagrams arrive already parsed into render-ready `usvg::Tree`s -- built
+                        // once per document against the document's own fontdb (see
+                        // `sardown_enrich::svg_tree_options`) -- and the table is borrowed for
+                        // the whole render, so emission borrows the `Arc`-shared tree directly:
+                        // no per-document clone, and diagrams dropped before emission pay
+                        // nothing, exactly like the lazy raster path below. Parse failures are
+                        // reported once at compile/collection time instead of here.
+                        if let Some(diagram) = diagrams.get(diagram_id.as_str()) {
                             let size = Size::from_wh(*width, *height).context("invalid diagram size")?;
                             surface.push_transform(&Transform::from_translate(*x, *y));
-                            surface.draw_svg(tree, size, krilla_svg::SvgSettings::default());
+                            surface.draw_svg(&diagram.tree, size, krilla_svg::SvgSettings::default());
                             surface.pop();
                         }
                     }
