@@ -1,5 +1,11 @@
 use std::path::{Path, PathBuf};
 
+/// Upper bound on the size of a single `{{#include}}` target. The target comes from untrusted
+/// book content, and one directive line would otherwise be able to pull a multi-gigabyte file
+/// into memory (the read buffer, the `slice_lines` copy, and the `out` splice) for a document
+/// that only ever wanted a snippet.
+const MAX_INCLUDE_BYTES: u64 = 8 * 1024 * 1024;
+
 struct Directive {
     path: PathBuf,
     start: Option<usize>,
@@ -35,9 +41,18 @@ pub fn resolve_includes(text: &str, chapter_dir: &Path, book_root: &Path) -> Str
     for line in text.split_inclusive('\n') {
         match parse_directive(line.trim()) {
             Some(directive) => match resolve_within_book_root(book_root, chapter_dir, &directive.path) {
-                Ok(target) => match std::fs::read_to_string(&target) {
-                    Ok(contents) => out.push_str(&slice_lines(&contents, directive.start, directive.end)),
+                Ok(target) => match std::fs::metadata(&target) {
                     Err(e) => eprintln!("warning: failed to include {}: {e}", target.display()),
+                    Ok(meta) if meta.len() > MAX_INCLUDE_BYTES => eprintln!(
+                        "warning: refusing to include {}: file is {} bytes, above the {}-byte include limit",
+                        target.display(),
+                        meta.len(),
+                        MAX_INCLUDE_BYTES
+                    ),
+                    Ok(_) => match std::fs::read_to_string(&target) {
+                        Ok(contents) => out.push_str(&slice_lines(&contents, directive.start, directive.end)),
+                        Err(e) => eprintln!("warning: failed to include {}: {e}", target.display()),
+                    },
                 },
                 Err(e) => eprintln!("warning: refusing to include {}: {e}", directive.path.display()),
             },
@@ -84,11 +99,7 @@ fn parse_directive(trimmed_line: &str) -> Option<Directive> {
 
 fn parse_line_number(raw: &str) -> Option<usize> {
     let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        trimmed.parse().ok()
-    }
+    if trimmed.is_empty() { None } else { trimmed.parse().ok() }
 }
 
 /// 1-indexed, inclusive on both ends; an absent bound extends to the start/end of the file.
