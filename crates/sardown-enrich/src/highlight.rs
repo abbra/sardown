@@ -10,7 +10,16 @@ use syntect::parsing::{SyntaxReference, SyntaxSet};
 /// well over a second and is pure overhead for the common case of a document with no code
 /// blocks. Callers use this predicate to skip the construction entirely.
 pub fn ast_contains_code_block(ast: &[BlockNode]) -> bool {
-    ast.iter().any(|block| matches!(block, BlockNode::CodeBlock { .. }))
+    ast.iter().any(|block| match block {
+        BlockNode::CodeBlock { .. } => true,
+        // Mirror `Highlighter::highlight_block`'s recursion exactly: a gate that misses a
+        // nested code block would skip the highlighter for a document whose blocks are all
+        // inside blockquotes/lists/columns, rendering them flat-color.
+        BlockNode::Blockquote { content } => ast_contains_code_block(content),
+        BlockNode::Columns(columns) => columns.iter().any(|column| ast_contains_code_block(column)),
+        BlockNode::List { items, .. } => items.iter().any(|item| ast_contains_code_block(item)),
+        _ => false,
+    })
 }
 
 pub struct Highlighter {

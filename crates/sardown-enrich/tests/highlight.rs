@@ -3,6 +3,23 @@ use sardown_enrich::Highlighter;
 use sardown_style::Stylesheet;
 
 #[test]
+fn gate_detects_code_blocks_nested_in_lists_blockquotes_and_columns() {
+    // Production callers skip building a Highlighter entirely when this gate says no -- but
+    // `highlight_block` recurses into exactly these containers, so a document whose code blocks
+    // are all nested (fenced code in list items is very common Markdown) must still pass the
+    // gate and get syntax colors.
+    let ast = sardown_ast::parse("- item\n\n  ```rust\nfn main() {}\n  ```\n\n> quoted:\n>\n> ```python\nprint(1)\n```");
+    assert!(sardown_enrich::ast_contains_code_block(&ast), "code nested in a list item or blockquote must still trigger highlighting");
+
+    let code = BlockNode::CodeBlock { language: None, tokens: Vec::new() };
+    let columns = vec![BlockNode::Columns(vec![vec![code.clone()], Vec::new()])];
+    assert!(sardown_enrich::ast_contains_code_block(&columns), "code in any column of a ::columns block must trigger highlighting");
+
+    let no_code = sardown_ast::parse("# plain\n\njust text\n\n- an item\n");
+    assert!(!sardown_enrich::ast_contains_code_block(&no_code), "a document without code must not pay for a Highlighter");
+}
+
+#[test]
 fn highlights_a_rust_code_block_with_more_than_one_color() {
     let ast = vec![BlockNode::CodeBlock {
         language: Some("rust".to_string()),
