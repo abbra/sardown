@@ -164,7 +164,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                 let level_u8 = heading_level_u8(level);
                 let resolved = typo.heading.resolve(level_u8);
                 let content = lower_inline_events(parser, TagEnd::Heading(level), resolved.size_pt, resolved.color.0, resolved.font_family.as_str().into());
-                let text: String = content.iter().map(|n| n.text.as_str()).collect::<Vec<_>>().join("");
+                let text: String = content.iter().map(|n| n.text.as_str()).collect();
                 let id = slugs.generate(&text);
                 blocks.push(BlockNode::Heading { level: level_u8, id, content });
             }
