@@ -21,8 +21,8 @@
 //! Not expressible in generated input (and therefore deliberately absent): `PageBreak` is only
 //! ever produced by `render-book` between chapters, never by Markdown.
 
-use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 
 /// Counts of every feature a generated input contains, printed by `sardown bench` so coverage
 /// is auditable per run instead of taken on faith.
@@ -290,6 +290,33 @@ enum ListKind {
     Tasks,
 }
 
+/// The block kinds the document-section generator randomly mixes. Modeled as enums (like
+/// `ListKind` above) so the kind lists and the dispatch `match`es are checked against each
+/// other by the compiler instead of by an `unreachable!` at runtime. The deck generator's
+/// kinds are a separate enum because the two generators genuinely mix different sets -- a
+/// shared enum would force each `match` to handle variants it can never produce.
+#[derive(Clone, Copy)]
+enum SectionKind {
+    Prose,
+    Table,
+    Code,
+    Quote,
+    Image,
+    Columns,
+    Tasks,
+}
+
+#[derive(Clone, Copy)]
+enum SlideKind {
+    Bullets,
+    Code,
+    Columns,
+    Table,
+    Quote,
+    Image,
+    Tasks,
+}
+
 fn list_block(rng: &mut Rng, stats: &mut GenStats, kind: ListKind, tag: usize) -> String {
     stats.lists += 1;
     let n = rng.range(3, 6);
@@ -409,7 +436,7 @@ pub fn generate_document(seed: u64, target_pages: usize) -> GeneratedDoc {
     out.push_str("#### Level four heading\n\n##### Level five heading\n\n###### Level six heading\n\n");
 
     // Randomized sections: prose, tables, code, quotes, images, columns, breaks in seeded mixes.
-    let kinds = ["prose", "table", "code", "quote", "image", "columns", "tasks"];
+    let kinds = [SectionKind::Prose, SectionKind::Table, SectionKind::Code, SectionKind::Quote, SectionKind::Image, SectionKind::Columns, SectionKind::Tasks];
     for i in 0..sections {
         if i > 0 && rng.chance(20) {
             st.thematic_breaks += 1;
@@ -418,29 +445,28 @@ pub fn generate_document(seed: u64, target_pages: usize) -> GeneratedDoc {
         st.headings += 1;
         out.push_str(&format!("## Section {i}: {}\n\n", rng.pick(WORDS)));
         match *rng.pick(&kinds) {
-            "prose" => {
+            SectionKind::Prose => {
                 let n = rng.range(2, 4);
                 out.push_str(&paragraph(&mut rng, &mut st, n));
                 out.push('\n');
             }
-            "table" => {
+            SectionKind::Table => {
                 let rows = rng.range(3, 9);
                 let cols = rng.range(2, 6);
                 out.push_str(&table_block(&mut rng, &mut st, rows, cols, i));
             }
-            "code" => {
+            SectionKind::Code => {
                 st.code_blocks += 1;
                 let lang = *rng.pick(CODE_LANGS);
                 out.push_str(&format!("```{lang}\n{}\n```\n\n", code_sample(lang)));
             }
-            "quote" => out.push_str(&blockquote_block(&mut rng, &mut st, i)),
-            "image" => {
+            SectionKind::Quote => out.push_str(&blockquote_block(&mut rng, &mut st, i)),
+            SectionKind::Image => {
                 let w = rng.range(48, 128) as u32;
                 out.push_str(&format!("![section image]({})\n\n", png_data_uri(&mut rng, w, 64, &mut st)));
             }
-            "columns" => out.push_str(&columns_block(&mut rng, &mut st, i)),
-            "tasks" => out.push_str(&list_block(&mut rng, &mut st, ListKind::Tasks, i)),
-            _ => unreachable!("kind list is closed"),
+            SectionKind::Columns => out.push_str(&columns_block(&mut rng, &mut st, i)),
+            SectionKind::Tasks => out.push_str(&list_block(&mut rng, &mut st, ListKind::Tasks, i)),
         }
         out.push('\n');
     }
@@ -453,8 +479,6 @@ pub fn generate_document(seed: u64, target_pages: usize) -> GeneratedDoc {
     GeneratedDoc { markdown: out, stats: st }
 }
 
-// ---------------------------------------------------------------------------------------------
-// Slide-deck generator
 // ---------------------------------------------------------------------------------------------
 // Slide-deck generator
 // ---------------------------------------------------------------------------------------------
@@ -476,15 +500,23 @@ pub fn generate_deck(seed: u64, target_slides: usize) -> GeneratedDoc {
     // (kind, dense?) pairs; dense bullet slides intentionally overflow so auto-shrink steps
     // down, the rest fit at full size. The cycle guarantees every block kind appears within
     // the first six content slides regardless of deck length.
-    let kinds =
-        [("bullets", false), ("code", false), ("bullets", true), ("columns", false), ("image", false), ("table", false), ("quote", false), ("tasks", false)];
+    let kinds = [
+        (SlideKind::Bullets, false),
+        (SlideKind::Code, false),
+        (SlideKind::Bullets, true),
+        (SlideKind::Columns, false),
+        (SlideKind::Image, false),
+        (SlideKind::Table, false),
+        (SlideKind::Quote, false),
+        (SlideKind::Tasks, false),
+    ];
     for i in 1..slides {
         let (kind, dense) = kinds[i % kinds.len()];
         out.push_str("\n---\n\n");
         st.headings += 1;
         out.push_str(&format!("## Slide {i}: {}\n\n", rng.pick(WORDS)));
         match kind {
-            "bullets" => {
+            SlideKind::Bullets => {
                 st.lists += 1;
                 let n = if dense { rng.range(11, 15) } else { rng.range(4, 7) };
                 for j in 0..n {
@@ -496,25 +528,24 @@ pub fn generate_deck(seed: u64, target_slides: usize) -> GeneratedDoc {
                 }
                 out.push('\n');
             }
-            "code" => {
+            SlideKind::Code => {
                 st.code_blocks += 1;
                 let lang = *rng.pick(CODE_LANGS);
                 out.push_str(&format!("```{lang}\n{}\n```\n\n", code_sample(lang)));
             }
-            "columns" => out.push_str(&columns_block(&mut rng, &mut st, i)),
-            "table" => {
+            SlideKind::Columns => out.push_str(&columns_block(&mut rng, &mut st, i)),
+            SlideKind::Table => {
                 let rows = rng.range(3, 5);
                 out.push_str(&table_block(&mut rng, &mut st, rows, 3, i));
             }
-            "quote" => {
+            SlideKind::Quote => {
                 st.blockquotes += 1;
                 out.push_str(&format!("> {}\n", rng.pick(SENTENCES)));
             }
-            "image" => {
+            SlideKind::Image => {
                 out.push_str(&format!("![deck image]({})\n\n", png_data_uri(&mut rng, 96, 64, &mut st)));
             }
-            "tasks" => out.push_str(&list_block(&mut rng, &mut st, ListKind::Tasks, i)),
-            _ => unreachable!("kind list is closed"),
+            SlideKind::Tasks => out.push_str(&list_block(&mut rng, &mut st, ListKind::Tasks, i)),
         }
     }
 
