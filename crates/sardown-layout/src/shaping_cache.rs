@@ -139,13 +139,14 @@ pub(crate) fn word_cache_insert(key: WordStyleKey, word: &str, shaped: Rc<Shaped
 }
 
 /// `monospace_advance_pt`'s get-or-shape: returns the memoized probe verdict for
-/// `(family, size)`, or runs `miss` once and remembers it.
-pub(crate) fn monospace_cached(key: &(String, u32), miss: impl FnOnce() -> Option<f32>) -> Option<f32> {
-    if let Some(hit) = MONOSPACE_ADVANCE_CACHE.with(|c| c.borrow().get(key).copied()) {
+/// `(family, size)`, or runs `miss` once and remembers it. Lookups borrow; only misses
+/// allocate the boxed family key.
+pub(crate) fn monospace_cached(size_bits: u32, family: &str, miss: impl FnOnce() -> Option<f32>) -> Option<f32> {
+    if let Some(hit) = MONOSPACE_ADVANCE_CACHE.with(|c| c.borrow().get(&size_bits).and_then(|by_family| by_family.get(family)).copied()) {
         return hit;
     }
     let result = miss();
-    MONOSPACE_ADVANCE_CACHE.with(|c| c.borrow_mut().insert(key.clone(), result));
+    MONOSPACE_ADVANCE_CACHE.with(|c| c.borrow_mut().entry(size_bits).or_default().insert(Box::from(family), result));
     result
 }
 
