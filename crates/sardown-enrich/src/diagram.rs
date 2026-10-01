@@ -1,6 +1,7 @@
 use merman::svg::HeadlessRenderer;
 use sardown_ast::BlockNode;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct CompiledDiagram {
@@ -9,7 +10,10 @@ pub struct CompiledDiagram {
     /// The SVG parsed into a render-ready `usvg::Tree` with the document's own font database
     /// (see [`svg_tree_options`]) -- built once here, so neither this crate nor
     /// `sardown-pdf`'s emission loop ever has to re-parse the markup a second time.
-    pub tree: usvg::Tree,
+    /// `Arc`-backed for the same reason as `DecodedImage::rgba8`: the slide auto-shrink loop
+    /// clones the shared `DiagramTable` through `layout_with_assets` once per scale attempt,
+    /// and a by-value tree would deep-copy every SVG node per attempt.
+    pub tree: Arc<usvg::Tree>,
 }
 
 pub type DiagramTable = HashMap<String, CompiledDiagram>;
@@ -82,7 +86,7 @@ fn collect(ast: &[BlockNode], renderer: &HeadlessRenderer, table: &mut DiagramTa
                         match usvg::Tree::from_str(&svg, svg_options) {
                             Ok(tree) => {
                                 let size = tree.size();
-                                table.insert(id.clone(), CompiledDiagram { width: size.width(), height: size.height(), tree });
+                                table.insert(id.clone(), CompiledDiagram { width: size.width(), height: size.height(), tree: Arc::new(tree) });
                             }
                             Err(e) => {
                                 eprintln!("warning: merman produced unparseable SVG for the Mermaid diagram at {}: {e}", fence_location(*line, *column))
