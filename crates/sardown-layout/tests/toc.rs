@@ -1,7 +1,7 @@
 use cosmic_text::FontSystem;
-use sardown_ast::{parse, BlockNode, InlineNode, TextStyle};
+use sardown_ast::{BlockNode, InlineNode, TextStyle, parse};
 use sardown_enrich::DiagramTable;
-use sardown_layout::{layout_impl, PageGeometry, PositionedElement};
+use sardown_layout::{PageGeometry, PositionedElement, layout_impl};
 use sardown_style::Stylesheet;
 
 fn plain_inline(text: &str) -> InlineNode {

@@ -1,4 +1,4 @@
-use sardown_ast::{group_columns, BlockNode, InlineNode, TextStyle};
+use sardown_ast::{BlockNode, InlineNode, TextStyle, group_columns};
 
 fn plain(text: &str) -> InlineNode {
     InlineNode {

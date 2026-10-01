@@ -1,4 +1,4 @@
-use crate::{shape_paragraph, PositionedElement};
+use crate::{PositionedElement, shape_paragraph};
 use cosmic_text::FontSystem;
 use hyphenation::{Hyphenator as _, Language, Load, Standard};
 use sardown_ast::InlineNode;

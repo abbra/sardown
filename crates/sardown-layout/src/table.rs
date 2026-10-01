@@ -1,4 +1,4 @@
-use crate::{shape_paragraph, PathCommand, PositionedElement, StrokeStyle};
+use crate::{PathCommand, PositionedElement, StrokeStyle, shape_paragraph};
 use cosmic_text::FontSystem;
 use sardown_ast::InlineNode;
 

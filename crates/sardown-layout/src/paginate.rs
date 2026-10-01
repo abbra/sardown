@@ -1,6 +1,6 @@
 use crate::{
-    measure_widest_line_pt, shape_paragraph, shape_rich_paragraph, AnchorPosition, AnchorTable, ImageTable, PageContext, PageGeometry, PathCommand,
-    PositionedElement, PositionedPage, Rect, ShapingOptions, StrokeStyle,
+    AnchorPosition, AnchorTable, ImageTable, PageContext, PageGeometry, PathCommand, PositionedElement, PositionedPage, Rect, ShapingOptions, StrokeStyle,
+    measure_widest_line_pt, shape_paragraph, shape_rich_paragraph,
 };
 use cosmic_text::FontSystem;
 use sardown_ast::BlockNode;
