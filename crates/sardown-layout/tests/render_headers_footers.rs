@@ -2,7 +2,7 @@ use cosmic_text::FontSystem;
 use sardown_ast::{BlockNode, InlineNode, TextStyle};
 use sardown_enrich::DiagramTable;
 use sardown_layout::{
-    layout_with_header_footer, render_headers_footers, AnchorPosition, AnchorTable, PageContext, PageGeometry, PositionedElement, PositionedPage,
+    AnchorPosition, AnchorTable, PageContext, PageGeometry, PositionedElement, PositionedPage, layout_with_header_footer, render_headers_footers,
 };
 use sardown_style::{HeaderFooterMode, Stylesheet};
 
@@ -297,8 +297,8 @@ fn layout_with_header_footer_renders_end_to_end_across_a_forced_page_break() {
     sheet.header.uniform.center = "{h1}".to_string();
     sheet.footer.enabled = true;
     sheet.footer.suppress_on_chapter_start = false; // both pages here are chapter openers; keep
-                                                    // the footer's own numbering independently
-                                                    // observable from the header's suppression
+    // the footer's own numbering independently
+    // observable from the header's suppression
     sheet.footer.uniform.center = "Page {page} of {total_pages}".to_string();
     let mut fs = test_font_system();
     let output = layout_with_header_footer(&ast, &mut fs, &fixtures_dir(), &DiagramTable::new(), &sheet);

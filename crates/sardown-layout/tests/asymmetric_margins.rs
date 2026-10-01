@@ -1,5 +1,5 @@
 use sardown_ast::LinkTarget;
-use sardown_layout::{apply_asymmetric_margins, PageGeometry, PathCommand, PositionedElement, PositionedPage, Rect};
+use sardown_layout::{PageGeometry, PathCommand, PositionedElement, PositionedPage, Rect, apply_asymmetric_margins};
 
 const PT_PER_MM: f32 = 2.834_645_7;
 

@@ -1,4 +1,4 @@
-use crate::{shape_paragraph, LayoutOutput, PageContext, PageGeometry, PositionedElement, PositionedPage, Rect};
+use crate::{LayoutOutput, PageContext, PageGeometry, PositionedElement, PositionedPage, Rect, shape_paragraph};
 use cosmic_text::FontSystem;
 use sardown_ast::{BlockNode, InlineNode, LinkTarget, TextStyle};
 use sardown_style::Stylesheet;

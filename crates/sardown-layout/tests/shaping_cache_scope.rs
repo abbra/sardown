@@ -6,7 +6,7 @@
 
 use cosmic_text::FontSystem;
 use sardown_ast::{InlineNode, TextStyle};
-use sardown_layout::{insert_hyphenation_breaks, shape_paragraph, Hyphenator, PositionedElement};
+use sardown_layout::{Hyphenator, PositionedElement, insert_hyphenation_breaks, shape_paragraph};
 
 const PROBE_TEXT: &str = "hyphenation";
 const PROBE_SIZE: f32 = 12.0;

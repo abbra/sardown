@@ -1,6 +1,6 @@
 use cosmic_text::FontSystem;
 use sardown_ast::{InlineNode, TextStyle};
-use sardown_layout::{insert_hyphenation_breaks, Hyphenator};
+use sardown_layout::{Hyphenator, insert_hyphenation_breaks};
 
 #[test]
 fn loads_a_known_language() {
@@ -87,7 +87,7 @@ fn a_word_straddling_two_styled_spans_is_never_hyphenated() {
 
 #[test]
 fn resulting_lines_never_exceed_max_width_pt() {
-    use sardown_layout::{shape_rich_paragraph, PositionedElement, ShapingOptions};
+    use sardown_layout::{PositionedElement, ShapingOptions, shape_rich_paragraph};
     let mut fs = test_font_system();
     let hyphenator = Hyphenator::load("en-us").unwrap();
     let max_width_pt = 60.0;
@@ -118,7 +118,7 @@ fn hyphenated_lines_still_justify_like_the_rest_of_the_paragraph() {
     // of a single very long word with no other words alongside it has no spaces to redistribute
     // width into and can never be justified by any space-based justification algorithm,
     // hyphenated or not; that's an unrelated, pre-existing, expected limitation, not this bug.
-    use sardown_layout::{shape_rich_paragraph, PositionedElement, ShapingOptions};
+    use sardown_layout::{PositionedElement, ShapingOptions, shape_rich_paragraph};
     let mut fs = test_font_system();
     let hyphenator = Hyphenator::load("en-us").unwrap();
     let max_width_pt = 100.0;

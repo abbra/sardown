@@ -1,7 +1,7 @@
 use cosmic_text::FontSystem;
-use sardown_ast::{parse, BlockNode, InlineNode, TextStyle};
+use sardown_ast::{BlockNode, InlineNode, TextStyle, parse};
 use sardown_enrich::DiagramTable;
-use sardown_layout::{layout, PageGeometry};
+use sardown_layout::{PageGeometry, layout};
 
 fn test_font_system() -> FontSystem {
     let mut db = fontdb::Database::new();

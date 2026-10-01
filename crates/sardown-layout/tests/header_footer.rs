@@ -1,4 +1,4 @@
-use sardown_layout::{format_page_number, resolve_template, PageContext};
+use sardown_layout::{PageContext, format_page_number, resolve_template};
 use sardown_style::{DocumentStyle, NumberingFormat};
 
 fn ctx(h1: Option<&str>, h2: Option<&str>) -> PageContext {

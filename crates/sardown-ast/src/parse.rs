@@ -61,11 +61,7 @@ impl InlineBuilder {
 }
 
 fn link_target_from_url(url: &str) -> LinkTarget {
-    if let Some(anchor) = url.strip_prefix('#') {
-        LinkTarget::InternalAnchor(anchor.to_string())
-    } else {
-        LinkTarget::ExternalUrl(url.to_string())
-    }
+    if let Some(anchor) = url.strip_prefix('#') { LinkTarget::InternalAnchor(anchor.to_string()) } else { LinkTarget::ExternalUrl(url.to_string()) }
 }
 
 /// Applies one inline event to `builder`. Shared between `lower_inline_events`'s main loop and

@@ -2,7 +2,7 @@ use cosmic_text::FontSystem;
 use sardown_ast::{BlockNode, InlineNode, TextStyle};
 use sardown_enrich::DiagramTable;
 use sardown_layout::PageGeometry;
-use sardown_slides::{layout_slide_with_shrink, DeckContext};
+use sardown_slides::{DeckContext, layout_slide_with_shrink};
 use sardown_style::{SlideLayoutStyle, Stylesheet};
 
 fn test_font_system() -> FontSystem {

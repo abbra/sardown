@@ -1,6 +1,6 @@
 use cosmic_text::{Align, FontSystem};
 use sardown_ast::{InlineNode, TextStyle};
-use sardown_layout::{shape_paragraph, shape_rich_paragraph, PositionedElement, PositionedGlyph, ShapedRun, ShapingOptions};
+use sardown_layout::{PositionedElement, PositionedGlyph, ShapedRun, ShapingOptions, shape_paragraph, shape_rich_paragraph};
 
 fn test_font_system() -> FontSystem {
     let mut db = fontdb::Database::new();

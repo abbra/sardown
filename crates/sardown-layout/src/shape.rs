@@ -301,8 +301,8 @@ pub fn shape_rich_paragraph(font_system: &mut FontSystem, content: &[InlineNode]
     }
 
     let size = content[0].style.size; // buffer-wide metrics still need one size; per-run font
-                                      // SIZE variation within one paragraph remains out of
-                                      // scope (weight/style/color do not)
+    // SIZE variation within one paragraph remains out of
+    // scope (weight/style/color do not)
     let metrics = Metrics::new(size * PT_TO_PX_SCALE, size * PT_TO_PX_SCALE * 1.4);
     let mut buffer = Buffer::new(font_system, metrics);
     buffer.set_size(Some(max_width_pt * PT_TO_PX_SCALE), None);

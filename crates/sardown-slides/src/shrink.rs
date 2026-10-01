@@ -2,7 +2,7 @@ use crate::rescale::rescale_slide_content;
 use crate::stylesheet_for_slide::{apply_slide_scale, build_slide_stylesheet};
 use cosmic_text::FontSystem;
 use sardown_ast::BlockNode;
-use sardown_layout::{layout_with_assets, LayoutAssets, LayoutOutput, PageGeometry};
+use sardown_layout::{LayoutAssets, LayoutOutput, PageGeometry, layout_with_assets};
 use sardown_style::{SlideLayoutStyle, Stylesheet};
 
 const SCALE_STEP: f32 = 0.05;
