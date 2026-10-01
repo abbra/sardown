@@ -15,3 +15,8 @@ members = [
 edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/abbra/sardown"
+
+# CI runs plain `cargo clippy` (scripts/local-ci.sh); encoding the lint level here means a
+# clippy warning fails the build in-tree, without anyone having to remember `-D warnings`.
+[workspace.lints.clippy]
+all = "deny"

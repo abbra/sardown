@@ -15,3 +15,6 @@ sardown-ast = { version = "0.1.0", path = "../sardown-ast" }
 sardown-enrich = { version = "0.1.0", path = "../sardown-enrich" }
 sardown-style = { version = "0.1.0", path = "../sardown-style" }
 usvg = "0.47"
+
+[lints]
+workspace = true

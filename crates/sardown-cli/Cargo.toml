@@ -34,3 +34,6 @@ criterion = { version = "0.8.2", features = ["html_reports"] }
 lopdf = "0.44.0"
 pdfium-render = "0.9.3"
 proptest = "1.11.0"
+
+[lints]
+workspace = true

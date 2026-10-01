@@ -1,11 +1,10 @@
 use sardown_ast::LinkTarget;
-use sardown_layout::{shift_element, PathCommand, PositionedElement, Rect};
+use sardown_layout::{PathCommand, PositionedElement, Rect, shift_element};
 
 fn test_font_id() -> fontdb::ID {
     let mut db = fontdb::Database::new();
     db.load_font_file(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/DroidSans.ttf")).unwrap();
-    let id = db.faces().next().unwrap().id;
-    id
+    db.faces().next().unwrap().id
 }
 
 #[test]
