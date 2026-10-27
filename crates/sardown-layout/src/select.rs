@@ -62,10 +62,12 @@ impl LayoutOutput {
     /// footers, so a footer still says `12 / 55`) is unchanged; links and outline entries that
     /// point at a dropped page are dropped, and the rest are renumbered to the new page order.
     ///
+    /// Returns the kept pages' original 1-based numbers, in order.
+    ///
     /// # Errors
     ///
     /// When the selection names no page of the document.
-    pub fn retain_pages(&mut self, selection: &PageSelection) -> Result<(), String> {
+    pub fn retain_pages(&mut self, selection: &PageSelection) -> Result<Vec<usize>, String> {
         let total = self.pages.len();
         let kept: Vec<usize> = (0..total).filter(|&i| selection.contains(i + 1)).collect();
         if kept.is_empty() {
@@ -95,7 +97,7 @@ impl LayoutOutput {
         });
         let anchors = &self.anchors;
         self.toc_entries.retain(|entry| anchors.contains_key(&entry.id));
-        Ok(())
+        Ok(kept.into_iter().map(|old| old + 1).collect())
     }
 }
 

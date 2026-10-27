@@ -41,6 +41,11 @@ enum Commands {
         /// 1-based and footers keep their original numbers.
         #[arg(long)]
         pages: Option<sardown_layout::PageSelection>,
+
+        /// Resolution of PNG output (`-o page.png`), in dots per inch; a PDF page is 72 points
+        /// per inch, so 144 doubles its size in pixels.
+        #[arg(long, default_value_t = 144.0)]
+        dpi: f32,
     },
     /// Render an mdBook source tree (a directory containing book.toml and/or src/SUMMARY.md) to
     /// one combined PDF
@@ -71,6 +76,11 @@ enum Commands {
         /// 1-based and footers keep their original numbers.
         #[arg(long)]
         pages: Option<sardown_layout::PageSelection>,
+
+        /// Resolution of PNG output (`-o page.png`), in dots per inch; a PDF page is 72 points
+        /// per inch, so 144 doubles its size in pixels.
+        #[arg(long, default_value_t = 144.0)]
+        dpi: f32,
     },
     /// Render a Markdown slide deck (split into slides on `---`) to PDF
     RenderSlides {
@@ -99,6 +109,11 @@ enum Commands {
         /// 1-based and footers keep their original numbers.
         #[arg(long)]
         pages: Option<sardown_layout::PageSelection>,
+
+        /// Resolution of PNG output (`-o page.png`), in dots per inch; a PDF page is 72 points
+        /// per inch, so 144 doubles its size in pixels.
+        #[arg(long, default_value_t = 144.0)]
+        dpi: f32,
     },
     /// Generate seeded complex Markdown input, render it, and report per-stage timings
     Bench {
@@ -322,10 +337,12 @@ fn write_pdf_output(
     output_path: &std::path::Path,
     item_noun: &str,
     selection: Option<&sardown_layout::PageSelection>,
+    dpi: f32,
 ) -> anyhow::Result<()> {
     let total = output_layout.pages.len();
+    let mut numbers: Vec<usize> = (1..=total).collect();
     if let Some(selection) = selection {
-        output_layout.retain_pages(selection).map_err(|e| anyhow::anyhow!(e))?;
+        numbers = output_layout.retain_pages(selection).map_err(|e| anyhow::anyhow!(e))?;
     }
     let pdf_bytes = timed_stage("Rendering PDF", || {
         sardown_pdf::render_pdf(
@@ -339,6 +356,9 @@ fn write_pdf_output(
             &output_layout.toc_entries,
         )
     })?;
+    if is_png(output_path) {
+        return write_png_pages(&pdf_bytes, &numbers, total, output_path, dpi, item_noun);
+    }
     timed_stage("Writing output", || Ok(std::fs::write(output_path, pdf_bytes)?))?;
     if selection.is_some() {
         eprintln!("Wrote {} ({} of {total} {item_noun})", output_path.display(), output_layout.pages.len());
@@ -348,10 +368,61 @@ fn write_pdf_output(
     Ok(())
 }
 
+fn is_png(path: &std::path::Path) -> bool {
+    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("png"))
+}
+
+#[cfg(feature = "png")]
+/// Where page `number` of `total` goes: `output` itself when it is the only page, else
+/// `<stem>-<number>.png` beside it, the number zero-padded so the files sort.
+fn png_path(output: &std::path::Path, number: usize, total: usize, only_one: bool) -> std::path::PathBuf {
+    if only_one {
+        return output.to_path_buf();
+    }
+    let width = total.to_string().len();
+    let stem = output.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    output.with_file_name(format!("{stem}-{number:0width$}.png"))
+}
+
+#[cfg(feature = "png")]
+fn write_png_pages(pdf_bytes: &[u8], numbers: &[usize], total: usize, output: &std::path::Path, dpi: f32, item_noun: &str) -> anyhow::Result<()> {
+    use anyhow::Context;
+    anyhow::ensure!(dpi > 0.0, "--dpi must be greater than 0");
+    let pdf =
+        hayro::hayro_syntax::Pdf::new(std::sync::Arc::new(pdf_bytes.to_vec())).map_err(|e| anyhow::anyhow!("could not read back the rendered PDF: {e:?}"))?;
+    let scale = dpi / 72.0;
+    let cache = hayro::RenderCache::new();
+    let interpreter = hayro::hayro_interpret::InterpreterSettings::default();
+    let pixmap_settings = hayro::PixmapSettings { x_scale: scale, y_scale: scale, bg_color: hayro::vello_cpu::color::palette::css::WHITE };
+    let pages = pdf.pages();
+    let written = timed_stage("Rasterizing pages", || {
+        let mut written = Vec::new();
+        for (page, &number) in pages.iter().zip(numbers) {
+            let pixmap = hayro::render(page, &cache, &interpreter, &hayro::RenderSettings::default(), &pixmap_settings);
+            let png = pixmap.into_png().map_err(|e| anyhow::anyhow!("could not encode page {number} as PNG: {e}"))?;
+            let path = png_path(output, number, total, numbers.len() == 1);
+            std::fs::write(&path, png).with_context(|| format!("could not write {}", path.display()))?;
+            written.push(path);
+        }
+        Ok(written)
+    })?;
+    match written.as_slice() {
+        [only] => eprintln!("Wrote {} (1 of {total} {item_noun})", only.display()),
+        [first, .., last] => eprintln!("Wrote {} {item_noun} as PNG, {} to {} (of {total})", written.len(), first.display(), last.display()),
+        [] => {}
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "png"))]
+fn write_png_pages(_: &[u8], _: &[usize], _: usize, _: &std::path::Path, _: f32, _: &str) -> anyhow::Result<()> {
+    anyhow::bail!("this sardown was built without the `png` feature, so it can only write PDF")
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Render { input, output, style, title, author, date, pages } => {
+        Commands::Render { input, output, style, title, author, date, pages, dpi } => {
             let mut stylesheet = timed_stage("Resolving stylesheet", || sardown_style::Stylesheet::resolve(style.as_deref(), None))?;
             apply_document_overrides(&mut stylesheet, title, author, date);
 
@@ -371,9 +442,9 @@ fn main() -> anyhow::Result<()> {
 
             let output_layout =
                 timed_stage("Laying out pages", || Ok(sardown_layout::layout_with_header_footer(&ast, &mut font_system, &base_dir, &diagrams, &stylesheet)))?;
-            write_pdf_output(output_layout, &font_system, &output, "pages", pages.as_ref())
+            write_pdf_output(output_layout, &font_system, &output, "pages", pages.as_ref(), dpi)
         }
-        Commands::RenderBook { book_root, output, style, title, author, date, pages } => {
+        Commands::RenderBook { book_root, output, style, title, author, date, pages, dpi } => {
             let mut stylesheet = timed_stage("Resolving stylesheet", || sardown_style::Stylesheet::resolve(style.as_deref(), Some(&book_root)))?;
             apply_document_overrides(&mut stylesheet, title, author, date);
 
@@ -393,9 +464,9 @@ fn main() -> anyhow::Result<()> {
             // happen to live under the current directory; book_root is the real boundary.
             let output_layout =
                 timed_stage("Laying out pages", || Ok(sardown_layout::layout_with_header_footer(&ast, &mut font_system, &book_root, &diagrams, &stylesheet)))?;
-            write_pdf_output(output_layout, &font_system, &output, "pages", pages.as_ref())
+            write_pdf_output(output_layout, &font_system, &output, "pages", pages.as_ref(), dpi)
         }
-        Commands::RenderSlides { input, output, style, title, author, date, pages } => {
+        Commands::RenderSlides { input, output, style, title, author, date, pages, dpi } => {
             let mut stylesheet = timed_stage("Resolving stylesheet", || sardown_style::Stylesheet::resolve(style.as_deref(), None))?;
             apply_document_overrides(&mut stylesheet, title, author, date);
 
@@ -405,11 +476,28 @@ fn main() -> anyhow::Result<()> {
 
             let output_layout =
                 timed_stage("Laying out slides", || sardown_slides::render_slide_deck(&markdown, &input, &base_dir, &mut font_system, &stylesheet))?;
-            write_pdf_output(output_layout, &font_system, &output, "slides", pages.as_ref())
+            write_pdf_output(output_layout, &font_system, &output, "slides", pages.as_ref(), dpi)
         }
         Commands::Bench { seed, mode, pages, iterations, style, markdown_out, book_dir, output } => {
             crate::bench::run(bench::BenchArgs { seed, mode, pages, iterations, style, markdown_out, book_dir, output })
         }
+    }
+}
+
+#[cfg(all(test, feature = "png"))]
+mod png_name_tests {
+    use super::png_path;
+    use std::path::Path;
+
+    #[test]
+    fn a_single_page_keeps_the_requested_name() {
+        assert_eq!(png_path(Path::new("out/slide.png"), 12, 55, true), Path::new("out/slide.png"));
+    }
+
+    #[test]
+    fn several_pages_are_numbered_by_their_original_page_padded_to_the_total() {
+        assert_eq!(png_path(Path::new("out/deck.png"), 9, 55, false), Path::new("out/deck-09.png"));
+        assert_eq!(png_path(Path::new("deck.png"), 120, 150, false), Path::new("deck-120.png"));
     }
 }
 

@@ -24,6 +24,24 @@ sardown render-slides deck.md -o one.pdf --pages 12
 sardown render-slides deck.md -o some.pdf --pages 12,14-16,50-
 ```
 
+## Writing PNG images
+
+When the output name ends in `.png`, `render`, `render-book` and `render-slides`
+write images instead of a PDF: each page is drawn from the finished PDF, on a
+white background, at `--dpi` (144 by default, so a 254 mm slide is 1440
+pixels wide). One page is written to exactly the name you gave. Several pages
+are written beside it as `<name>-<page>.png`, numbered by their original page
+(zero-padded to the width of the page count, so they sort): `deck-09.png`,
+`deck-26.png`. Combine it with `--pages` to look at one slide:
+
+```bash
+sardown render-slides deck.md -o slide.png --pages 12
+sardown render-slides deck.md -o shots/deck.png --pages 9,26,32 --dpi 96
+```
+
+PNG output is part of the default build; a sardown built with
+`--no-default-features` writes PDF only and reports that if asked for a PNG.
+
 ## `render`
 
 ```
@@ -39,6 +57,7 @@ sardown render [OPTIONS] --output <OUTPUT> <INPUT>
 | `--author <AUTHOR>` | Document author, available to header/footer templates as `{author}`. Overrides `[document].author` from the stylesheet if both are given |
 | `--date <DATE>` | Document date, available to header/footer templates as `{date}`. Overrides `[document].date` from the stylesheet if both are given; defaults to today's date if neither is set |
 | `--pages <PAGES>` | Write only these pages (slides, in a deck): a comma-separated list of pages and ranges, such as `12`, `3-5`, `-4`, `40-` or `1,12,14-16`. See [Rendering some pages](#rendering-some-pages) |
+| `--dpi <DPI>` | Resolution of PNG output, in dots per inch (default `144`; a PDF page is 72 points per inch). See [Writing PNG images](#writing-png-images) |
 | `-h, --help` | Print help |
 
 Example:
@@ -62,6 +81,7 @@ sardown render-book [OPTIONS] --output <OUTPUT> <BOOK_ROOT>
 | `--author <AUTHOR>` | Document author, available to header/footer templates as `{author}`. Overrides `[document].author` from the stylesheet if both are given |
 | `--date <DATE>` | Document date, available to header/footer templates as `{date}`. Overrides `[document].date` from the stylesheet if both are given; defaults to today's date if neither is set |
 | `--pages <PAGES>` | Write only these pages (slides, in a deck): a comma-separated list of pages and ranges, such as `12`, `3-5`, `-4`, `40-` or `1,12,14-16`. See [Rendering some pages](#rendering-some-pages) |
+| `--dpi <DPI>` | Resolution of PNG output, in dots per inch (default `144`; a PDF page is 72 points per inch). See [Writing PNG images](#writing-png-images) |
 | `-h, --help` | Print help |
 
 Example:
@@ -85,6 +105,7 @@ sardown render-slides [OPTIONS] --output <OUTPUT> <INPUT>
 | `--author <AUTHOR>` | Document author, available to header/footer templates as `{author}`. Overrides `[document].author` from the stylesheet if both are given |
 | `--date <DATE>` | Document date, available to header/footer templates as `{date}`. Overrides `[document].date` from the stylesheet if both are given; defaults to today's date if neither is set |
 | `--pages <PAGES>` | Write only these pages (slides, in a deck): a comma-separated list of pages and ranges, such as `12`, `3-5`, `-4`, `40-` or `1,12,14-16`. See [Rendering some pages](#rendering-some-pages) |
+| `--dpi <DPI>` | Resolution of PNG output, in dots per inch (default `144`; a PDF page is 72 points per inch). See [Writing PNG images](#writing-png-images) |
 | `-h, --help` | Print help |
 
 Example:
