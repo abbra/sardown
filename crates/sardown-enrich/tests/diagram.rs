@@ -50,13 +50,8 @@ fn recurses_into_columns() {
 fn the_ondine_renderer_draws_a_diagram_its_own_way() {
     let mut style = sardown_style::Stylesheet::default();
     style.mermaid.renderer = sardown_style::MermaidRenderer::Ondine;
-    let ast = vec![BlockNode::MermaidDiagram {
-        id: "diagram-1".to_string(),
-        source: "sequenceDiagram\n    A->>B: hi\n".to_string(),
-        line: 1,
-        column: 1,
-        file: None,
-    }];
+    let ast =
+        vec![BlockNode::MermaidDiagram { id: "diagram-1".to_string(), source: "sequenceDiagram\n    A->>B: hi\n".to_string(), line: 1, column: 1, file: None }];
     let table = sardown_enrich::compile_diagrams_styled(&ast, &test_svg_options(), &style);
     let diagram = table.get("diagram-1").expect("ondine should have drawn the diagram");
     assert!(diagram.width > 0.0 && diagram.height > 0.0);

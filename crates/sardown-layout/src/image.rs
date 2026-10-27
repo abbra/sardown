@@ -188,7 +188,7 @@ fn collect_svgs(ast: &[BlockNode], base_dir: &Path, canonical_base: Option<&Path
                 };
                 match resolve_within_base(base_dir, canonical_base, path) {
                     Ok(resolved) => match std::fs::read_to_string(&resolved) {
-                        Ok(svg) => match usvg::Tree::from_str(&svg, svg_options) {
+                        Ok(svg) => match usvg::Tree::from_str(&preserve_css_whitespace(&svg), svg_options) {
                             Ok(tree) => {
                                 let size = tree.size();
                                 table.insert(key, CompiledDiagram { width: size.width(), height: size.height(), tree });
@@ -206,7 +206,7 @@ fn collect_svgs(ast: &[BlockNode], base_dir: &Path, canonical_base: Option<&Path
                 }
                 match decode_data_uri(uri) {
                     Ok(bytes) => match String::from_utf8(bytes) {
-                        Ok(svg) => match usvg::Tree::from_str(&svg, svg_options) {
+                        Ok(svg) => match usvg::Tree::from_str(&preserve_css_whitespace(&svg), svg_options) {
                             Ok(tree) => {
                                 let size = tree.size();
                                 table.insert(uri.clone(), CompiledDiagram { width: size.width(), height: size.height(), tree });
@@ -231,5 +231,69 @@ fn collect_svgs(ast: &[BlockNode], base_dir: &Path, canonical_base: Option<&Path
             }
             _ => {}
         }
+    }
+}
+
+/// usvg keeps a `<text>`'s leading and repeated spaces only for `xml:space="preserve"`, and
+/// ignores the CSS `white-space: pre` that terminal captures (and most SVG editors) use for the
+/// same purpose, so an indented line would be flushed to the left edge. Adds the attribute to the
+/// `<text>` elements of every class a `<style>` rule gives `white-space: pre` (or `pre-wrap`).
+fn preserve_css_whitespace(svg: &str) -> std::borrow::Cow<'_, str> {
+    let classes = preformatted_classes(svg);
+    if classes.is_empty() {
+        return std::borrow::Cow::Borrowed(svg);
+    }
+    let mut out = String::with_capacity(svg.len() + 1024);
+    let mut rest = svg;
+    while let Some(at) = rest.find("<text") {
+        let (before, tail) = rest.split_at(at);
+        out.push_str(before);
+        let tag_end = tail.find('>').map_or(tail.len(), |i| i + 1);
+        let (tag, after) = tail.split_at(tag_end);
+        let in_class =
+            tag.split("class=\"").nth(1).and_then(|c| c.split('"').next()).is_some_and(|c| c.split_whitespace().any(|word| classes.iter().any(|k| k == word)));
+        if in_class && !tag.contains("xml:space") {
+            out.push_str("<text xml:space=\"preserve\"");
+            out.push_str(&tag["<text".len()..]);
+        } else {
+            out.push_str(tag);
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    std::borrow::Cow::Owned(out)
+}
+
+/// Class names whose `<style>` rule sets `white-space: pre` or `pre-wrap`.
+fn preformatted_classes(svg: &str) -> Vec<String> {
+    let mut classes = Vec::new();
+    let mut styles = svg;
+    while let Some(start) = styles.find("<style") {
+        let Some(body_start) = styles[start..].find('>').map(|i| start + i + 1) else { break };
+        let Some(body_len) = styles[body_start..].find("</style>") else { break };
+        let css = &styles[body_start..body_start + body_len];
+        for rule in css.split('}') {
+            let Some((selectors, declarations)) = rule.split_once('{') else { continue };
+            let compact: String = declarations.chars().filter(|c| !c.is_whitespace()).collect();
+            if compact.contains("white-space:pre;") || compact.contains("white-space:pre-wrap") || compact.ends_with("white-space:pre") {
+                classes.extend(selectors.split(',').filter_map(|sel| sel.trim().strip_prefix('.')).map(|c| c.trim().to_string()));
+            }
+        }
+        styles = &styles[body_start + body_len..];
+    }
+    classes
+}
+
+#[cfg(test)]
+mod whitespace_tests {
+    use super::preserve_css_whitespace;
+
+    #[test]
+    fn text_in_a_white_space_pre_class_keeps_its_indentation() {
+        let svg =
+            r#"<svg><style>.tt { font-size: 13px; white-space: pre; } .x { fill: red }</style><text class="tt" y="1">  a</text><text class="x">b</text></svg>"#;
+        let out = preserve_css_whitespace(svg);
+        assert!(out.contains(r#"<text xml:space="preserve" class="tt" y="1">"#));
+        assert!(out.contains(r#"<text class="x">"#));
     }
 }
