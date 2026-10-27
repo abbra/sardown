@@ -13,3 +13,9 @@ sardown-style = { version = "0.1.0", path = "../sardown-style" }
 merman = { version = "0.8.0-alpha.5", default-features = false, features = ["svg", "layout-cytoscape", "math"] }
 syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
 usvg = "0.47"
+# Not on crates.io: the pinned revision is the only way to get it, so it stays optional.
+ondine-compiler = { package = "compiler", git = "https://github.com/wevm/ondine", rev = "0b589ec34481856b4153526f10a0a35558a201a8", optional = true }
+
+[features]
+# Ondine as an alternative Mermaid renderer (`[mermaid] renderer = "ondine"`).
+ondine = ["dep:ondine-compiler"]

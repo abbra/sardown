@@ -5,6 +5,7 @@ mod color;
 mod document;
 mod header_footer;
 mod heading;
+mod mermaid;
 mod numbering;
 mod page;
 mod slides;
@@ -18,6 +19,7 @@ pub use color::Color;
 pub use document::DocumentStyle;
 pub use header_footer::{HeaderFooterMode, HeaderFooterStyle, HeaderZones};
 pub use heading::{HeadingLevelStyle, HeadingStyle, ResolvedHeadingStyle};
+pub use mermaid::{MermaidRenderer, MermaidStyle};
 pub use numbering::{NumberingFormat, PageNumbering, PageNumberingReset};
 pub use page::{PageFormat, PageStyle};
 pub use slides::{BackgroundImageStyle, ImageCorner, SlideLayoutStyle, SlidesStyle, VerticalAlign};
@@ -39,6 +41,7 @@ pub struct Stylesheet {
     pub columns: ColumnsStyle,
     pub table: TableStyle,
     pub code_block: CodeBlockStyle,
+    pub mermaid: MermaidStyle,
     pub header: HeaderFooterStyle,
     pub footer: HeaderFooterStyle,
     pub toc: TocStyle,

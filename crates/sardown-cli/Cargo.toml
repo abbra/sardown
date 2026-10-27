@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# Ondine as an alternative Mermaid renderer; pulls a git dependency, so it is off by default.
+ondine = ["sardown-enrich/ondine"]
+
 [[bin]]
 name = "sardown"
 path = "src/main.rs"

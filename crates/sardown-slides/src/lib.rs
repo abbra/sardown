@@ -48,7 +48,7 @@ pub fn render_slide_deck(
     // the same options feed every embedded-SVG parse below and in prepare_layout_assets, so no
     // diagram's markup is ever parsed twice.
     let svg_options = sardown_enrich::svg_tree_options_with_font(font_system.db(), &stylesheet.typography.font_family);
-    let diagrams = sardown_enrich::compile_diagrams(&ast, &svg_options);
+    let diagrams = sardown_enrich::compile_diagrams_styled(&ast, &svg_options, stylesheet);
     // Decode images, parse embedded SVGs, and load the hyphenation dictionary ONCE for the whole
     // deck, before splitting into slides: the per-slide auto-shrink loop re-lays-out each slide
     // at up to ~16 successively smaller scales, and every retry reuses these assets instead of

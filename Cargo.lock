@@ -444,6 +444,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
+name = "compiler"
+version = "0.0.0"
+source = "git+https://github.com/wevm/ondine?rev=0b589ec34481856b4153526f10a0a35558a201a8#0b589ec34481856b4153526f10a0a35558a201a8"
+
+[[package]]
 name = "console_error_panic_hook"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2739,6 +2744,7 @@ dependencies = [
 name = "sardown-enrich"
 version = "0.1.0"
 dependencies = [
+ "compiler",
  "fontdb",
  "merman",
  "sardown-ast",

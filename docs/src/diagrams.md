@@ -48,6 +48,36 @@ When a diagram lives inside a chapter of a book rendered with
 `SUMMARY.md`), not an internal synthetic ID — so you can find the file to
 fix directly from the warning.
 
+## The `ondine` renderer
+
+By default diagrams are drawn by merman, which reproduces Mermaid's own
+look. A build with the `ondine` feature can draw them with
+[Ondine's compiler](https://github.com/wevm/ondine) instead: plain,
+monochrome diagrams set in a monospace font, colored from your stylesheet
+rather than from Mermaid themes (`classDef`, `style` and `%%{init}%%` colors
+are ignored).
+
+```sh
+cargo install --path crates/sardown-cli --features ondine
+```
+
+```toml
+[mermaid]
+renderer = "ondine"
+border_color = "#609538"
+node_fill = "#e3f2d7"
+line_color = "#00689e"
+```
+
+- Text uses `[code_block.default].font_family` unless `[mermaid]` sets
+  `font_family`; Ondine measures text as monospace, so a font whose glyphs
+  advance 0.6 em (Red Hat Mono, DejaVu Sans Mono) fits its boxes exactly.
+- A diagram type Ondine does not support is drawn by merman, with a note.
+- Ondine is not on crates.io, so the feature builds it from a pinned git
+  revision (network access needed to fetch it, and a crate built with the
+  feature cannot be published to crates.io).
+- Without the feature, `renderer = "ondine"` prints a warning and uses merman.
+
 ## Text rendering inside diagrams
 
 Diagram labels need a resolvable font to shape their text (the same

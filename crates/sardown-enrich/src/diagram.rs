@@ -1,5 +1,6 @@
 use merman::svg::HeadlessRenderer;
 use sardown_ast::BlockNode;
+use sardown_style::{MermaidRenderer, Stylesheet};
 use std::collections::HashMap;
 
 #[derive(Clone)]
@@ -168,13 +169,52 @@ fn ensure_resolvable_generic_families(fontdb: &mut fontdb::Database) {
 }
 
 pub fn compile_diagrams(ast: &[BlockNode], svg_options: &usvg::Options) -> DiagramTable {
-    let renderer = crate::measure::renderer_for_font(svg_options.fontdb.clone(), &svg_options.font_family);
+    compile_diagrams_styled(ast, svg_options, &Stylesheet::default())
+}
+
+/// Like [`compile_diagrams`], with `style`'s `[mermaid]` section choosing the renderer and, for
+/// Ondine, the colors and font.
+pub fn compile_diagrams_styled(ast: &[BlockNode], svg_options: &usvg::Options, style: &Stylesheet) -> DiagramTable {
+    let ondine = match style.mermaid.renderer {
+        MermaidRenderer::Merman => false,
+        MermaidRenderer::Ondine if cfg!(feature = "ondine") => true,
+        MermaidRenderer::Ondine => {
+            eprintln!("warning: [mermaid] renderer = \"ondine\" needs a build with the `ondine` feature; using merman");
+            false
+        }
+    };
+    let renderers = Renderers { merman: crate::measure::renderer_for_font(svg_options.fontdb.clone(), &svg_options.font_family), ondine, style };
     let mut table = HashMap::new();
-    collect(ast, &renderer, &mut table, svg_options);
+    collect(ast, &renderers, &mut table, svg_options);
     table
 }
 
-fn collect(ast: &[BlockNode], renderer: &HeadlessRenderer, table: &mut DiagramTable, svg_options: &usvg::Options) {
+struct Renderers<'a> {
+    merman: HeadlessRenderer,
+    ondine: bool,
+    #[cfg_attr(not(feature = "ondine"), allow(dead_code))]
+    style: &'a Stylesheet,
+}
+
+impl Renderers<'_> {
+    /// Ondine's SVG for , or  to have merman draw it: the feature is off, or Ondine
+    /// does not handle this diagram (the reason is reported).
+    fn ondine_svg(&self, source: &str, location: &str) -> Option<String> {
+        if !self.ondine {
+            return None;
+        }
+        #[cfg(feature = "ondine")]
+        match crate::ondine::render(source, self.style) {
+            Ok(svg) => return Some(svg),
+            Err(e) => eprintln!("note: ondine did not render the Mermaid diagram at {location} ({e}); using merman"),
+        }
+        #[cfg(not(feature = "ondine"))]
+        let _ = (source, location);
+        None
+    }
+}
+
+fn collect(ast: &[BlockNode], renderer: &Renderers, table: &mut DiagramTable, svg_options: &usvg::Options) {
     for block in ast {
         match block {
             BlockNode::MermaidDiagram { id, source, line, column, file } => {
@@ -182,7 +222,19 @@ fn collect(ast: &[BlockNode], renderer: &HeadlessRenderer, table: &mut DiagramTa
                     Some(f) => format!("{}:{line}:{column}", f.display()),
                     None => format!("line {line}, column {column}"),
                 };
-                match renderer.render_resvg_compatible_svg_sync(source) {
+                if let Some(svg) = renderer.ondine_svg(source, &fence_location(*line, *column)) {
+                    match usvg::Tree::from_str(&svg, svg_options) {
+                        Ok(tree) => {
+                            let size = tree.size();
+                            table.insert(id.clone(), CompiledDiagram { width: size.width(), height: size.height(), tree });
+                            continue;
+                        }
+                        Err(e) => {
+                            eprintln!("note: ondine produced unparseable SVG for the Mermaid diagram at {} ({e}); using merman", fence_location(*line, *column))
+                        }
+                    }
+                }
+                match renderer.merman.render_resvg_compatible_svg_sync(source) {
                     Ok(Some(resvg_safe_svg)) => {
                         let svg = lift_edge_labels(&replace_font_families(&resvg_safe_svg.into_string(), &svg_options.font_family));
                         match usvg::Tree::from_str(&svg, svg_options) {

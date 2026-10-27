@@ -187,6 +187,24 @@ Every field is optional and falls back to `[code_block.default]`:
 | `label_color` | color |
 | `label_background` | color |
 
+## `[mermaid]`
+
+See [Diagrams](./diagrams.md#the-ondine-renderer). Colors apply to the `ondine` renderer only.
+
+| Field | Type | Default |
+|---|---|---|
+| `renderer` | `"merman"` \| `"ondine"` | `"merman"` |
+| `font_family` | string | the code block font |
+| `text_color` | color | body text color |
+| `line_color` | color | `text_color` |
+| `border_color` | color | `text_color` |
+| `node_fill` | color | `background` |
+| `surface_alt` | color | a tint of text over background |
+| `accent` | color | `text_color` |
+| `background` | color | `"#ffffff"` |
+| `stroke_width_px` | number | `1.5` |
+| `radius_px` | number | `0.0` |
+
 ## `[header]` and `[footer]`
 
 Identical schema, applied independently to the running header and footer.

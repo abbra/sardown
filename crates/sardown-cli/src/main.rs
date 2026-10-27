@@ -287,7 +287,7 @@ fn highlight_and_compile_diagrams(
         ast
     };
     let svg_options = sardown_enrich::svg_tree_options_with_font(font_system.db(), &stylesheet.typography.font_family);
-    let diagrams = timed_stage("Compiling diagrams", || Ok(sardown_enrich::compile_diagrams(&ast, &svg_options)))?;
+    let diagrams = timed_stage("Compiling diagrams", || Ok(sardown_enrich::compile_diagrams_styled(&ast, &svg_options, stylesheet)))?;
     Ok((ast, diagrams))
 }
 
