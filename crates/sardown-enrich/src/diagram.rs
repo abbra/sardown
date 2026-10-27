@@ -168,7 +168,7 @@ fn ensure_resolvable_generic_families(fontdb: &mut fontdb::Database) {
 }
 
 pub fn compile_diagrams(ast: &[BlockNode], svg_options: &usvg::Options) -> DiagramTable {
-    let renderer = HeadlessRenderer::new();
+    let renderer = crate::measure::renderer_for_font(svg_options.fontdb.clone(), &svg_options.font_family);
     let mut table = HashMap::new();
     collect(ast, &renderer, &mut table, svg_options);
     table
