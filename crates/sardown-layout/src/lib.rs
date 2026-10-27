@@ -3,6 +3,7 @@ mod hyphenate;
 mod image;
 mod numbering;
 mod paginate;
+mod select;
 mod shape;
 mod shaping_cache;
 mod table;
@@ -12,6 +13,7 @@ pub use hyphenate::{insert_hyphenation_breaks, Hyphenator};
 pub use image::{collect_svg_diagrams, decode_images, DecodedImage, ImageTable};
 pub use numbering::format_page_number;
 pub use paginate::{layout, layout_impl, layout_with_assets, prepare_layout_assets, LayoutAssets, LayoutOutput};
+pub use select::PageSelection;
 pub use shape::{
     estimate_code_natural_width_pt, measure_widest_line_pt, monospace_advance_pt, shape_paragraph, shape_rich_paragraph, ShapedRun, ShapingOptions,
 };

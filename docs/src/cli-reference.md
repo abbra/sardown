@@ -9,6 +9,21 @@ mdBook-style source tree), `render-slides` (a slide deck split on `---`),
 and `bench` (generate seeded benchmark input and time the pipeline
 rendering it).
 
+## Rendering some pages
+
+`--pages` is accepted by `render`, `render-book` and `render-slides`. It is
+meant for iterating: render one slide or chapter and look at it without
+waiting for the whole PDF. The whole document is still laid out, so page
+numbers are the real ones, and so is the numbering in headers and footers: a
+slide extracted from a deck of 55 still says `12 / 55`. Links and outline
+entries that point at a dropped page are dropped. A selection that matches no
+page is an error.
+
+```bash
+sardown render-slides deck.md -o one.pdf --pages 12
+sardown render-slides deck.md -o some.pdf --pages 12,14-16,50-
+```
+
 ## `render`
 
 ```
@@ -23,6 +38,7 @@ sardown render [OPTIONS] --output <OUTPUT> <INPUT>
 | `--title <TITLE>` | Document title, available to header/footer templates as `{title}`. Overrides `[document].title` from the stylesheet if both are given |
 | `--author <AUTHOR>` | Document author, available to header/footer templates as `{author}`. Overrides `[document].author` from the stylesheet if both are given |
 | `--date <DATE>` | Document date, available to header/footer templates as `{date}`. Overrides `[document].date` from the stylesheet if both are given; defaults to today's date if neither is set |
+| `--pages <PAGES>` | Write only these pages (slides, in a deck): a comma-separated list of pages and ranges, such as `12`, `3-5`, `-4`, `40-` or `1,12,14-16`. See [Rendering some pages](#rendering-some-pages) |
 | `-h, --help` | Print help |
 
 Example:
@@ -45,6 +61,7 @@ sardown render-book [OPTIONS] --output <OUTPUT> <BOOK_ROOT>
 | `--title <TITLE>` | Document title, available to header/footer templates as `{title}`. Overrides `[document].title` from the stylesheet if both are given |
 | `--author <AUTHOR>` | Document author, available to header/footer templates as `{author}`. Overrides `[document].author` from the stylesheet if both are given |
 | `--date <DATE>` | Document date, available to header/footer templates as `{date}`. Overrides `[document].date` from the stylesheet if both are given; defaults to today's date if neither is set |
+| `--pages <PAGES>` | Write only these pages (slides, in a deck): a comma-separated list of pages and ranges, such as `12`, `3-5`, `-4`, `40-` or `1,12,14-16`. See [Rendering some pages](#rendering-some-pages) |
 | `-h, --help` | Print help |
 
 Example:
@@ -67,6 +84,7 @@ sardown render-slides [OPTIONS] --output <OUTPUT> <INPUT>
 | `--title <TITLE>` | Document title, available to header/footer templates as `{title}`. Overrides `[document].title` from the stylesheet if both are given |
 | `--author <AUTHOR>` | Document author, available to header/footer templates as `{author}`. Overrides `[document].author` from the stylesheet if both are given |
 | `--date <DATE>` | Document date, available to header/footer templates as `{date}`. Overrides `[document].date` from the stylesheet if both are given; defaults to today's date if neither is set |
+| `--pages <PAGES>` | Write only these pages (slides, in a deck): a comma-separated list of pages and ranges, such as `12`, `3-5`, `-4`, `40-` or `1,12,14-16`. See [Rendering some pages](#rendering-some-pages) |
 | `-h, --help` | Print help |
 
 Example:

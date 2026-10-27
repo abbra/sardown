@@ -35,6 +35,12 @@ enum Commands {
         /// if neither is given, defaults to today's date.
         #[arg(long)]
         date: Option<String>,
+
+        /// Keep only these pages (slides, in a deck) in the output: a comma-separated list of
+        /// pages and ranges, such as `12`, `3-5`, `-4`, `40-` or `1,12,14-16`. Numbering is
+        /// 1-based and footers keep their original numbers.
+        #[arg(long)]
+        pages: Option<sardown_layout::PageSelection>,
     },
     /// Render an mdBook source tree (a directory containing book.toml and/or src/SUMMARY.md) to
     /// one combined PDF
@@ -59,6 +65,12 @@ enum Commands {
         /// if neither is given, defaults to today's date.
         #[arg(long)]
         date: Option<String>,
+
+        /// Keep only these pages (slides, in a deck) in the output: a comma-separated list of
+        /// pages and ranges, such as `12`, `3-5`, `-4`, `40-` or `1,12,14-16`. Numbering is
+        /// 1-based and footers keep their original numbers.
+        #[arg(long)]
+        pages: Option<sardown_layout::PageSelection>,
     },
     /// Render a Markdown slide deck (split into slides on `---`) to PDF
     RenderSlides {
@@ -81,6 +93,12 @@ enum Commands {
         /// if neither is given, defaults to today's date.
         #[arg(long)]
         date: Option<String>,
+
+        /// Keep only these pages (slides, in a deck) in the output: a comma-separated list of
+        /// pages and ranges, such as `12`, `3-5`, `-4`, `40-` or `1,12,14-16`. Numbering is
+        /// 1-based and footers keep their original numbers.
+        #[arg(long)]
+        pages: Option<sardown_layout::PageSelection>,
     },
     /// Generate seeded complex Markdown input, render it, and report per-stage timings
     Bench {
@@ -299,11 +317,16 @@ fn highlight_and_compile_diagrams(
 /// Renders `output_layout` to PDF bytes and writes them to `output_path` -- the tail every render
 /// mode shares identically once it has its own `LayoutOutput` in hand.
 fn write_pdf_output(
-    output_layout: &sardown_layout::LayoutOutput,
+    mut output_layout: sardown_layout::LayoutOutput,
     font_system: &cosmic_text::FontSystem,
     output_path: &std::path::Path,
     item_noun: &str,
+    selection: Option<&sardown_layout::PageSelection>,
 ) -> anyhow::Result<()> {
+    let total = output_layout.pages.len();
+    if let Some(selection) = selection {
+        output_layout.retain_pages(selection).map_err(|e| anyhow::anyhow!(e))?;
+    }
     let pdf_bytes = timed_stage("Rendering PDF", || {
         sardown_pdf::render_pdf(
             &output_layout.pages,
@@ -317,14 +340,18 @@ fn write_pdf_output(
         )
     })?;
     timed_stage("Writing output", || Ok(std::fs::write(output_path, pdf_bytes)?))?;
-    eprintln!("Wrote {} ({} {item_noun})", output_path.display(), output_layout.pages.len());
+    if selection.is_some() {
+        eprintln!("Wrote {} ({} of {total} {item_noun})", output_path.display(), output_layout.pages.len());
+    } else {
+        eprintln!("Wrote {} ({total} {item_noun})", output_path.display());
+    }
     Ok(())
 }
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Render { input, output, style, title, author, date } => {
+        Commands::Render { input, output, style, title, author, date, pages } => {
             let mut stylesheet = timed_stage("Resolving stylesheet", || sardown_style::Stylesheet::resolve(style.as_deref(), None))?;
             apply_document_overrides(&mut stylesheet, title, author, date);
 
@@ -344,9 +371,9 @@ fn main() -> anyhow::Result<()> {
 
             let output_layout =
                 timed_stage("Laying out pages", || Ok(sardown_layout::layout_with_header_footer(&ast, &mut font_system, &base_dir, &diagrams, &stylesheet)))?;
-            write_pdf_output(&output_layout, &font_system, &output, "pages")
+            write_pdf_output(output_layout, &font_system, &output, "pages", pages.as_ref())
         }
-        Commands::RenderBook { book_root, output, style, title, author, date } => {
+        Commands::RenderBook { book_root, output, style, title, author, date, pages } => {
             let mut stylesheet = timed_stage("Resolving stylesheet", || sardown_style::Stylesheet::resolve(style.as_deref(), Some(&book_root)))?;
             apply_document_overrides(&mut stylesheet, title, author, date);
 
@@ -366,9 +393,9 @@ fn main() -> anyhow::Result<()> {
             // happen to live under the current directory; book_root is the real boundary.
             let output_layout =
                 timed_stage("Laying out pages", || Ok(sardown_layout::layout_with_header_footer(&ast, &mut font_system, &book_root, &diagrams, &stylesheet)))?;
-            write_pdf_output(&output_layout, &font_system, &output, "pages")
+            write_pdf_output(output_layout, &font_system, &output, "pages", pages.as_ref())
         }
-        Commands::RenderSlides { input, output, style, title, author, date } => {
+        Commands::RenderSlides { input, output, style, title, author, date, pages } => {
             let mut stylesheet = timed_stage("Resolving stylesheet", || sardown_style::Stylesheet::resolve(style.as_deref(), None))?;
             apply_document_overrides(&mut stylesheet, title, author, date);
 
@@ -378,7 +405,7 @@ fn main() -> anyhow::Result<()> {
 
             let output_layout =
                 timed_stage("Laying out slides", || sardown_slides::render_slide_deck(&markdown, &input, &base_dir, &mut font_system, &stylesheet))?;
-            write_pdf_output(&output_layout, &font_system, &output, "slides")
+            write_pdf_output(output_layout, &font_system, &output, "slides", pages.as_ref())
         }
         Commands::Bench { seed, mode, pages, iterations, style, markdown_out, book_dir, output } => {
             crate::bench::run(bench::BenchArgs { seed, mode, pages, iterations, style, markdown_out, book_dir, output })
