@@ -173,6 +173,66 @@ fn base_dir_of(input: &std::path::Path) -> std::path::PathBuf {
     }
 }
 
+/// Removes variable-font faces whose family also ships static faces. The PDF writer embeds a
+/// variable font at its default instance, so a variable face matched for bold or italic text would
+/// silently render as regular weight; the static faces of the same family carry the real weights.
+/// A family that exists only as a variable font is kept (it still renders, at its default weight).
+fn drop_shadowing_variable_fonts(db: &mut fontdb::Database) {
+    let mut variable = Vec::new();
+    let mut static_families = std::collections::HashSet::new();
+    for face in db.faces() {
+        let is_variable = db.with_face_data(face.id, |data, index| ttf_parser::Face::parse(data, index).is_ok_and(|f| f.is_variable())).unwrap_or(false);
+        let Some((family, _)) = face.families.first() else { continue };
+        if is_variable {
+            variable.push((face.id, family.to_lowercase()));
+        } else {
+            static_families.insert(family.to_lowercase());
+        }
+    }
+    for (id, family) in variable {
+        if static_families.contains(&family) {
+            db.remove_face(id);
+        }
+    }
+}
+
+/// The CSS weight a PostScript style name such as `SemiBoldItalic` stands for.
+fn weight_from_style_name(style: &str) -> Option<u16> {
+    let style = style.trim_end_matches("Italic").trim_end_matches("Oblique");
+    Some(match style {
+        "Thin" | "Hairline" => 100,
+        "ExtraLight" | "UltraLight" => 200,
+        "Light" => 300,
+        "" | "Regular" | "Roman" | "Book" => 400,
+        "Medium" => 500,
+        "SemiBold" | "DemiBold" => 600,
+        "Bold" => 700,
+        "ExtraBold" | "UltraBold" => 800,
+        "Black" | "Heavy" => 900,
+        _ => return None,
+    })
+}
+
+/// Resets each face's weight to the one its PostScript style name states. Some families (Red Hat
+/// Display/Mono among them) ship static faces with off-scale weights (Bold at 799, SemiBold at
+/// 707), so a request for bold (700) matches SemiBold, or loses to an unrelated font that has an
+/// exact 700.
+fn normalize_face_weights(db: &mut fontdb::Database) {
+    let fixes: Vec<_> = db
+        .faces()
+        .filter_map(|face| {
+            let style = face.post_script_name.rsplit_once('-')?.1;
+            let weight = weight_from_style_name(style)?;
+            (face.weight.0 != weight).then(|| (face.id, face.clone(), weight))
+        })
+        .collect();
+    for (id, mut info, weight) in fixes {
+        db.remove_face(id);
+        info.weight = fontdb::Weight(weight);
+        db.push_face_info(info);
+    }
+}
+
 fn build_font_system(typography: &sardown_style::TypographyStyle) -> cosmic_text::FontSystem {
     let mut font_db = fontdb::Database::new();
     if typography.use_system_fonts {
@@ -181,6 +241,8 @@ fn build_font_system(typography: &sardown_style::TypographyStyle) -> cosmic_text
     for dir in &typography.font_dirs {
         font_db.load_fonts_dir(dir);
     }
+    drop_shadowing_variable_fonts(&mut font_db);
+    normalize_face_weights(&mut font_db);
     cosmic_text::FontSystem::new_with_locale_and_db("en-US".to_string(), font_db)
 }
 

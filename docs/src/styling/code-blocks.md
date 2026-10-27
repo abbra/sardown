@@ -90,6 +90,7 @@ Anything not overridden for a given language falls back to
 
 ## What's not affected by this section
 
-Inline code spans (`` `text` ``) don't use any of this — they render as
-plain body text (see
+Of this section only `default.font_family` reaches inline code spans
+(`` `text` ``): they use that font, so they match fenced blocks. Everything
+else here (colors, sizes, highlighting) applies to fenced blocks only (see
 [Writing Markdown](../markdown-support.md#paragraphs-and-inline-styling)).

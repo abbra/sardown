@@ -1,8 +1,12 @@
-use crate::{shape_paragraph, PathCommand, PositionedElement, StrokeStyle};
+use crate::{shape_rich_paragraph, PathCommand, PositionedElement, ShapingOptions, StrokeStyle};
 use cosmic_text::FontSystem;
 use sardown_ast::InlineNode;
 
 const MIN_COLUMN_WIDTH_PT: f32 = 40.0;
+
+/// Added to every measured cell so a column sized exactly to its content doesn't wrap it over a
+/// rounding difference (a hyphenated word like `ML-KEM-1024` would break at its hyphens).
+const WRAP_SLACK_PT: f32 = 1.0;
 
 /// Splits available width between columns in two passes:
 ///
@@ -20,13 +24,19 @@ const MIN_COLUMN_WIDTH_PT: f32 = 40.0;
 /// had long content, even though there was plenty of width to go around -- forcing the short
 /// column's own words to wrap mid-word. Giving every column its word-wrap floor first fixes that
 /// without giving up on distributing genuinely extra space to columns that can use it.
-pub fn column_widths(headers: &[Vec<InlineNode>], rows: &[Vec<Vec<InlineNode>>], available_width_pt: f32, font_system: &mut FontSystem) -> Vec<f32> {
+pub fn column_widths(
+    headers: &[Vec<InlineNode>],
+    rows: &[Vec<Vec<InlineNode>>],
+    available_width_pt: f32,
+    cell_padding_pt: f32,
+    font_system: &mut FontSystem,
+) -> Vec<f32> {
     let column_count = headers.len();
     let mut longest_word = vec![0.0f32; column_count];
     let mut longest_line = vec![0.0f32; column_count];
 
     let mut measure = |col: usize, cell: &[InlineNode]| {
-        let m = measure_cell(font_system, cell);
+        let m = measure_cell(font_system, cell, cell_padding_pt);
         longest_word[col] = longest_word[col].max(m.longest_word);
         longest_line[col] = longest_line[col].max(m.longest_line);
     };
@@ -121,14 +131,15 @@ fn max_min_fair_allocation(needs: &[f32], available: f32) -> Vec<f32> {
 /// rather than in isolation can differ from the old isolated measurement by a fraction of a
 /// kerning unit at most -- below the column floor's and the proportional distribution's own
 /// smoothing, and below the visual-regression pixel threshold.
-fn measure_cell(font_system: &mut FontSystem, cell: &[InlineNode]) -> CellMeasure {
-    let elements = shape_paragraph(font_system, cell, f32::MAX);
+fn measure_cell(font_system: &mut FontSystem, cell: &[InlineNode], cell_padding_pt: f32) -> CellMeasure {
+    // Shaped per span, so a cell mixing prose and inline code is measured in each span's own face.
+    let runs = shape_rich_paragraph(font_system, cell, f32::MAX, cosmic_text::Align::Left, ShapingOptions::PROSE);
     let mut longest_line = 0.0f32;
     let mut longest_word = 0.0f32;
-    for element in elements {
-        if let PositionedElement::TextRun { glyphs, text, .. } = element {
-            longest_line = longest_line.max(glyphs.iter().map(|g| g.x_advance).sum::<f32>());
-            let mut word_width = 0.0f32;
+    let mut word_width = 0.0f32;
+    for run in runs {
+        if let PositionedElement::TextRun { glyphs, text, .. } = run.element {
+            longest_line += glyphs.iter().map(|g| g.x_advance).sum::<f32>();
             for g in &glyphs {
                 let cluster_is_whitespace = text[g.cluster.start..g.cluster.end].chars().next().is_some_and(char::is_whitespace);
                 if cluster_is_whitespace {
@@ -138,11 +149,10 @@ fn measure_cell(font_system: &mut FontSystem, cell: &[InlineNode]) -> CellMeasur
                     word_width += g.x_advance;
                 }
             }
-            longest_word = longest_word.max(word_width);
         }
     }
-    // 12.0 = cell padding
-    CellMeasure { longest_line: longest_line + 12.0, longest_word: longest_word + 12.0 }
+    longest_word = longest_word.max(word_width);
+    CellMeasure { longest_line: longest_line + cell_padding_pt + WRAP_SLACK_PT, longest_word: longest_word + cell_padding_pt + WRAP_SLACK_PT }
 }
 
 struct CellMeasure {
@@ -150,21 +160,67 @@ struct CellMeasure {
     longest_word: f32,
 }
 
-/// Grid line Path for a table occupying [x, x + total_width] x [top_y, bottom_y], with one
-/// vertical line per column boundary and, if this page segment includes the header row, one
-/// horizontal line under it. `header_bottom_y` is `None` for a page a table continues onto
-/// after a row-level page break, since the header is not repeated there.
-pub(crate) fn grid_path(x: f32, top_y: f32, bottom_y: f32, header_bottom_y: Option<f32>, widths: &[f32]) -> PositionedElement {
-    let mut points = vec![PathCommand::MoveTo(x, top_y)];
-    let mut cursor_x = x;
-    for width in widths {
-        cursor_x += width;
-        points.push(PathCommand::MoveTo(cursor_x, top_y));
-        points.push(PathCommand::LineTo(cursor_x, bottom_y));
+/// Everything one page segment of a table draws besides its text: row fills and rules. `rule_ys`
+/// are the horizontal lines (top, under the header, under each row); `Grid` mode draws only the
+/// one under the header, plus a vertical line per column boundary.
+pub(crate) struct SegmentDecor {
+    pub top_y: f32,
+    pub bottom_y: f32,
+    pub header_bottom_y: Option<f32>,
+    pub rule_ys: Vec<f32>,
+    pub fills: Vec<(f32, f32, [u8; 3])>,
+}
+
+/// The fill rectangles then the rules for one page segment of a table occupying
+/// `[x, x + sum(widths)]`, fills first so they sit behind the text drawn before them in the list.
+pub(crate) fn segment_elements(
+    x: f32,
+    widths: &[f32],
+    decor: &SegmentDecor,
+    style: &sardown_style::TableStyle,
+) -> (Vec<PositionedElement>, Vec<PositionedElement>) {
+    let right = x + widths.iter().sum::<f32>();
+    let fills = decor
+        .fills
+        .iter()
+        .map(|&(top, bottom, color)| PositionedElement::Path {
+            points: vec![
+                PathCommand::MoveTo(x, top),
+                PathCommand::LineTo(right, top),
+                PathCommand::LineTo(right, bottom),
+                PathCommand::LineTo(x, bottom),
+                PathCommand::Close,
+            ],
+            fill: Some(color),
+            stroke: None,
+        })
+        .collect();
+    let mut points = Vec::new();
+    match style.border {
+        sardown_style::TableBorder::None => {}
+        sardown_style::TableBorder::Grid => {
+            let mut cursor_x = x;
+            for width in widths {
+                cursor_x += width;
+                points.push(PathCommand::MoveTo(cursor_x, decor.top_y));
+                points.push(PathCommand::LineTo(cursor_x, decor.bottom_y));
+            }
+            if let Some(y) = decor.header_bottom_y {
+                points.push(PathCommand::MoveTo(x, y));
+                points.push(PathCommand::LineTo(right, y));
+            }
+        }
+        sardown_style::TableBorder::Horizontal => {
+            for &y in &decor.rule_ys {
+                points.push(PathCommand::MoveTo(x, y));
+                points.push(PathCommand::LineTo(right, y));
+            }
+        }
     }
-    if let Some(header_bottom_y) = header_bottom_y {
-        points.push(PathCommand::MoveTo(x, header_bottom_y));
-        points.push(PathCommand::LineTo(cursor_x, header_bottom_y));
-    }
-    PositionedElement::Path { points, fill: None, stroke: Some(StrokeStyle { color: [180, 180, 180], width: 0.75 }) }
+    let rules = if points.is_empty() {
+        Vec::new()
+    } else {
+        vec![PositionedElement::Path { points, fill: None, stroke: Some(StrokeStyle { color: style.border_color.0, width: style.border_width_pt }) }]
+    };
+    (fills, rules)
 }

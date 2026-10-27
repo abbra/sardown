@@ -42,6 +42,9 @@ struct Cursor<'a> {
     chapter_opener_pending: bool,
     page_contexts: Vec<PageContext>,
     style: &'a sardown_style::Stylesheet,
+    /// Set when a block taller than a whole page was placed anyway: `finish` then keeps a trailing
+    /// page, so callers counting pages (a slide's shrink-to-fit) can tell the content didn't fit.
+    overflowed: bool,
 }
 
 impl<'a> Cursor<'a> {
@@ -60,6 +63,7 @@ impl<'a> Cursor<'a> {
             chapter_opener_pending: false,
             page_contexts: Vec::new(),
             style,
+            overflowed: false,
         }
     }
 
@@ -82,6 +86,7 @@ impl<'a> Cursor<'a> {
             chapter_opener_pending: false,
             page_contexts: Vec::new(),
             style,
+            overflowed: false,
         }
     }
 
@@ -108,7 +113,7 @@ impl<'a> Cursor<'a> {
     }
 
     fn finish(mut self) -> (Vec<PositionedPage>, AnchorTable, Vec<PageContext>) {
-        if !self.current.is_empty() || self.pages.is_empty() {
+        if !self.current.is_empty() || self.pages.is_empty() || self.overflowed {
             let elements = std::mem::take(&mut self.current);
             self.pages.push(PositionedPage { page_number: self.page_number, elements });
             self.snapshot_page_context();
@@ -281,6 +286,7 @@ fn place_shaped_runs(cursor: &mut Cursor, shaped: Vec<crate::ShapedRun>, content
 fn shape_row_cells(
     row: &[Vec<sardown_ast::InlineNode>],
     widths: &[f32],
+    aligns: &[cosmic_text::Align],
     cell_padding_pt: f32,
     min_cell_wrap_width_pt: f32,
     min_row_height: f32,
@@ -288,13 +294,13 @@ fn shape_row_cells(
 ) -> (f32, Vec<Vec<crate::ShapedRun>>) {
     let mut max_height = min_row_height;
     let mut shaped_cells = Vec::with_capacity(row.len());
-    for (cell, width) in row.iter().zip(widths) {
+    for ((cell, width), align) in row.iter().zip(widths).zip(aligns) {
         if cell.is_empty() {
             shaped_cells.push(Vec::new());
             continue;
         }
         let cell_max_width_pt = (*width - cell_padding_pt).max(min_cell_wrap_width_pt);
-        let shaped = shape_rich_paragraph(font_system, cell, cell_max_width_pt, cosmic_text::Align::Left, ShapingOptions::PROSE);
+        let shaped = shape_rich_paragraph(font_system, cell, cell_max_width_pt, *align, ShapingOptions::PROSE);
         let mut ys: Vec<f32> = shaped
             .iter()
             .map(|r| match &r.element {
@@ -776,17 +782,43 @@ fn render_block(
             let extra_gap_needed_pt = (next_ascent_pt + BOTTOM_PAD_PT - LINE_SPACING_PT).max(0.0);
             cursor.y += extra_gap_needed_pt;
         }
-        BlockNode::Table { headers, rows, .. } => {
-            let widths = crate::table::column_widths(headers, rows, cursor.content_width_pt - indent_pt, font_system);
+        BlockNode::Table { headers, rows, alignments } => {
+            let table_style = &cursor.style.table;
+            // The header row is styled here, at layout time, so a slide layout's own text color
+            // pass over cell runs (see sardown-slides) doesn't have to know about it.
+            let header_cells: Vec<Vec<sardown_ast::InlineNode>> = headers
+                .iter()
+                .map(|cell| {
+                    cell.iter()
+                        .cloned()
+                        .map(|mut node| {
+                            node.style.bold |= table_style.header_bold;
+                            if let Some(color) = table_style.header_color {
+                                node.style.color = color.0;
+                            }
+                            node
+                        })
+                        .collect()
+                })
+                .collect();
+            let aligns: Vec<cosmic_text::Align> = (0..headers.len())
+                .map(|i| match alignments.get(i) {
+                    Some(sardown_ast::ColumnAlignment::Center) => cosmic_text::Align::Center,
+                    Some(sardown_ast::ColumnAlignment::Right) => cosmic_text::Align::Right,
+                    _ => cosmic_text::Align::Left,
+                })
+                .collect();
+            let cell_padding_pt = table_style.cell_padding_pt;
+            let widths = crate::table::column_widths(&header_cells, rows, cursor.content_width_pt - indent_pt, cell_padding_pt, font_system);
             // Floor, not a fixed height: a row must be as tall as its tallest cell.
             // Real-world tables routinely have cells whose text wraps to multiple lines
             // (e.g. a "Description" column), which used to overflow this constant and
             // overlap the next row entirely.
-            let min_row_height = cursor.style.table.min_row_height_pt;
+            let min_row_height = table_style.min_row_height_pt;
+            let row_pad_pt = table_style.row_padding_pt;
             // Total horizontal padding reserved for a cell, split evenly left and right. Without
             // this, cell text started exactly at the column's left grid line -- flush against the
             // vertical divider, with no breathing room on either side.
-            let cell_padding_pt = cursor.style.table.cell_padding_pt;
             let cell_padding_x_pt = cell_padding_pt / 2.0;
             // Not stylesheet-configurable -- an internal safety floor preventing a cell from
             // collapsing to zero width, not a visual style choice.
@@ -798,9 +830,11 @@ fn render_block(
             // Derived from the same `Stylesheet.table.text_size_pt` that `sardown-ast` gives every
             // table cell's own text -- previously two separate hardcoded constants kept in sync
             // only by a comment; now one real, enforced source of truth.
-            let table_text_size_pt = cursor.style.table.text_size_pt;
-            let table_top_pad_pt = table_text_size_pt * 0.8; // clears the first row's ascender
-            let table_row_gap_adjust_pt = table_text_size_pt + 2.0; // baseline -> mid-gap-below-descender
+            let table_text_size_pt = table_style.text_size_pt;
+            let table_top_pad_pt = table_text_size_pt * 0.8 + row_pad_pt; // clears the first row's ascender
+            let table_row_gap_adjust_pt = table_text_size_pt + 2.0 - row_pad_pt; // baseline -> mid-gap-below-descender
+            let stripe = table_style.stripe_background.map(|c| c.0);
+            let header_fill = table_style.header_background.map(|c| c.0);
 
             // A row is never split mid-cell across a page break: each row's height is measured
             // up front, and if it won't fit, the whole table breaks to a new page *before* any
@@ -808,19 +842,21 @@ fn render_block(
             // `place_inline_content`'s own per-line break fire mid-row (the previous behavior)
             // corrupted every cell rendered after the break, since each resets to a `row_top_y`
             // belonging to the page the row started on.
-            let (header_height, shaped_headers) = shape_row_cells(headers, &widths, cell_padding_pt, MIN_CELL_WRAP_WIDTH_PT, min_row_height, font_system);
-            if cursor.remaining_height() < header_height && !cursor.current.is_empty() {
+            let (header_height, shaped_headers) =
+                shape_row_cells(&header_cells, &widths, &aligns, cell_padding_pt, MIN_CELL_WRAP_WIDTH_PT, min_row_height, font_system);
+            if cursor.remaining_height() < header_height + 2.0 * row_pad_pt && !cursor.current.is_empty() {
                 cursor.break_page(margin_pt);
             }
 
             let table_top_y = cursor.y;
+            let first_elem_start = cursor.current.len();
             let mut col_x = margin_pt + indent_pt;
-            let mut header_bottom_y = table_top_y + min_row_height;
-            for ((header, width), shaped) in headers.iter().zip(&widths).zip(shaped_headers) {
+            let mut header_bottom_y = table_top_y + row_pad_pt + min_row_height;
+            for (((header, width), shaped), _) in header_cells.iter().zip(&widths).zip(shaped_headers).zip(&aligns) {
                 // Reset before each cell: placement advances `cursor.y` as it lays out lines,
                 // so without this reset every cell after the first in a row would start below
                 // where the previous cell's text left off instead of at the row's top.
-                cursor.y = table_top_y;
+                cursor.y = table_top_y + row_pad_pt;
                 // Capped at this column's own width (minus a little breathing room before the
                 // grid line), not the page's remaining width: the placement width parameter is
                 // normally "wrap at the right margin," which is wrong for a cell — it let long
@@ -840,7 +876,7 @@ fn render_block(
                         ligatures: true,
                     },
                 );
-                header_bottom_y = header_bottom_y.max(cursor.y);
+                header_bottom_y = header_bottom_y.max(cursor.y + row_pad_pt);
                 col_x += width;
             }
             cursor.y = header_bottom_y;
@@ -852,25 +888,36 @@ fn render_block(
             // actually contains the header row.
             struct Segment {
                 page: usize,
-                top_y: f32,
-                bottom_y: f32,
-                header_bottom_y: Option<f32>,
+                elem_start: usize,
+                decor: crate::table::SegmentDecor,
             }
-            let mut segments = vec![Segment {
-                page: cursor.page_number,
-                top_y: table_top_y - table_top_pad_pt,
-                bottom_y: header_bottom_y - table_row_gap_adjust_pt,
-                header_bottom_y: Some(header_bottom_y - table_row_gap_adjust_pt),
-            }];
+            let top_y = table_top_y - table_top_pad_pt;
+            let header_line_y = header_bottom_y - table_row_gap_adjust_pt;
+            let mut first_decor = crate::table::SegmentDecor {
+                top_y,
+                bottom_y: header_line_y,
+                header_bottom_y: Some(header_line_y),
+                rule_ys: vec![top_y, header_line_y],
+                fills: Vec::new(),
+            };
+            if let Some(color) = header_fill {
+                first_decor.fills.push((top_y, header_line_y, color));
+            }
+            let mut segments = vec![Segment { page: cursor.page_number, elem_start: first_elem_start, decor: first_decor }];
 
-            for row in rows {
-                let (row_height, shaped_cells) = shape_row_cells(row, &widths, cell_padding_pt, MIN_CELL_WRAP_WIDTH_PT, min_row_height, font_system);
-                if cursor.remaining_height() < row_height && !cursor.current.is_empty() {
+            for (row_index, row) in rows.iter().enumerate() {
+                let (row_height, shaped_cells) = shape_row_cells(row, &widths, &aligns, cell_padding_pt, MIN_CELL_WRAP_WIDTH_PT, min_row_height, font_system);
+                if cursor.remaining_height() < row_height + 2.0 * row_pad_pt && !cursor.current.is_empty() {
                     cursor.break_page(margin_pt);
-                    segments.push(Segment { page: cursor.page_number, top_y: cursor.y - table_top_pad_pt, bottom_y: cursor.y, header_bottom_y: None });
+                    let top_y = cursor.y - table_top_pad_pt;
+                    segments.push(Segment {
+                        page: cursor.page_number,
+                        elem_start: cursor.current.len(),
+                        decor: crate::table::SegmentDecor { top_y, bottom_y: top_y, header_bottom_y: None, rule_ys: vec![top_y], fills: Vec::new() },
+                    });
                 }
 
-                let row_top_y = cursor.y;
+                let row_top_y = cursor.y + row_pad_pt;
                 let mut col_x = margin_pt + indent_pt;
                 let mut row_bottom_y = row_top_y + min_row_height;
                 for ((cell, width), shaped) in row.iter().zip(&widths).zip(shaped_cells) {
@@ -892,18 +939,25 @@ fn render_block(
                     row_bottom_y = row_bottom_y.max(cursor.y);
                     col_x += width;
                 }
+                row_bottom_y += row_pad_pt;
                 cursor.y = row_bottom_y;
-                segments.last_mut().unwrap().bottom_y = row_bottom_y - table_row_gap_adjust_pt;
+                let decor = &mut segments.last_mut().unwrap().decor;
+                let line_y = row_bottom_y - table_row_gap_adjust_pt;
+                if let (Some(color), true) = (stripe, row_index % 2 == 1) {
+                    decor.fills.push((decor.bottom_y, line_y, color));
+                }
+                decor.bottom_y = line_y;
+                decor.rule_ys.push(line_y);
             }
 
             for segment in segments {
-                let path = crate::table::grid_path(margin_pt + indent_pt, segment.top_y, segment.bottom_y, segment.header_bottom_y, &widths);
-                if segment.page == cursor.page_number {
-                    cursor.current.push(path);
-                } else {
-                    cursor.pages[segment.page].elements.push(path);
-                }
+                let (fills, rules) = crate::table::segment_elements(margin_pt + indent_pt, &widths, &segment.decor, &cursor.style.table);
+                let elements = if segment.page == cursor.page_number { &mut cursor.current } else { &mut cursor.pages[segment.page].elements };
+                // Fills go underneath the text already placed for this segment; rules on top.
+                elements.splice(segment.elem_start..segment.elem_start, fills);
+                elements.extend(rules);
             }
+            cursor.y += cursor.style.table.space_after_pt;
         }
         BlockNode::Image { source: sardown_ast::ImageSource::Embedded(path), .. } => {
             render_keyed_image(cursor, margin_pt, indent_pt, path.to_string_lossy().to_string(), images, diagrams);
@@ -946,16 +1000,30 @@ fn render_block(
             let n = columns.len().max(1) as f32;
             let available_width_pt = cursor.content_width_pt - indent_pt;
             let column_width_pt = ((available_width_pt - gap_pt * (n - 1.0)) / n).max(1.0);
-            let outer_y = cursor.y;
             let mut max_height_pt: f32 = 0.0;
 
-            for (i, column_blocks) in columns.iter().enumerate() {
+            // Every column is laid out first, in its own local coordinates, so the block's height
+            // is known before deciding where it goes.
+            let mut laid_out = Vec::with_capacity(columns.len());
+            for column_blocks in columns {
                 let mut sub_cursor = Cursor::isolated(column_width_pt, cursor.style, cursor.current_h1.clone(), cursor.current_h2.clone());
                 for (j, block) in column_blocks.iter().enumerate() {
                     render_block(block, &mut sub_cursor, 0.0, 0.0, font_system, images, diagrams, hyphenator, column_blocks.get(j + 1));
                     sub_cursor.y += LINE_SPACING_PT;
                 }
-                let column_height_pt = sub_cursor.y;
+                max_height_pt = max_height_pt.max(sub_cursor.y);
+                laid_out.push(sub_cursor);
+            }
+
+            // A block that doesn't fit what's left of the page moves to the next one; one taller
+            // than a whole page is placed anyway (never dropped) and flagged as overflowing, so a
+            // slide deck's shrink pass sees that the slide doesn't fit.
+            if cursor.remaining_height() < max_height_pt && !cursor.current.is_empty() {
+                cursor.break_page(margin_pt);
+            }
+            let outer_y = cursor.y;
+
+            for (i, sub_cursor) in laid_out.into_iter().enumerate() {
                 let (sub_pages, sub_anchors, _) = sub_cursor.finish();
                 let column_x_offset_pt = margin_pt + indent_pt + i as f32 * (column_width_pt + gap_pt);
 
@@ -982,9 +1050,11 @@ fn render_block(
                 for (id, anchor) in sub_anchors {
                     cursor.anchors.insert(id, AnchorPosition { page: cursor.page_number, x: anchor.x + column_x_offset_pt, y: anchor.y + outer_y });
                 }
-                max_height_pt = max_height_pt.max(column_height_pt);
             }
             cursor.y = outer_y + max_height_pt;
+            if cursor.y > cursor.page_height_pt {
+                cursor.overflowed = true;
+            }
         }
     }
 }

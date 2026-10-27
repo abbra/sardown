@@ -22,7 +22,7 @@ pub use numbering::{NumberingFormat, PageNumbering, PageNumberingReset};
 pub use page::{PageFormat, PageStyle};
 pub use slides::{BackgroundImageStyle, ImageCorner, SlideLayoutStyle, SlidesStyle, VerticalAlign};
 pub use structural::{BlockquoteStyle, ColumnsStyle, ListStyle, ThematicBreakStyle};
-pub use table::TableStyle;
+pub use table::{TableBorder, TableStyle};
 pub use toc::TocStyle;
 pub use typography::{TextAlignment, TypographyStyle};
 

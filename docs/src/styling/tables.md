@@ -17,6 +17,29 @@ min_row_height_pt = 20.0
   cell's content is a single short word. A row with wrapped multi-line
   cell content grows taller than this automatically.
 
+## Rules, fills and the header row
+
+```toml
+[table]
+border = "horizontal"        # "grid" (default), "horizontal" or "none"
+border_color = "#c5d6e0"
+border_width_pt = 0.75
+row_padding_pt = 3.0         # extra space above and below each row's text
+header_background = "#e3eef5"
+header_color = "#00527d"
+header_bold = true
+stripe_background = "#f3f8fb"  # every second body row
+space_after_pt = 8.0         # gap before the next block
+```
+
+- `border = "grid"` draws a vertical line between columns and one under the
+  header; `"horizontal"` draws rules above the table, under the header and
+  under every row; `"none"` draws no rules.
+- All fill and header options are off by default, so existing stylesheets
+  render as before.
+- In a slide deck, the padding, row height and `space_after_pt` shrink
+  together with the text when a slide is scaled down to fit.
+
 ## Column widths and alignment
 
 Column widths are computed automatically from content — there's currently

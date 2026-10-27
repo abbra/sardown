@@ -40,6 +40,7 @@ pub fn build_slide_stylesheet(base: &Stylesheet, layout: &SlideLayoutStyle, scal
 
     sheet.typography.body_size_pt *= scale;
     sheet.table.text_size_pt *= scale;
+    scale_table_spacing(&mut sheet.table, scale);
     sheet.code_block.default.font_size_pt *= scale;
     for lang_style in sheet.code_block.languages.values_mut() {
         if let Some(size) = lang_style.font_size_pt {
@@ -64,10 +65,23 @@ pub fn build_slide_stylesheet(base: &Stylesheet, layout: &SlideLayoutStyle, scal
 pub fn apply_slide_scale(sheet: &mut Stylesheet, base: &Stylesheet, layout: &SlideLayoutStyle, scale: f32) {
     sheet.typography.body_size_pt = layout.body_size_pt.unwrap_or(base.typography.body_size_pt) * scale;
     sheet.table.text_size_pt = base.table.text_size_pt * scale;
+    sheet.table.cell_padding_pt = base.table.cell_padding_pt * scale;
+    sheet.table.min_row_height_pt = base.table.min_row_height_pt * scale;
+    sheet.table.row_padding_pt = base.table.row_padding_pt * scale;
+    sheet.table.space_after_pt = base.table.space_after_pt * scale;
     sheet.code_block.default.font_size_pt = base.code_block.default.font_size_pt * scale;
     for (lang, lang_style) in sheet.code_block.languages.iter_mut() {
         if let Some(size) = base.code_block.languages.get(lang).and_then(|s| s.font_size_pt) {
             lang_style.font_size_pt = Some(size * scale);
         }
     }
+}
+
+/// Table spacing shrinks with the text: padding that stayed fixed would make a scaled-down table
+/// taller than its text warrants, defeating the shrink.
+fn scale_table_spacing(table: &mut sardown_style::TableStyle, scale: f32) {
+    table.cell_padding_pt *= scale;
+    table.min_row_height_pt *= scale;
+    table.row_padding_pt *= scale;
+    table.space_after_pt *= scale;
 }

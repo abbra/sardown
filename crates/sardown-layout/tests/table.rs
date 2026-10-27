@@ -21,7 +21,7 @@ fn wider_column_content_gets_a_proportionally_wider_column() {
     let mut fs = test_font_system();
     let headers = vec![cell("A"), cell("A much longer header")];
     let rows = vec![vec![cell("x"), cell("y")]];
-    let widths = sardown_layout::test_support::column_widths(&headers, &rows, 400.0, &mut fs);
+    let widths = sardown_layout::test_support::column_widths(&headers, &rows, 400.0, 12.0, &mut fs);
 
     assert_eq!(widths.len(), 2);
     assert!(widths[1] > widths[0], "expected the longer-content column to be wider");
@@ -41,8 +41,8 @@ fn narrow_column_width_is_unaffected_by_how_long_a_neighboring_columns_content_i
     let short_rows = vec![vec![cell("short"), cell("moderate length text")]];
     let long_rows = vec![vec![cell("short"), cell("a much, much longer sentence that goes on for quite a while indeed")]];
 
-    let widths_short = sardown_layout::test_support::column_widths(&headers, &short_rows, 400.0, &mut fs);
-    let widths_long = sardown_layout::test_support::column_widths(&headers, &long_rows, 400.0, &mut fs);
+    let widths_short = sardown_layout::test_support::column_widths(&headers, &short_rows, 400.0, 12.0, &mut fs);
+    let widths_long = sardown_layout::test_support::column_widths(&headers, &long_rows, 400.0, 12.0, &mut fs);
 
     assert!(
         (widths_short[0] - widths_long[0]).abs() < 0.5,
@@ -67,7 +67,7 @@ fn narrow_column_gets_a_fair_share_when_a_sibling_columns_word_is_too_wide_to_fi
     let huge_word = "agirru_engine::SomeVeryLongGenericTypeName<WithGenericParameters,AndMore>";
     let rows = vec![vec![cell("mod.rs"), cell(huge_word)]];
 
-    let widths = sardown_layout::test_support::column_widths(&headers, &rows, 200.0, &mut fs);
+    let widths = sardown_layout::test_support::column_widths(&headers, &rows, 200.0, 12.0, &mut fs);
     assert!(widths[0] > 45.0, "expected the narrow column to get more than the bare minimum width, got {}", widths[0]);
     assert!(widths[1] > widths[0], "expected the oversized column to absorb most of the shortfall");
 }

@@ -7,6 +7,10 @@ use sardown_style::{SlideLayoutStyle, Stylesheet};
 
 const SCALE_STEP: f32 = 0.05;
 
+/// Below this scale a slide's text is visibly smaller than its neighbours', which is worth telling
+/// the author about.
+const NOTICEABLE_SHRINK_SCALE: f32 = 0.8;
+
 /// Context shared identically across every slide in one deck's own `layout_slide_with_shrink`
 /// call -- the page geometry, the deck-wide pre-decoded layout assets (images, diagrams,
 /// hyphenator), the document-wide base stylesheet, and the auto-shrink floor scale. Grouped into
@@ -67,6 +71,13 @@ pub fn layout_slide_with_shrink(
         let fits = output.pages.len() <= 1;
         let at_floor = scale <= deck.min_scale;
         if fits || at_floor {
+            if fits && scale < NOTICEABLE_SHRINK_SCALE {
+                let heading = first_heading_text(blocks).map(|h| format!(" ({h:?})")).unwrap_or_default();
+                eprintln!(
+                    "note: slide {slide_number}{heading} was shrunk to {:.0}% of its text size to fit; consider splitting it or using columns",
+                    scale * 100.0
+                );
+            }
             if !fits {
                 let heading = first_heading_text(blocks).map(|h| format!(" ({h:?})")).unwrap_or_default();
                 eprintln!(

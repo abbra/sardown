@@ -137,6 +137,15 @@ Only used by the `::columns` slide-deck syntax -- see [Slide Decks](./slides.md#
 | `cell_padding_pt` | number | `12.0` |
 | `text_size_pt` | number | `10.5` |
 | `min_row_height_pt` | number | `20.0` |
+| `row_padding_pt` | number | `0.0` |
+| `border` | `"grid"` \| `"horizontal"` \| `"none"` | `"grid"` |
+| `border_color` | color | `"#b4b4b4"` |
+| `border_width_pt` | number | `0.75` |
+| `header_background` | color | none |
+| `header_color` | color | body text color |
+| `header_bold` | boolean | `false` |
+| `stripe_background` | color | none |
+| `space_after_pt` | number | `0.0` |
 
 ## `[code_block]`
 
