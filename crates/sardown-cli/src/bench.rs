@@ -152,7 +152,7 @@ pub fn run(args: BenchArgs) -> anyhow::Result<()> {
         stylesheet.page.height_mm = Some(190.5);
         stylesheet.page.margin_mm = 14.0;
     }
-    let mut font_system = crate::build_font_system(&stylesheet.typography);
+    let mut font_system = crate::build_font_system(&stylesheet.typography, &stylesheet.code_block.default.font_family);
 
     let mut t = Timings::new();
     let mut last_pdf: Vec<u8> = Vec::new();

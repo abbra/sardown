@@ -233,7 +233,9 @@ fn normalize_face_weights(db: &mut fontdb::Database) {
     }
 }
 
-fn build_font_system(typography: &sardown_style::TypographyStyle) -> cosmic_text::FontSystem {
+/// `monospace_family` becomes the database's generic monospace family, so SVG text asking for
+/// `monospace` (terminal captures, say) is set in the code font instead of a proportional fallback.
+fn build_font_system(typography: &sardown_style::TypographyStyle, monospace_family: &str) -> cosmic_text::FontSystem {
     let mut font_db = fontdb::Database::new();
     if typography.use_system_fonts {
         font_db.load_system_fonts();
@@ -243,6 +245,9 @@ fn build_font_system(typography: &sardown_style::TypographyStyle) -> cosmic_text
     }
     drop_shadowing_variable_fonts(&mut font_db);
     normalize_face_weights(&mut font_db);
+    if font_db.faces().any(|face| face.families.iter().any(|(name, _)| name.eq_ignore_ascii_case(monospace_family))) {
+        font_db.set_monospace_family(monospace_family);
+    }
     cosmic_text::FontSystem::new_with_locale_and_db("en-US".to_string(), font_db)
 }
 
@@ -331,7 +336,7 @@ fn main() -> anyhow::Result<()> {
 
             // Fonts load before enrichment: Mermaid compilation parses each rendered SVG against
             // the document's own fontdb, so it needs the loaded font system in hand.
-            let mut font_system = timed_stage("Loading fonts", || Ok(build_font_system(&stylesheet.typography)))?;
+            let mut font_system = timed_stage("Loading fonts", || Ok(build_font_system(&stylesheet.typography, &stylesheet.code_block.default.font_family)))?;
 
             let (ast, diagrams) = highlight_and_compile_diagrams(ast, &stylesheet, &font_system)?;
 
@@ -349,7 +354,7 @@ fn main() -> anyhow::Result<()> {
 
             // As in Commands::Render: fonts before enrichment, because diagram compilation
             // parses against the document's own fontdb.
-            let mut font_system = timed_stage("Loading fonts", || Ok(build_font_system(&stylesheet.typography)))?;
+            let mut font_system = timed_stage("Loading fonts", || Ok(build_font_system(&stylesheet.typography, &stylesheet.code_block.default.font_family)))?;
 
             let (ast, diagrams) = highlight_and_compile_diagrams(ast, &stylesheet, &font_system)?;
 
@@ -369,7 +374,7 @@ fn main() -> anyhow::Result<()> {
 
             let markdown = std::fs::read_to_string(&input)?;
             let base_dir = base_dir_of(&input);
-            let mut font_system = timed_stage("Loading fonts", || Ok(build_font_system(&stylesheet.typography)))?;
+            let mut font_system = timed_stage("Loading fonts", || Ok(build_font_system(&stylesheet.typography, &stylesheet.code_block.default.font_family)))?;
 
             let output_layout =
                 timed_stage("Laying out slides", || sardown_slides::render_slide_deck(&markdown, &input, &base_dir, &mut font_system, &stylesheet))?;
