@@ -40,7 +40,113 @@ pub type DiagramTable = HashMap<String, CompiledDiagram>;
 pub fn svg_tree_options(font_data: &fontdb::Database) -> usvg::Options<'static> {
     let mut fontdb = font_data.clone();
     ensure_resolvable_generic_families(&mut fontdb);
-    usvg::Options { fontdb: std::sync::Arc::new(fontdb), ..Default::default() }
+    usvg::Options { fontdb: std::sync::Arc::new(fontdb), font_family: "sans-serif".to_string(), ..Default::default() }
+}
+
+/// Like [`svg_tree_options`], with `font_family` as the font every diagram's text is set in --
+/// Mermaid names its own stack (Trebuchet MS, Verdana, Arial), which would otherwise resolve to
+/// whatever generic sans the system has instead of the document's typeface.
+pub fn svg_tree_options_with_font(font_data: &fontdb::Database, font_family: &str) -> usvg::Options<'static> {
+    let mut options = svg_tree_options(font_data);
+    options.font_family = font_family.to_string();
+    options
+}
+
+/// Index where a CSS declaration value ends: at `;` or `}`, or at a `\"` that closes an enclosing
+/// `style` attribute; quoted family names inside the value (`\"trebuchet ms\"`) are skipped over.
+fn css_value_end(value: &str) -> Option<usize> {
+    let mut chars = value.char_indices();
+    while let Some((i, c)) = chars.next() {
+        match c {
+            ';' | '}' => return Some(i),
+            '"' | '\'' => {
+                // A quoted family name; an opening quote with no partner is the attribute's own end.
+                match value[i + 1..].find(c) {
+                    Some(close) => {
+                        chars.nth(close);
+                    }
+                    None => return Some(i),
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Moves each edge label up so it sits just above its connecting line instead of on top of it:
+/// Mermaid centers a label on the edge, and the line then runs through the label's box.
+fn lift_edge_labels(svg: &str) -> String {
+    const MARKER: &str = "<g data-merman-foreignobject=\"fallback\" class=\"";
+    const GAP_PT: f32 = 3.0;
+    let mut out = String::with_capacity(svg.len() + 256);
+    let mut rest = svg;
+    while let Some(at) = rest.find(MARKER) {
+        let (before, tail) = rest.split_at(at);
+        out.push_str(before);
+        let tag_end = tail.find('>').map_or(tail.len(), |i| i + 1);
+        let (tag, after) = tail.split_at(tag_end);
+        let classes = &tag[MARKER.len()..];
+        let is_edge_label = classes.split('"').next().is_some_and(|c| c.split(' ').any(|w| w == "edgeLabel"));
+        // The label's background rect is the group's first child and gives its height.
+        let height = after
+            .strip_prefix("<rect")
+            .and_then(|r| r.split('>').next())
+            .and_then(|r| r.split("height=\"").nth(1))
+            .and_then(|h| h.split('"').next())
+            .and_then(|h| h.parse::<f32>().ok());
+        match (is_edge_label, height) {
+            (true, Some(height)) => {
+                out.push_str(&tag[..tag.len() - 1]);
+                out.push_str(&format!(" transform=\"translate(0,{})\">", -(height / 2.0 + GAP_PT)));
+            }
+            _ => out.push_str(tag),
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Replaces every `font-family` declaration in `svg` (CSS property or presentation attribute)
+/// with `family`. A family with a space is quoted so it survives as one name.
+fn replace_font_families(svg: &str, family: &str) -> String {
+    let family = if family.contains(' ') { format!("'{family}'") } else { family.to_string() };
+    let mut out = String::with_capacity(svg.len());
+    let mut rest = svg;
+    while let Some(at) = rest.find("font-family") {
+        let (before, tail) = rest.split_at(at);
+        out.push_str(before);
+        let after_name = &tail["font-family".len()..];
+        let value_start = after_name.find(|c: char| !c.is_whitespace()).unwrap_or(after_name.len());
+        let (sep_ws, after_ws) = after_name.split_at(value_start);
+        let Some(sep @ (':' | '=')) = after_ws.chars().next() else {
+            out.push_str("font-family");
+            rest = after_name;
+            continue;
+        };
+        let value = after_ws[1..].trim_start();
+        let (quote, value) = match value.chars().next() {
+            Some(q @ ('"' | '\'')) if sep == '=' => (Some(q), &value[1..]),
+            _ => (None, value),
+        };
+        let end = match quote {
+            Some(q) => value.find(q).map(|i| i + 1),
+            // CSS value ends at `;`, or at the closing brace/quote of the enclosing rule or attribute.
+            None => css_value_end(value),
+        }
+        .unwrap_or(value.len());
+        out.push_str("font-family");
+        out.push_str(sep_ws);
+        out.push(sep);
+        match quote {
+            Some(q) => out.push_str(&format!("{q}{family}{q}")),
+            None => out.push_str(&family),
+        }
+        rest = &value[end..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn ensure_resolvable_generic_families(fontdb: &mut fontdb::Database) {
@@ -78,7 +184,7 @@ fn collect(ast: &[BlockNode], renderer: &HeadlessRenderer, table: &mut DiagramTa
                 };
                 match renderer.render_resvg_compatible_svg_sync(source) {
                     Ok(Some(resvg_safe_svg)) => {
-                        let svg = resvg_safe_svg.into_string();
+                        let svg = lift_edge_labels(&replace_font_families(&resvg_safe_svg.into_string(), &svg_options.font_family));
                         match usvg::Tree::from_str(&svg, svg_options) {
                             Ok(tree) => {
                                 let size = tree.size();
@@ -140,4 +246,18 @@ fn line_col_at(text: &str, byte_offset: usize) -> (usize, usize) {
         None => prefix.chars().count() + 1,
     };
     (line, column)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::replace_font_families;
+
+    #[test]
+    fn replaces_css_and_attribute_font_families() {
+        let svg = r#"<style>#m{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}</style><text font-family="Arial, sans-serif">x</text>"#;
+        assert_eq!(
+            replace_font_families(svg, "Red Hat Display"),
+            r#"<style>#m{font-family:'Red Hat Display';font-size:16px;}</style><text font-family="'Red Hat Display'">x</text>"#
+        );
+    }
 }

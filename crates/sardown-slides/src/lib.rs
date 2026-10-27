@@ -47,7 +47,7 @@ pub fn render_slide_deck(
     // Mermaid diagrams are parsed into render-ready trees against the deck's own fontdb here;
     // the same options feed every embedded-SVG parse below and in prepare_layout_assets, so no
     // diagram's markup is ever parsed twice.
-    let svg_options = sardown_enrich::svg_tree_options(font_system.db());
+    let svg_options = sardown_enrich::svg_tree_options_with_font(font_system.db(), &stylesheet.typography.font_family);
     let diagrams = sardown_enrich::compile_diagrams(&ast, &svg_options);
     // Decode images, parse embedded SVGs, and load the hyphenation dictionary ONCE for the whole
     // deck, before splitting into slides: the per-slide auto-shrink loop re-lays-out each slide
