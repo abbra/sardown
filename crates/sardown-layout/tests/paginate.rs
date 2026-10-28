@@ -506,6 +506,60 @@ fn code_block_spanning_pages_draws_a_background_on_each_page_it_touches() {
 }
 
 #[test]
+fn a_heading_at_the_bottom_of_a_page_moves_with_the_multi_page_code_block_below_it() {
+    // Regression for a panic: the code block captured `start_page`/`background_insert_at` on a
+    // page left ending in an orphan heading; the keep-with-next carry fired at the code's first
+    // fit check, drained those heading elements, and the later multi-page background
+    // back-reference indexed past the pushed page's end. The block now breaks *before*
+    // capturing (like the HeaderBar branch's own fit check), so the captured page is always
+    // the one its first line lands on.
+    let filler: String =
+        (0..13).map(|i| format!("filler paragraph {i} with enough words in it that it wraps onto several lines of body text on the page.\n\n")).collect();
+    let filler = format!("{filler}a final paragraph positioned right at the bottom edge tail tail tail tail\n\n");
+    let long_code: String = (0..80).map(|i| format!("line {i}\n")).collect();
+    let mut ast: Vec<BlockNode> = parse(&filler);
+    ast.extend(parse("# Trailing Heading\n"));
+    ast.push(BlockNode::CodeBlock { language: None, tokens: vec![HighlightedToken { text: long_code, color: [0, 0, 0] }] });
+    let mut fs = test_font_system();
+    let output = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new());
+    let pages = &output.pages;
+
+    let heading_page = output.anchors.get("trailing-heading").expect("heading anchor").page;
+    let first_code_page = pages
+        .iter()
+        .find(|p| p.elements.iter().any(|e| matches!(e, PositionedElement::TextRun { text, .. } if text.contains("line 0"))))
+        .expect("the code block's first line")
+        .page_number;
+    assert_eq!(heading_page, first_code_page, "the heading must stay on the same page as the code block's first line");
+
+    // Carried, not stranded at the old page's bottom: it sits at the top margin of the new one.
+    let heading_y = pages[heading_page]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { text, y, .. } if text.contains("Trailing Heading") => Some(*y),
+            _ => None,
+        })
+        .expect("the heading's text run");
+    let margin_pt = 25.4 * 2.834_645_7;
+    assert!((heading_y - margin_pt).abs() < 0.01, "expected the carried heading at the top margin, got {heading_y}");
+
+    // The heading now shares the start page with the code's background band: every page the
+    // block spans must still paint exactly one background bracketing only that page's text.
+    for page in pages.iter().filter(|p| p.elements.iter().any(|e| matches!(e, PositionedElement::TextRun { text, .. } if text.starts_with("line ")))) {
+        let backgrounds: Vec<_> = page
+            .elements
+            .iter()
+            .filter_map(|e| match e {
+                PositionedElement::Path { points, fill: Some(_), .. } => Some(path_y_bounds(points)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(backgrounds.len(), 1, "expected exactly one code background on page {}", page.page_number);
+    }
+}
+
+#[test]
 fn a_wrapped_heading_is_never_split_across_a_page_boundary() {
     // The heading's own fit check reserved one estimated line, which a heading that *wraps*
     // can still start inside: one line dangled alone at the bottom of a page (observed in a

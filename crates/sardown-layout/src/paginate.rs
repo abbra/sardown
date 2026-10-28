@@ -45,6 +45,26 @@ struct Cursor<'a> {
     /// Set when a block taller than a whole page was placed anyway: `finish` then keeps a trailing
     /// page, so callers counting pages (a slide's shrink-to-fit) can tell the content didn't fit.
     overflowed: bool,
+    /// A heading placed as the most recent content on the current page, recorded so the *next*
+    /// block's own page-break decision can carry it along instead of stranding it alone at the
+    /// bottom of the page (keep-with-next). Cleared once any other block lands on the page, so
+    /// only a heading with nothing placed after it can ever be carried.
+    pending_heading: Option<PendingHeading>,
+}
+
+/// Where a pending heading run's elements sit: `[start, end)` indexes into `Cursor::current`
+/// (each heading's own text runs plus its underline, if any), `top_pt` is the page-space y the
+/// run's first heading started at, and `anchors` are the heading ids whose anchor entries
+/// `break_page` must move along with the elements.
+struct PendingHeading {
+    start: usize,
+    end: usize,
+    top_pt: f32,
+    anchors: Vec<String>,
+    /// First heading of the run was level 1: a carried run must also re-mark the new page as a
+    /// chapter opener (header/footer suppression), same as a level-1 heading naturally opening
+    /// a page does at its fit check below.
+    opens_chapter: bool,
 }
 
 impl<'a> Cursor<'a> {
@@ -64,6 +84,7 @@ impl<'a> Cursor<'a> {
             page_contexts: Vec::new(),
             style,
             overflowed: false,
+            pending_heading: None,
         }
     }
 
@@ -75,6 +96,7 @@ impl<'a> Cursor<'a> {
     fn isolated(content_width_pt: f32, style: &'a sardown_style::Stylesheet, current_h1: Option<String>, current_h2: Option<String>) -> Self {
         Self {
             y: 0.0,
+            overflowed: false,
             page_height_pt: f32::MAX,
             content_width_pt,
             pages: Vec::new(),
@@ -86,7 +108,7 @@ impl<'a> Cursor<'a> {
             chapter_opener_pending: false,
             page_contexts: Vec::new(),
             style,
-            overflowed: false,
+            pending_heading: None,
         }
     }
 
@@ -105,11 +127,65 @@ impl<'a> Cursor<'a> {
     }
 
     fn break_page(&mut self, margin_pt: f32) {
+        // Keep-with-next: a heading must never be left alone at the bottom of a page. When the
+        // block that just decided it doesn't fit here directly follows a heading (or a stack of
+        // consecutive headings, e.g. an H2 right under an H1), take the heading elements back off
+        // the page and re-place them at the top of the next one, ahead of the block that broke.
+        // A heading already at the very top of a page is not carried: it can only be orphaned by
+        // a block too tall to share *any* page with a heading, which no rule can fix -- and the
+        // `start > 0` guard also guarantees termination, since such a heading is never carried
+        // again and the block simply overflows the page once. (A heading run interrupted
+        // mid-placement by its own line-break, or followed by other placed content, is stale by
+        // now and filtered out by the `end` equality.)
+        let carry = self.pending_heading.take().filter(|p| p.start > 0 && p.end == self.current.len());
+        if let Some(pending) = carry {
+            let heading = self.current.drain(pending.start..pending.end).collect::<Vec<_>>();
+            let elements = std::mem::take(&mut self.current);
+            self.pages.push(PositionedPage { page_number: self.page_number, elements });
+            self.snapshot_page_context();
+            self.page_number += 1;
+            if pending.opens_chapter {
+                self.chapter_opener_pending = true;
+            }
+            // One shared dy keeps a stacked run's internal spacing intact and drops the first
+            // heading's space-before exactly as a heading naturally opening a page gets none.
+            let dy = margin_pt - pending.top_pt;
+            self.current = heading;
+            for element in &mut self.current {
+                crate::shift_element(element, 0.0, dy);
+            }
+            for anchor_id in &pending.anchors {
+                if let Some(anchor) = self.anchors.get_mut(anchor_id) {
+                    anchor.page = self.page_number;
+                    anchor.y += dy;
+                }
+            }
+            // Same shift on the cursor: `y + dy` lands it exactly one heading-height (+ the
+            // inter-block gap) below the carried run's new top, so the next block places with
+            // its normal spacing instead of overlapping the heading.
+            self.y += dy;
+            self.pending_heading =
+                Some(PendingHeading { start: 0, end: self.current.len(), top_pt: margin_pt, anchors: pending.anchors, opens_chapter: pending.opens_chapter });
+            return;
+        }
+        self.pending_heading = None;
         let elements = std::mem::take(&mut self.current);
         self.pages.push(PositionedPage { page_number: self.page_number, elements });
         self.snapshot_page_context();
         self.page_number += 1;
         self.y = margin_pt;
+    }
+
+    /// Records a heading run's end/anchors. A heading placed directly after a pending run
+    /// extends it (nothing was placed between them), so a whole heading stack travels together.
+    fn note_heading(&mut self, anchor_id: String, start: usize, top_pt: f32, opens_chapter: bool) {
+        match &mut self.pending_heading {
+            Some(p) if p.end == start => {
+                p.end = self.current.len();
+                p.anchors.push(anchor_id);
+            }
+            _ => self.pending_heading = Some(PendingHeading { start, end: self.current.len(), top_pt, anchors: vec![anchor_id], opens_chapter }),
+        }
     }
 
     fn finish(mut self) -> (Vec<PositionedPage>, AnchorTable, Vec<PageContext>) {
@@ -423,6 +499,9 @@ fn render_block(
                 cursor.current_h2 = Some(heading_text);
             }
             let anchor_y = cursor.y;
+            // Element index and page to record for keep-with-next (see `Cursor::note_heading`).
+            let heading_elem_start = cursor.current.len();
+            let heading_page = cursor.page_number;
             let (heading_start_x, heading_end_x) = place_shaped_runs(
                 cursor,
                 shaped,
@@ -443,6 +522,14 @@ fn render_block(
                 });
             }
             cursor.anchors.insert(id.clone(), AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: anchor_y });
+            // A heading that itself wrapped onto a new page mid-placement is not orphaned (it has
+            // content on both pages) and its pre-break element indices are meaningless now, so
+            // only a heading placed wholly on one page is recorded as a carry candidate.
+            if cursor.page_number == heading_page {
+                cursor.note_heading(id.clone(), heading_elem_start, anchor_y, *level == 1);
+            } else {
+                cursor.pending_heading = None;
+            }
         }
         BlockNode::Paragraph { content } => {
             let max_width_pt = cursor.content_width_pt - indent_pt;
@@ -638,6 +725,13 @@ fn render_block(
                     cursor.current.push(label_run);
                 }
                 cursor.y = header_bar_bottom_y;
+            } else if cursor.remaining_height() < estimate_line_height(code_font_size_pt) && !cursor.current.is_empty() {
+                // Break *before* capturing start_y/start_page/background_insert_at (the same
+                // fit-check-before-placement the HeaderBar branch above does): otherwise the
+                // break happens inside `place_inline_content`, the multi-page background code
+                // paints a band down a page holding none of the block's text, and a
+                // keep-with-next carry at that point would index past that page's elements.
+                cursor.break_page(margin_pt);
             }
 
             let start_y = cursor.y;
