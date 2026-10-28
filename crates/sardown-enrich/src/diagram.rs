@@ -183,23 +183,17 @@ pub fn compile_diagrams_styled(ast: &[BlockNode], svg_options: &usvg::Options, s
             false
         }
     };
-    let renderers = Renderers {
-        merman: Renderer::new(),
-        svg_request: merman::SvgRequest {
-            environment: crate::measure::svg_environment_for_font(svg_options.fontdb.clone(), &svg_options.font_family),
-            ..Default::default()
-        },
-        ondine,
-        style,
-    };
+    let renderers = Renderers { merman: Renderer::new(), ondine, style };
     let mut table = HashMap::new();
     collect(ast, &renderers, &mut table, svg_options);
     table
 }
 
+/// Everything a pass needs to turn a ```` ```mermaid ```` fence into a render-ready diagram.
+/// `svg_options` in [`collect`] is what turns either renderer's SVG into a `usvg::Tree`, and the
+/// `usvg::Tree::size` it reports is the size the diagram is laid out at.
 struct Renderers<'a> {
     merman: Renderer,
-    svg_request: merman::SvgRequest,
     ondine: bool,
     #[cfg_attr(not(feature = "ondine"), allow(dead_code))]
     style: &'a Stylesheet,
@@ -243,7 +237,7 @@ fn collect(ast: &[BlockNode], renderer: &Renderers, table: &mut DiagramTable, sv
                         }
                     }
                 }
-                match renderer.merman.render(RenderRequest::svg(source, merman::OperationControl::new(), renderer.svg_request.clone())) {
+                match renderer.merman.render(RenderRequest::svg(source, merman::OperationControl::new(), merman::SvgRequest::default())) {
                     Ok(RenderOutput::Svg(Some(svg))) => {
                         let svg = lift_edge_labels(&replace_font_families(svg.svg(), &svg_options.font_family));
                         match usvg::Tree::from_str(&svg, svg_options) {

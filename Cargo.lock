@@ -3061,7 +3061,6 @@ dependencies = [
  "sardown-ast",
  "sardown-style",
  "syntect",
- "ttf-parser",
  "usvg",
 ]
 
