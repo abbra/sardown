@@ -41,8 +41,9 @@ fn inputs(style: &Stylesheet) -> HashMap<String, String> {
     map
 }
 
-/// Renders `source` with Ondine and returns an SVG `usvg` can read, or why it could not.
-pub(crate) fn render(source: &str, style: &Stylesheet) -> Result<String, String> {
-    let rendered = ondine_compiler::render(source, "", 0.0).map_err(|e| format!("{e:?}"))?;
+/// Renders `source` with Ondine and returns an SVG `usvg` can read, or the compiler's error
+/// (whose own line/column point at the offending line inside `source`).
+pub(crate) fn render(source: &str, style: &Stylesheet) -> Result<String, ondine_compiler::Error> {
+    let rendered = ondine_compiler::render(source, "", 0.0)?;
     Ok(css_vars::resolve(&rendered.svg, &inputs(style)))
 }

@@ -4,13 +4,14 @@ use crate::Color;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MermaidRenderer {
-    /// merman: a port of Mermaid's own look (themes, `classDef`, `%%{init}%%`).
-    #[default]
-    Merman,
     /// Ondine's compiler: monochrome diagrams in a monospace font, colored from this section.
     /// Needs the `ondine` build feature; without it merman is used and a warning is printed.
     /// A diagram type Ondine does not support is drawn by merman instead.
+    #[default]
     Ondine,
+    /// merman: a port of Mermaid's own look (themes, `classDef`, `%%{init}%%`). Kept as the
+    /// fallback for whatever Ondine does not draw, and selectable here.
+    Merman,
 }
 
 /// `[mermaid]`: diagram rendering. The colors apply to the `ondine` renderer only; merman takes
@@ -44,7 +45,7 @@ pub struct MermaidStyle {
 impl Default for MermaidStyle {
     fn default() -> Self {
         MermaidStyle {
-            renderer: MermaidRenderer::Merman,
+            renderer: MermaidRenderer::Ondine,
             font_family: None,
             text_color: None,
             line_color: None,
