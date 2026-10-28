@@ -52,6 +52,33 @@ fn a_tight_list_items_implicit_paragraph_also_uses_the_configured_body_style() {
 }
 
 #[test]
+fn a_configured_link_color_applies_to_link_runs_only() {
+    let mut style = Stylesheet::default();
+    style.typography.body_color = Color([10, 20, 30]);
+    style.typography.link_color = Some(Color([0, 104, 158]));
+    let mut slugs = SlugGenerator::new();
+    let mut next_id = 0;
+    let blocks = parse_with_style("Plain and a [link](https://example.com).\n", &mut slugs, &mut next_id, &style);
+    let BlockNode::Paragraph { content } = &blocks[0] else { panic!("expected a paragraph, got {:?}", blocks[0]) };
+    let link = content.iter().find(|n| n.link_target.is_some()).expect("expected a link run");
+    assert_eq!(link.style.color, [0, 104, 158]);
+    let plain = content.iter().find(|n| n.link_target.is_none()).expect("expected a plain run");
+    assert_eq!(plain.style.color, [10, 20, 30], "non-link runs keep the body color");
+}
+
+#[test]
+fn links_keep_the_body_color_when_no_link_color_is_configured() {
+    let mut style = Stylesheet::default();
+    style.typography.body_color = Color([10, 20, 30]);
+    let mut slugs = SlugGenerator::new();
+    let mut next_id = 0;
+    let blocks = parse_with_style("A [link](#target) here.\n", &mut slugs, &mut next_id, &style);
+    let BlockNode::Paragraph { content } = &blocks[0] else { panic!("expected a paragraph, got {:?}", blocks[0]) };
+    let link = content.iter().find(|n| n.link_target.is_some()).expect("expected a link run");
+    assert_eq!(link.style.color, [10, 20, 30]);
+}
+
+#[test]
 fn parse_with_slugs_matches_parse_with_style_using_stylesheet_defaults() {
     let mut slugs_a = SlugGenerator::new();
     let mut next_id_a = 0;

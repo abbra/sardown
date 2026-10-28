@@ -7,6 +7,7 @@ font_dirs = []
 use_system_fonts = true
 body_size_pt = 12.0
 body_color = "#000000"
+link_color = "#00689e"   # optional; unset keeps links in body_color
 alignment = "left"
 hyphenation = false
 language = "en-us"
@@ -42,6 +43,12 @@ accepts either a 6-digit hex string (`"#1a1a1a"`, with or without the
 leading `#`) or an explicit `[r, g, b]` array (`[26, 26, 26]`) — use
 whichever is more natural for a given value; both forms are accepted
 everywhere a color field appears in a stylesheet.
+
+`link_color` (unset by default) tints link text — every `[text](url)`
+run, internal `[cross-reference](#heading)` anchors included — so links
+are visible on the page rather than only clickable in a PDF viewer. It
+colors the link's glyphs; the clickable annotation exists regardless.
+Unset, links render in `body_color` like any other text.
 
 ## Alignment
 

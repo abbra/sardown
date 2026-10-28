@@ -48,3 +48,14 @@ fn a_toml_document_can_enable_hyphenation_and_set_a_language() {
     assert!(typography.hyphenation);
     assert_eq!(typography.language, "de-1996");
 }
+
+#[test]
+fn default_typography_leaves_links_in_the_body_color() {
+    assert_eq!(TypographyStyle::default().link_color, None);
+}
+
+#[test]
+fn a_toml_document_can_set_a_link_color() {
+    let typography: TypographyStyle = toml::from_str(r##"link_color = "#00689e""##).unwrap();
+    assert_eq!(typography.link_color, Some(Color([0x00, 0x68, 0x9e])));
+}
