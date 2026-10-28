@@ -190,11 +190,11 @@ Every field is optional and falls back to `[code_block.default]`:
 
 ## `[mermaid]`
 
-See [Diagrams](./diagrams.md#the-ondine-renderer). Colors apply to the `ondine` renderer only.
+See [Diagrams](./diagrams.md#the-ondine-renderer-the-default). Colors apply to the `ondine` renderer only.
 
 | Field | Type | Default |
 |---|---|---|
-| `renderer` | `"merman"` \| `"ondine"` | `"merman"` |
+| `renderer` | `"ondine"` \| `"merman"` | `"ondine"` |
 | `font_family` | string | the code block font |
 | `text_color` | color | body text color |
 | `line_color` | color | `text_color` |

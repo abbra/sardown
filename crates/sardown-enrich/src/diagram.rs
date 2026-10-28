@@ -200,32 +200,53 @@ struct Renderers<'a> {
 }
 
 impl Renderers<'_> {
-    /// Ondine's SVG for , or  to have merman draw it: the feature is off, or Ondine
-    /// does not handle this diagram (the reason is reported).
-    fn ondine_svg(&self, source: &str, location: &str) -> Option<String> {
+    /// Ondine's SVG for this diagram, or `None` to have merman draw it: the feature is off, or
+    /// Ondine does not handle this diagram (the reason is reported, naming the exact line
+    /// inside the diagram's own source that Ondine rejected).
+    fn ondine_svg(&self, source: &str, line: usize, column: usize, file: Option<&std::path::Path>) -> Option<String> {
         if !self.ondine {
             return None;
         }
         #[cfg(feature = "ondine")]
         match crate::ondine::render(source, self.style) {
             Ok(svg) => return Some(svg),
-            Err(e) => eprintln!("note: ondine did not render the Mermaid diagram at {location} ({e}); using merman"),
+            Err(e) => {
+                let (line, column) = ondine_error_position(&e, line, column);
+                eprintln!("note: ondine did not render the Mermaid diagram at {} ({})", fence_location(file, line, column), e.message);
+            }
         }
         #[cfg(not(feature = "ondine"))]
-        let _ = (source, location);
+        let _ = (source, line, column, file);
         None
     }
+}
+
+/// Where a ```` ```mermaid ```` fence is, as reported to the user: the file's `line:column` when
+/// the file is known, otherwise a bare "line N, column M".
+fn fence_location(file: Option<&std::path::Path>, line: usize, column: usize) -> String {
+    match file {
+        Some(f) => format!("{}:{line}:{column}", f.display()),
+        None => format!("line {line}, column {column}"),
+    }
+}
+
+/// Absolute position of the line/column Ondine rejected. Both are 1-indexed *inside the diagram's
+/// own source*, whose first line sits just below the fence, so the fence's line is the offset (the
+/// same arithmetic as [`diagram_parse_span`]'s byte span). Ondine reports 0 for an error it could
+/// not localize, which leaves the fence's own position.
+#[cfg(feature = "ondine")]
+fn ondine_error_position(error: &ondine_compiler::Error, fence_line: usize, fence_column: usize) -> (usize, usize) {
+    let line = if error.line == 0 { fence_line } else { fence_line + usize::try_from(error.line).unwrap_or(1) };
+    let column = if error.column == 0 { fence_column } else { usize::try_from(error.column).unwrap_or(1) };
+    (line, column)
 }
 
 fn collect(ast: &[BlockNode], renderer: &Renderers, table: &mut DiagramTable, svg_options: &usvg::Options) {
     for block in ast {
         match block {
             BlockNode::MermaidDiagram { id, source, line, column, file } => {
-                let fence_location = |line: usize, column: usize| match file {
-                    Some(f) => format!("{}:{line}:{column}", f.display()),
-                    None => format!("line {line}, column {column}"),
-                };
-                if let Some(svg) = renderer.ondine_svg(source, &fence_location(*line, *column)) {
+                let file = file.as_deref();
+                if let Some(svg) = renderer.ondine_svg(source, *line, *column, file) {
                     match usvg::Tree::from_str(&svg, svg_options) {
                         Ok(tree) => {
                             let size = tree.size();
@@ -233,7 +254,10 @@ fn collect(ast: &[BlockNode], renderer: &Renderers, table: &mut DiagramTable, sv
                             continue;
                         }
                         Err(e) => {
-                            eprintln!("note: ondine produced unparseable SVG for the Mermaid diagram at {} ({e}); using merman", fence_location(*line, *column))
+                            eprintln!(
+                                "note: ondine produced unparseable SVG for the Mermaid diagram at {} ({e}); using merman",
+                                fence_location(file, *line, *column)
+                            )
                         }
                     }
                 }
@@ -246,11 +270,11 @@ fn collect(ast: &[BlockNode], renderer: &Renderers, table: &mut DiagramTable, sv
                                 table.insert(id.clone(), CompiledDiagram { width: size.width(), height: size.height(), tree });
                             }
                             Err(e) => {
-                                eprintln!("warning: merman produced unparseable SVG for the Mermaid diagram at {}: {e}", fence_location(*line, *column))
+                                eprintln!("warning: merman produced unparseable SVG for the Mermaid diagram at {}: {e}", fence_location(file, *line, *column))
                             }
                         }
                     }
-                    Ok(_) => eprintln!("warning: merman produced no output for the Mermaid diagram at {}", fence_location(*line, *column)),
+                    Ok(_) => eprintln!("warning: merman produced no output for the Mermaid diagram at {}", fence_location(file, *line, *column)),
                     Err(e) => {
                         // merman's DiagramParse errors carry a byte span *inside the diagram's
                         // own source* pointing at the actual offending token -- reporting only
@@ -259,9 +283,9 @@ fn collect(ast: &[BlockNode], renderer: &Renderers, table: &mut DiagramTable, sv
                         let location = match diagram_parse_span(&e) {
                             Some(span) => {
                                 let (inner_line, inner_column) = line_col_at(source, span.start);
-                                fence_location(line + inner_line, inner_column)
+                                fence_location(file, line + inner_line, inner_column)
                             }
-                            None => fence_location(*line, *column),
+                            None => fence_location(file, *line, *column),
                         };
                         eprintln!("warning: failed to render the Mermaid diagram at {location}: {e}");
                     }
