@@ -18,6 +18,10 @@ pub struct TypographyStyle {
     pub use_system_fonts: bool,
     pub body_size_pt: f32,
     pub body_color: Color,
+    /// Text color for link runs. Unset (the default) keeps links in `body_color`, matching how
+    /// links were rendered before this field existed; setting it is what distinguishes a link
+    /// from plain text, since a PDF link annotation alone is invisible on paper.
+    pub link_color: Option<Color>,
     pub alignment: TextAlignment,
     pub hyphenation: bool,
     pub language: String,
@@ -34,6 +38,7 @@ impl Default for TypographyStyle {
             alignment: TextAlignment::Left,
             hyphenation: false,
             language: "en-us".to_string(),
+            link_color: None,
         }
     }
 }

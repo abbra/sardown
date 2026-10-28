@@ -14,6 +14,7 @@ struct Typography<'a> {
     heading: &'a sardown_style::HeadingStyle,
     body_size: f32,
     body_color: [u8; 3],
+    link_color: Option<[u8; 3]>,
     body_font_family: Arc<str>,
     /// Font for inline code spans: the stylesheet's code-block font, so `code` in prose matches
     /// fenced blocks instead of whatever the system's generic "monospace" resolves to.
@@ -29,12 +30,13 @@ struct InlineBuilder {
     link_target: Option<LinkTarget>,
     base_size: f32,
     base_color: [u8; 3],
+    link_color: Option<[u8; 3]>,
     base_font_family: Arc<str>,
     code_font_family: Arc<str>,
 }
 
 impl InlineBuilder {
-    fn new(base_size: f32, base_color: [u8; 3], base_font_family: Arc<str>, code_font_family: Arc<str>) -> Self {
+    fn new(base_size: f32, base_color: [u8; 3], link_color: Option<[u8; 3]>, base_font_family: Arc<str>, code_font_family: Arc<str>) -> Self {
         Self {
             runs: Vec::new(),
             bold_depth: 0,
@@ -43,6 +45,7 @@ impl InlineBuilder {
             link_target: None,
             base_size,
             base_color,
+            link_color,
             base_font_family,
             code_font_family,
         }
@@ -66,7 +69,7 @@ impl InlineBuilder {
                 italic: self.italic_depth > 0,
                 strikethrough: self.strikethrough_depth > 0,
                 size: self.base_size,
-                color: self.base_color,
+                color: if self.link_target.is_some() { self.link_color.unwrap_or(self.base_color) } else { self.base_color },
                 font_family,
             },
             link_target: self.link_target.clone(),
@@ -116,10 +119,11 @@ fn lower_inline_events<'a, I: Iterator<Item = Event<'a>>>(
     end_tag: TagEnd,
     base_size: f32,
     base_color: [u8; 3],
+    link_color: Option<[u8; 3]>,
     base_font_family: Arc<str>,
     code_font_family: Arc<str>,
 ) -> Vec<InlineNode> {
-    let mut builder = InlineBuilder::new(base_size, base_color, base_font_family, code_font_family);
+    let mut builder = InlineBuilder::new(base_size, base_color, link_color, base_font_family, code_font_family);
     for event in events.by_ref() {
         if matches!(&event, Event::End(tag) if *tag == end_tag) {
             break;
@@ -169,7 +173,8 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
             | Event::Start(Tag::Emphasis)
             | Event::Start(Tag::Strikethrough)
             | Event::Start(Tag::Link { .. }) => {
-                let mut builder = InlineBuilder::new(typo.body_size, typo.body_color, typo.body_font_family.clone(), typo.code_font_family.clone());
+                let mut builder =
+                    InlineBuilder::new(typo.body_size, typo.body_color, typo.link_color, typo.body_font_family.clone(), typo.code_font_family.clone());
                 apply_inline_event(&mut builder, event);
                 loop {
                     match parser.peek() {
@@ -191,6 +196,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                     TagEnd::Heading(level),
                     resolved.size_pt,
                     resolved.color.0,
+                    typo.link_color,
                     resolved.font_family.as_str().into(),
                     typo.code_font_family.clone(),
                 );
@@ -215,7 +221,8 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                         blocks.push(BlockNode::Image { alt, title, source });
                     }
                     Some(first_event) => {
-                        let mut builder = InlineBuilder::new(typo.body_size, typo.body_color, typo.body_font_family.clone(), typo.code_font_family.clone());
+                        let mut builder =
+                            InlineBuilder::new(typo.body_size, typo.body_color, typo.link_color, typo.body_font_family.clone(), typo.code_font_family.clone());
                         if !matches!(&first_event, Event::End(tag) if *tag == TagEnd::Paragraph) {
                             apply_inline_event(&mut builder, first_event);
                             for event in parser.by_ref() {
@@ -291,7 +298,14 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                 while let Some(event) = parser.next() {
                     match event {
                         Event::Start(Tag::TableHead) => {
-                            headers = collect_table_cells(parser, TagEnd::TableHead, typo.table_cell_size, &typo.body_font_family, &typo.code_font_family);
+                            headers = collect_table_cells(
+                                parser,
+                                TagEnd::TableHead,
+                                typo.table_cell_size,
+                                typo.link_color,
+                                &typo.body_font_family,
+                                &typo.code_font_family,
+                            );
                         }
                         Event::Start(Tag::TableRow) => {
                             let mut row = Vec::new();
@@ -309,6 +323,7 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                                             TagEnd::TableCell,
                                             typo.table_cell_size,
                                             DEFAULT_COLOR,
+                                            typo.link_color,
                                             typo.body_font_family.clone(),
                                             typo.code_font_family.clone(),
                                         ));
@@ -336,6 +351,7 @@ fn collect_table_cells<'a, I: Iterator<Item = Event<'a>>>(
     parser: &mut std::iter::Peekable<I>,
     end_tag: TagEnd,
     table_cell_size: f32,
+    link_color: Option<[u8; 3]>,
     table_cell_font_family: &str,
     code_font_family: &Arc<str>,
 ) -> Vec<Vec<InlineNode>> {
@@ -348,6 +364,7 @@ fn collect_table_cells<'a, I: Iterator<Item = Event<'a>>>(
                     TagEnd::TableCell,
                     table_cell_size,
                     DEFAULT_COLOR,
+                    link_color,
                     table_cell_font_family.into(),
                     code_font_family.clone(),
                 ));
@@ -400,6 +417,7 @@ pub fn parse_with_style(markdown: &str, slugs: &mut SlugGenerator, next_diagram_
         heading: &style.heading,
         body_size: style.typography.body_size_pt,
         body_color: style.typography.body_color.0,
+        link_color: style.typography.link_color.map(|c| c.0),
         body_font_family: style.typography.font_family.as_str().into(),
         code_font_family: style.code_block.default.font_family.as_str().into(),
         table_cell_size: style.table.text_size_pt,

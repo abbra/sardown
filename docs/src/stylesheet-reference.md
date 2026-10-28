@@ -67,6 +67,7 @@ page onward — see
 | `use_system_fonts` | boolean | `true` |
 | `body_size_pt` | number | `12.0` |
 | `body_color` | color | `"#000000"` |
+| `link_color` | color | unset (links render in `body_color`) |
 | `alignment` | `"left"` \| `"right"` \| `"center"` \| `"justify"` | `"left"` |
 | `hyphenation` | boolean | `false` |
 | `language` | string (a `hyphenation::Language` code, e.g. `"en-us"`) | `"en-us"` |
