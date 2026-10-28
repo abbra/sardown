@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-default = ["png"]
+default = ["png", "ondine"]
 # PNG output (`-o page.png`): renders the finished PDF with hayro.
 png = ["dep:hayro"]
 # Ondine as an alternative Mermaid renderer; pulls a git dependency, so it is off by default.
