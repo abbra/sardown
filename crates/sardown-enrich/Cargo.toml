@@ -7,7 +7,6 @@ repository.workspace = true
 
 [dependencies]
 fontdb = "0.23"
-ttf-parser = "0.25"
 sardown-ast = { version = "0.1.0", path = "../sardown-ast" }
 sardown-style = { version = "0.1.0", path = "../sardown-style" }
 # merman 0.8.0 made each diagram family its own feature; alpha.5 built them all in, so `all-diagrams`
