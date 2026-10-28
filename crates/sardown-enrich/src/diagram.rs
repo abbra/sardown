@@ -1,4 +1,4 @@
-use merman::svg::HeadlessRenderer;
+use merman::{RenderError, RenderOutput, RenderRequest, Renderer};
 use sardown_ast::BlockNode;
 use sardown_style::{MermaidRenderer, Stylesheet};
 use std::collections::HashMap;
@@ -183,14 +183,23 @@ pub fn compile_diagrams_styled(ast: &[BlockNode], svg_options: &usvg::Options, s
             false
         }
     };
-    let renderers = Renderers { merman: crate::measure::renderer_for_font(svg_options.fontdb.clone(), &svg_options.font_family), ondine, style };
+    let renderers = Renderers {
+        merman: Renderer::new(),
+        svg_request: merman::SvgRequest {
+            environment: crate::measure::svg_environment_for_font(svg_options.fontdb.clone(), &svg_options.font_family),
+            ..Default::default()
+        },
+        ondine,
+        style,
+    };
     let mut table = HashMap::new();
     collect(ast, &renderers, &mut table, svg_options);
     table
 }
 
 struct Renderers<'a> {
-    merman: HeadlessRenderer,
+    merman: Renderer,
+    svg_request: merman::SvgRequest,
     ondine: bool,
     #[cfg_attr(not(feature = "ondine"), allow(dead_code))]
     style: &'a Stylesheet,
@@ -234,9 +243,9 @@ fn collect(ast: &[BlockNode], renderer: &Renderers, table: &mut DiagramTable, sv
                         }
                     }
                 }
-                match renderer.merman.render_resvg_compatible_svg_sync(source) {
-                    Ok(Some(resvg_safe_svg)) => {
-                        let svg = lift_edge_labels(&replace_font_families(&resvg_safe_svg.into_string(), &svg_options.font_family));
+                match renderer.merman.render(RenderRequest::svg(source, merman::OperationControl::new(), renderer.svg_request.clone())) {
+                    Ok(RenderOutput::Svg(Some(svg))) => {
+                        let svg = lift_edge_labels(&replace_font_families(svg.svg(), &svg_options.font_family));
                         match usvg::Tree::from_str(&svg, svg_options) {
                             Ok(tree) => {
                                 let size = tree.size();
@@ -247,7 +256,7 @@ fn collect(ast: &[BlockNode], renderer: &Renderers, table: &mut DiagramTable, sv
                             }
                         }
                     }
-                    Ok(None) => eprintln!("warning: merman produced no output for the Mermaid diagram at {}", fence_location(*line, *column)),
+                    Ok(_) => eprintln!("warning: merman produced no output for the Mermaid diagram at {}", fence_location(*line, *column)),
                     Err(e) => {
                         // merman's DiagramParse errors carry a byte span *inside the diagram's
                         // own source* pointing at the actual offending token -- reporting only
@@ -280,9 +289,9 @@ fn collect(ast: &[BlockNode], renderer: &Renderers, table: &mut DiagramTable, sv
     }
 }
 
-fn diagram_parse_span(error: &merman::svg::HeadlessError) -> Option<merman::SourceSpan> {
+fn diagram_parse_span(error: &RenderError) -> Option<merman::SourceSpan> {
     match error {
-        merman::svg::HeadlessError::Parse(merman::Error::DiagramParse { diagnostic, .. }) => diagnostic.span(),
+        RenderError::Parse(diagnostic) => diagnostic.terminal_diagnostic_details().span,
         _ => None,
     }
 }

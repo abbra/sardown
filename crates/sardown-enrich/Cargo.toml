@@ -10,7 +10,9 @@ fontdb = "0.23"
 ttf-parser = "0.25"
 sardown-ast = { version = "0.1.0", path = "../sardown-ast" }
 sardown-style = { version = "0.1.0", path = "../sardown-style" }
-merman = { version = "0.8.0-alpha.5", default-features = false, features = ["svg", "layout-cytoscape", "math"] }
+# merman 0.8.0 made each diagram family its own feature; alpha.5 built them all in, so `all-diagrams`
+# is what keeps every fence type sardown used to draw working.
+merman = { version = "0.8.0", default-features = false, features = ["svg", "all-diagrams", "layout-cytoscape", "math"] }
 syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
 usvg = "0.47"
 # Not on crates.io: the pinned revision is the only way to get it, so it stays optional.
