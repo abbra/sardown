@@ -505,6 +505,30 @@ fn code_block_spanning_pages_draws_a_background_on_each_page_it_touches() {
     }
 }
 
+#[test]
+fn a_wrapped_heading_is_never_split_across_a_page_boundary() {
+    // The heading's own fit check reserved one estimated line, which a heading that *wraps*
+    // can still start inside: one line dangled alone at the bottom of a page (observed in a
+    // real render: "8. Password and ticket enrollment: pq_password web3," alone at a page end).
+    // The heading is now shaped first and measured at its real height, like table rows.
+    let filler: String =
+        (0..14).map(|i| format!("filler paragraph {i} with enough words in it that it wraps onto several lines of body text on the page.\n\n")).collect();
+    let ast = parse(&format!(
+        "{filler}# A Very Long Chapter Section Heading That Certainly Wraps Onto Two Lines At Letter Page Width\n\nBody text follows the heading here and should stay with it on the page.\n"
+    ));
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+    let per_page: Vec<(usize, usize)> = pages
+        .iter()
+        .map(|p| (p.page_number, p.elements.iter().filter(|e| matches!(e, PositionedElement::TextRun { text, .. } if text.contains("Wraps Onto"))).count()))
+        .filter(|(_, n)| *n > 0)
+        .collect();
+    assert_eq!(per_page.len(), 1, "expected every heading line on one page, got lines spread over {per_page:?}");
+    let page = &pages[per_page[0].0];
+    let has_body = page.elements.iter().any(|e| matches!(e, PositionedElement::TextRun { text, .. } if text.contains("Body text follows")));
+    assert!(has_body, "the heading's first paragraph must share its page");
+}
+
 use sardown_ast::ColumnAlignment;
 
 fn cell(text: &str) -> Vec<InlineNode> {
