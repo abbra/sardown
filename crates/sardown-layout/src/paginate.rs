@@ -128,6 +128,26 @@ pub(crate) fn estimate_line_height(size: f32) -> f32 {
     size * 1.4 + LINE_SPACING_PT
 }
 
+/// The real rendered height of already-shaped runs: distance between the first and last line
+/// plus one line's height. Callers that shaped content to *measure* it before a page-break
+/// decision (table rows, multi-line headings) then place the very same runs, so the decision
+/// and the drawing can never disagree.
+pub(crate) fn measured_shaped_height_pt(shaped: &[crate::ShapedRun], size: f32) -> f32 {
+    let mut ys: Vec<f32> = shaped
+        .iter()
+        .map(|r| match &r.element {
+            PositionedElement::TextRun { y, .. } => *y,
+            _ => unreachable!("shape_rich_paragraph only produces TextRun elements"),
+        })
+        .collect();
+    ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    ys.dedup_by(|a, b| (*a - *b).abs() < 0.01);
+    match (ys.first(), ys.last()) {
+        (Some(&first), Some(&last)) => (last - first) + estimate_line_height(size),
+        _ => estimate_line_height(size),
+    }
+}
+
 /// Shapes and places `content` (a paragraph, heading, table cell, or synthetic code-token list),
 /// keeping multiple styled runs (bold/italic/links, syntax-highlighted tokens) flowing on the
 /// same visual line instead of giving each its own line, and emitting a `LinkAnnotation` for
@@ -372,7 +392,20 @@ fn render_block(
             if !cursor.current.is_empty() {
                 cursor.y += heading_size * cursor.style.heading.space_before_factor;
             }
-            let heading_h = estimate_line_height(heading_size);
+            let max_width_pt = cursor.content_width_pt - indent_pt;
+            // Headings never justify/stretch -- Justify is forced to Left, matching the
+            // pre-existing guarantee that headings stay left-aligned under a justified
+            // stylesheet even though body paragraphs do stretch.
+            let heading_align = match cursor.style.typography.alignment {
+                sardown_style::TextAlignment::Justify => cosmic_text::Align::Left,
+                other => to_cosmic_align(other),
+            };
+            // Shape before deciding the page break (the table path's shape-measure-place
+            // split, reusing those same runs via `place_shaped_runs` below): reserving one
+            // estimated line was leaving the first line of a *wrapped* heading dangling alone
+            // at the bottom of a page. `heading_h` is the heading's real full height.
+            let shaped = shape_rich_paragraph(font_system, content, max_width_pt, heading_align, ShapingOptions { ligatures: true });
+            let heading_h = measured_shaped_height_pt(&shaped, heading_size);
             if cursor.remaining_height() < heading_h && !cursor.current.is_empty() {
                 cursor.break_page(margin_pt);
             }
@@ -390,19 +423,11 @@ fn render_block(
                 cursor.current_h2 = Some(heading_text);
             }
             let anchor_y = cursor.y;
-            let max_width_pt = cursor.content_width_pt - indent_pt;
-            // Headings never justify/stretch -- Justify is forced to Left, matching the
-            // pre-existing guarantee that headings stay left-aligned under a justified
-            // stylesheet even though body paragraphs do stretch.
-            let heading_align = match cursor.style.typography.alignment {
-                sardown_style::TextAlignment::Justify => cosmic_text::Align::Left,
-                other => to_cosmic_align(other),
-            };
-            let (heading_start_x, heading_end_x) = place_inline_content(
+            let (heading_start_x, heading_end_x) = place_shaped_runs(
                 cursor,
+                shaped,
                 content,
                 InlinePlacement { margin_pt, indent_pt, max_width_pt, align: heading_align, hyphenator: None, ligatures: true },
-                font_system,
             );
             let resolved_heading = cursor.style.heading.resolve(*level);
             if resolved_heading.underline_width_pt > 0.0 {
