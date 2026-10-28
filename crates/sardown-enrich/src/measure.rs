@@ -6,8 +6,8 @@
 
 use fontdb::{Database, Family, Query, Stretch, Style, Weight};
 use merman::svg::{
-    DeterministicTextMeasurer, HeadlessRenderer, MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
-    TextMeasurementProfileIdentity, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    DeterministicTextMeasurer, MeasurementProfileId, SvgEnvironment, TextMeasurementPolicy, TextMeasurementProfile, TextMeasurementProfileIdentity,
+    TextMeasurer, TextMetrics, TextStyle, WrapMode,
 };
 use std::sync::Arc;
 
@@ -78,13 +78,12 @@ impl TextMeasurer for FontMeasurer {
     }
 }
 
-/// A Mermaid renderer whose layout is measured in `family`, looked up in `db`.
-pub fn renderer_for_font(db: Arc<Database>, family: &str) -> HeadlessRenderer {
+/// An SVG render environment whose Mermaid layout is measured in `family`, looked up in `db`.
+pub fn svg_environment_for_font(db: Arc<Database>, family: &str) -> SvgEnvironment {
     let measurer = FontMeasurer { db, family: family.to_string(), shape: DeterministicTextMeasurer::default() };
     let identity =
         TextMeasurementProfileIdentity::new(MeasurementProfileId::new("sardown.document-font").expect("static profile id is valid"), env!("CARGO_PKG_VERSION"))
             .expect("static profile version is valid");
     let policy = TextMeasurementPolicy::uniform(TextMeasurementProfile::new(identity, Arc::new(measurer)));
-    let environment = RenderEnvironment::default().with_text_measurement_policy(policy);
-    HeadlessRenderer::from_engine_and_environment(merman::Engine::new(), environment)
+    SvgEnvironment::deterministic().with_text_measurement_policy(policy)
 }
