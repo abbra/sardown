@@ -30,7 +30,7 @@ The system operates as a directional processing pipeline. Raw Markdown text flow
                                              |                                               |  
                                  \+-----------------------+                       \+-----------------------+  
                                  |  Native Mermaid       |                       | Syntect Highlighting  |  
-                                 |  Renderer (merman)    |                       | Engine                |  
+                                 |  Renderers            |                       | Engine                |  
                                  \+-----------------------+                       \+-----------------------+
 
 ### **2.1 Core Subsystems Overview**
@@ -38,7 +38,7 @@ The system operates as a directional processing pipeline. Raw Markdown text flow
 | Subsystem | Primary Responsibility | Key Rust Dependencies   |
 | :---- | :---- | :---- |
 | **Parser & Intermediate Representation** | Converts raw Markdown stream into a rich, structural document tree. Intercepts special blocks (code, diagrams). | pulldown-cmark |
-| **Diagram & Syntax Processing** | Renders Mermaid blocks to SVG using a native Rust diagram engine (no embedded JS/DOM) and highlights code syntax into styled text runs. | syntect, merman, usvg |
+| **Diagram & Syntax Processing** | Renders Mermaid blocks to SVG using native Rust diagram engines (no embedded JS/DOM) and highlights code syntax into styled text runs. | syntect, ondine-compiler (git), merman, usvg |
 | **Layout & Typography Engine** | Performs text shaping, line wrapping, font fallback, auto-sizing, and pagination across page geometry. | cosmic-text |
 | **Cross-Reference & Link Resolver** | Tracks anchors, targets, headings, and internal links in a two-pass resolution process. | Custom Rust module |
 | **PDF Vector Stream Generator** | Emits PDF dictionaries, character subsets, font objects, vector paths, page content streams, embedded diagram SVGs, and PDF/A metadata (XMP, OutputIntent/ICC). | krilla (wraps pdf-writer, subsetter, rustybuzz, skrifa), krilla-svg |
@@ -122,7 +122,7 @@ The parser transforms pulldown-cmark events into strongly typed Rust structural 
 
 * **Text Nodes:** Rich text runs containing font weight, slants, sizes, color, and hyperlinks.  
 * **Code Blocks:** Enriched via syntect (as a post-parse pass, see 3.1) to inject background styling and tokenized foreground colors.  
-* **Mermaid Diagrams:** Compiled by merman, a native Rust Mermaid renderer, directly to SVG — no JavaScript engine or DOM is involved. The resulting SVG string and its intrinsic width/height are stored in the `DiagramTable` side-table keyed by diagram ID (3.1); at PDF-emission time the SVG is parsed into a `usvg::Tree` and drawn directly onto the krilla surface via `krilla-svg` (3.2) — no separate SVG-to-PDF-path conversion crate is needed. This deliberately avoids embedding a JS engine: Mermaid.js itself requires a live browser DOM for text-metric calls (`getBBox`/`getComputedTextLength`), which is why tools like mermaid-cli rely on headless Chrome rather than a lightweight JS runtime — a dependency this design explicitly avoids.  
+* **Mermaid Diagrams:** Compiled by Ondine's compiler (the default, reached through the optional `ondine` build feature — it is not on crates.io, so it is pinned to a git revision) or by merman (the fallback for any diagram Ondine does not draw, and for builds without the feature), both native Rust Mermaid renderers, directly to SVG — no JavaScript engine or DOM is involved. The resulting SVG string and its intrinsic width/height are stored in the `DiagramTable` side-table keyed by diagram ID (3.1); at PDF-emission time the SVG is parsed into a `usvg::Tree` and drawn directly onto the krilla surface via `krilla-svg` (3.2) — no separate SVG-to-PDF-path conversion crate is needed. This deliberately avoids embedding a JS engine: Mermaid.js itself requires a live browser DOM for text-metric calls (`getBBox`/`getComputedTextLength`), which is why tools like mermaid-cli rely on headless Chrome rather than a lightweight JS runtime — a dependency this design explicitly avoids.  
 * **Images:** Referenced via `BlockNode::Image`; embedded (local path) or external images are decoded and placed as raster PDF XObjects during layout.  
 * **Blockquotes:** Nested `BlockNode` content indented and rendered with a side-border Path (3.2).  
 * **Tables:** Structured grid models holding column alignment constraints, header properties, and cell spans.
