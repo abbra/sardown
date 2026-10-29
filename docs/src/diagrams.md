@@ -52,11 +52,12 @@ When a diagram lives inside a chapter of a book rendered with
 fix directly from the warning.
 
 ## The `ondine` renderer (the default)
-
 Ondine draws plain, monochrome diagrams set in a monospace font, colored from
-your stylesheet rather than from Mermaid themes (`classDef`, `style` and
-`%%{init}%%` colors are ignored). It is the default in any build with the
-`ondine` feature — which `cargo install --path crates/sardown-cli` and
+your stylesheet rather than from Mermaid themes: `%%{init}%%`
+`themeVariables`/`themeCSS` have no effect, while colors written inside the
+diagram (`classDef`, `class`, `style`) are honored and override the stylesheet
+for that node or edge. It is the default in any build with the `ondine`
+feature — which `cargo install --path crates/sardown-cli` and
 `./scripts/local-ci.sh` both have — and any diagram it does not support falls
 back to merman, which reproduces Mermaid's own look:
 
@@ -67,7 +68,7 @@ cargo install --path crates/sardown-cli --no-default-features --features png   #
 
 ```toml
 # The default in an `ondine` build; set this to draw everything with merman
-# instead, and to get Mermaid's own themes, `classDef` and `%%{init}%%` colors.
+# instead, and to get Mermaid's own themes and `%%{init}%%` colors.
 renderer = "merman"
 ```
 
