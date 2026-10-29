@@ -82,6 +82,9 @@ line_color = "#00689e"
 - Text uses `[code_block.default].font_family` unless `[mermaid]` sets
   `font_family`; Ondine measures text as monospace, so a font whose glyphs
   advance 0.6 em (Red Hat Mono, DejaVu Sans Mono) fits its boxes exactly.
+- Charts that split data into series (pie, xychart, mindmap, sankey, treemap,
+  venn, radar, quadrant, timeline, journey, git) cycle through eight shades of
+  `text_color` over `background` — still monochrome, but distinguishable.
 - A diagram type Ondine does not support is drawn by merman, with a note
   naming the line inside the diagram that Ondine rejected.
 - Ondine is not on crates.io, so the feature builds it from a pinned git
