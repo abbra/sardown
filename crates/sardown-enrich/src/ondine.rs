@@ -14,6 +14,12 @@ fn mix(fg: Color, bg: Color, amount: f32) -> Color {
     Color(std::array::from_fn(|i| (f32::from(fg.0[i]) * amount + f32::from(bg.0[i]) * (1.0 - amount)).round() as u8))
 }
 
+/// Ondine's own series ladder (`SERIES_SHADES` in its `svg/theme.rs`): the share of the text
+/// color in each data series, so neighbouring series differ by at least 15 points and every one
+/// stays half the text color -- readable fills derived from the stylesheet instead of a palette of
+/// its own.
+const SERIES_SHADES: [f32; 8] = [1.00, 0.57, 0.86, 0.50, 0.79, 0.64, 0.93, 0.71];
+
 /// The `--ondine-*` inputs for `style`, with unset colors derived from the stylesheet.
 fn inputs(style: &Stylesheet) -> HashMap<String, String> {
     let m: &MermaidStyle = &style.mermaid;
@@ -35,6 +41,11 @@ fn inputs(style: &Stylesheet) -> HashMap<String, String> {
     set("surface-alt", hex(m.surface_alt.unwrap_or_else(|| mix(text, m.background, 0.12))));
     set("accent", hex(m.accent.unwrap_or(text)));
     set("critical", hex(m.accent.unwrap_or(text)));
+    // Without these, each series falls back to a `color-mix()` expression, which neither
+    // `css_vars` nor `usvg` evaluates, and every slice/branch/bar of a chart draws in one color.
+    for (index, shade) in SERIES_SHADES.iter().enumerate() {
+        set(&format!("series-{}", index + 1), hex(mix(text, m.background, *shade)));
+    }
     set("stroke", format!("{}px", m.stroke_width_px));
     set("radius", format!("{}", m.radius_px));
     set("font", format!("'{family}', monospace"));
