@@ -56,3 +56,36 @@ fn the_ondine_renderer_draws_a_diagram_its_own_way() {
     let diagram = table.get("diagram-1").expect("ondine should have drawn the diagram");
     assert!(diagram.width > 0.0 && diagram.height > 0.0);
 }
+
+/// A pie, mindmap and chart color their data through Ondine's `--ondine-series-*` variables,
+/// whose defaults are `color-mix()` expressions that neither `css_vars` nor `usvg` evaluates --
+/// unoverridden, every slice draws in the same color.
+#[cfg(feature = "ondine")]
+#[test]
+fn the_ondine_renderer_gives_each_chart_series_its_own_color() {
+    let ast = vec![BlockNode::MermaidDiagram {
+        id: "pie".to_string(),
+        source: "pie title Pets\n    \"Dogs\" : 38\n    \"Cats\" : 27\n    \"Foxes\" : 35\n".to_string(),
+        line: 1,
+        column: 1,
+        file: None,
+    }];
+    let table = sardown_enrich::compile_diagrams_styled(&ast, &test_svg_options(), &sardown_style::Stylesheet::default());
+    let mut colors = std::collections::HashSet::new();
+    table["pie"].tree.root().children().iter().for_each(|node| collect_fill_colors(node, &mut colors));
+    assert!(colors.len() >= 3, "expected a distinct fill per pie series, got {colors:?}");
+}
+
+#[cfg(feature = "ondine")]
+fn collect_fill_colors(node: &usvg::Node, colors: &mut std::collections::HashSet<(u8, u8, u8)>) {
+    if let usvg::Node::Path(path) = node {
+        if let Some(usvg::Paint::Color(color)) = path.fill().map(|fill| fill.paint()) {
+            colors.insert((color.red, color.green, color.blue));
+        }
+    }
+    if let usvg::Node::Group(group) = node {
+        for child in group.children() {
+            collect_fill_colors(child, colors);
+        }
+    }
+}
