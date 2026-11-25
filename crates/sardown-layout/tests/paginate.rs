@@ -2078,15 +2078,36 @@ fn a_caption_sits_further_below_its_image_than_a_paragraph_would() {
 }
 
 #[test]
-fn text_after_a_display_equation_keeps_the_same_gap_a_caption_gets_below_a_figure() {
+fn text_after_a_display_equation_or_diagram_keeps_the_same_gap_a_caption_gets_below_a_figure() {
     let mut diagrams = DiagramTable::new();
     diagrams.insert("m".to_string(), dummy_diagram(100.0, 40.0));
+    for graphic in [
+        BlockNode::Math { id: "m".to_string(), source: String::new() },
+        BlockNode::MermaidDiagram { id: "m".to_string(), source: String::new(), line: 0, column: 0, file: None },
+    ] {
+        text_after_graphic_matches_caption_gap(&diagrams, graphic);
+    }
+}
+
+fn text_after_graphic_matches_caption_gap(diagrams: &DiagramTable, graphic: BlockNode) {
     let baseline_after = |next: BlockNode| {
-        let ast = vec![BlockNode::Math { id: "m".to_string(), source: String::new() }, next];
+        let ast = vec![graphic.clone(), next];
         let mut fs = test_font_system();
-        let elements = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &diagrams).pages.remove(0).elements;
-        let bottom = elements.iter().find_map(|e| match e { PositionedElement::VectorGraphic { y, height, .. } => Some(y + height), _ => None }).expect("equation");
-        elements.iter().find_map(|e| match e { PositionedElement::TextRun { y, .. } => Some(*y - bottom), _ => None }).expect("text")
+        let elements = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), diagrams).pages.remove(0).elements;
+        let bottom = elements
+            .iter()
+            .find_map(|e| match e {
+                PositionedElement::VectorGraphic { y, height, .. } => Some(y + height),
+                _ => None,
+            })
+            .expect("equation");
+        elements
+            .iter()
+            .find_map(|e| match e {
+                PositionedElement::TextRun { y, .. } => Some(*y - bottom),
+                _ => None,
+            })
+            .expect("text")
     };
     let paragraph = baseline_after(BlockNode::Paragraph { content: vec![plain_inline("Text")] });
     let caption = baseline_after(BlockNode::Caption { id: None, content: vec![plain_inline("Text")] });

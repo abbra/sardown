@@ -1452,8 +1452,8 @@ fn render_block(
                 // ascender extends further than the flat LINE_SPACING_PT gap visibly punches
                 // into the diagram instead of sitting cleanly below it.
                 cursor.y += next_ascent_gap_pt(next_block);
-                // An equation gets the same breathing room below as a figure above its caption.
-                if matches!(block, BlockNode::Math { .. }) && !matches!(next_block, Some(BlockNode::Caption { .. })) {
+                // Equations and diagrams get the same breathing room below as a figure above its caption.
+                if !matches!(next_block, Some(BlockNode::Caption { .. })) {
                     cursor.y += GRAPHIC_GAP_PT;
                 }
             }
