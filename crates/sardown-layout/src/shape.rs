@@ -209,6 +209,7 @@ pub fn estimate_code_natural_width_pt(font_system: &mut FontSystem, tokens: &[Hi
 }
 
 /// One shaped glyph run, tagged with the index into the original `content` slice it came from.
+#[derive(Clone)]
 pub struct ShapedRun {
     pub element: PositionedElement, // always PositionedElement::TextRun
     pub source_index: usize,

@@ -31,12 +31,21 @@ both are given.
 | `margin_mm` | number | `25.4` |
 | `inner_margin_mm` | number | unset |
 | `outer_margin_mm` | number | unset |
+| `body_columns` | integer ≥ 1 | `1` |
 
 Setting `width_mm`/`height_mm` overrides `format` entirely; both must be
 set together, or loading the stylesheet is an error. Setting
 `inner_margin_mm`/`outer_margin_mm` enables asymmetric two-sided-binding
-margins (both must be set together too) — see
-[Page Setup](./styling/page.md#asymmetric-two-sided-binding-margins).
+margins (both must be set together too).
+`body_columns = 2` flows the body through that many columns separated by
+`[columns] gap_pt`; blocks before the first `##`-or-deeper heading (the title
+block and abstract) keep the full page width. Footnotes sit under the column
+that cites them. Images, tables, display equations and diagrams span the full
+page width, ending the columns above them and starting new ones below. The
+columns of the page before each such block, and of the last page, are balanced
+to equal height. Headings stay with the full-width block that follows them,
+and a caption stays with the image, table or equation beside it: the whole unit moves to
+the next page together.
 
 ### `[page.numbering]`
 
@@ -79,12 +88,16 @@ page onward — see
 | `space_before_factor` | number | `0.8` |
 | `color` | color | `"#000000"` |
 | `font_family` | string | `"sans-serif"` |
+| `bold` | boolean | `false` |
+| `number_from_level` | integer | `0` (no numbering) |
 | `underline_width_pt` | number | `0.0` (no underline) |
 | `underline_color` | color | `"#000000"` |
 
 Built-in per-level sizes (used when a level has no `[heading.levels.N]`
 override): H1 `28.0`, H2 `22.0`, H3 `18.0`, H4 `16.0`, H5 `14.0`, H6
-`12.0`. Setting `underline_width_pt` above `0.0` draws a rule spanning the
+`12.0`. `number_from_level` prefixes headings from that level down with
+automatic numbers ("1", "1.1", ...); shallower headings stay unnumbered.
+Setting `underline_width_pt` above `0.0` draws a rule spanning the
 heading's own rendered text width (not the full content width) just below
 its baseline -- shifted to hug wherever the heading actually starts under
 `[typography]`'s `alignment` (e.g. centered), not just the left margin.
@@ -99,8 +112,19 @@ same as a justified code block.
 | `size_pt` | number | that level's built-in size |
 | `color` | color | `[heading]`'s own `color` |
 | `font_family` | string | `[heading]`'s own `font_family` |
+| `bold` | boolean | `[heading]`'s own `bold` |
 | `underline_width_pt` | number | `[heading]`'s own `underline_width_pt` |
 | `underline_color` | color | `[heading]`'s own `underline_color` |
+
+## `[footnote]`
+
+| Field | Type | Default |
+|---|---|---|
+| `size_pt` | number | `9.0` |
+| `spacing_pt` | number | `2.0` |
+
+Footnote text size, and the gap between consecutive notes at the page bottom.
+See [Writing Markdown](./markdown-support.md#footnotes).
 
 ## `[blockquote]`
 
@@ -125,7 +149,7 @@ same as a justified code block.
 
 ## `[columns]`
 
-Only used by the `::columns` slide-deck syntax -- see [Slide Decks](./slides.md#columns).
+The gap for the `::columns` slide-deck syntax -- see [Slide Decks](./slides.md#columns) -- and for `[page] body_columns`.
 
 | Field | Type | Default |
 |---|---|---|

@@ -1,0 +1,71 @@
+# The two-column variant of arxiv.toml, in the style of conference proceedings: Letter page,
+# 0.75-inch margins, two justified columns 0.25 inch apart. The title block and abstract (everything
+# before the first `##` heading) span the full width; the sections that follow flow through the
+# columns, with images, tables and display equations spanning both. Same front matter, numbering and citations as arxiv.toml.
+#
+# "Nimbus Roman" and "Nimbus Mono PS" are metric-compatible Times and Courier clones. If they
+# are not installed, name any other serif and monospace font (e.g. "Times New Roman",
+# "Liberation Serif", "Courier New"), or point typography.font_dirs at a font directory.
+
+[page]
+format = "letter"
+margin_mm = 19.05
+body_columns = 2
+
+[typography]
+font_family = "Nimbus Roman"
+body_size_pt = 10.0
+alignment = "justify"
+hyphenation = true
+
+[heading]
+font_family = "Nimbus Roman"
+bold = true
+number_from_level = 2
+space_before_factor = 1.0
+
+[heading.levels.1]
+size_pt = 17.0
+
+[heading.levels.2]
+size_pt = 12.0
+
+[heading.levels.3]
+size_pt = 11.0
+
+[heading.levels.4]
+size_pt = 10.0
+
+[columns]
+gap_pt = 18.0
+
+[blockquote]
+indent_pt = 18.0
+border_width_pt = 0.0
+
+[table]
+border = "horizontal"
+border_color = "#000000"
+border_width_pt = 0.75
+header_bold = true
+text_size_pt = 9.0
+cell_padding_pt = 6.0
+min_row_height_pt = 14.0
+
+[code_block]
+shrink_to_fit = true
+
+[code_block.default]
+font_family = "Nimbus Mono PS"
+font_size_pt = 8.5
+background = "#f7f7f7"
+
+[footer]
+enabled = true
+font_family = "Nimbus Roman"
+font_size_pt = 10.0
+color = "#000000"
+suppress_on_chapter_start = false
+
+[footer.uniform]
+center = "{page}"

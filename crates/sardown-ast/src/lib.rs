@@ -33,6 +33,14 @@ pub enum BlockNode {
         column: usize,
         file: Option<std::path::PathBuf>,
     },
+    /// A display equation (`$$ ... $$` alone in its paragraph). `source` is the LaTeX between the
+    /// delimiters; `sardown-enrich` renders it to a vector graphic stored under `id` in the
+    /// diagram table, and layout centers it like a diagram and anchors links at `id`. The id
+    /// always contains a `:`, which a heading slug never does, so it cannot shadow a heading anchor.
+    Math {
+        id: String,
+        source: String,
+    },
     Image {
         alt: String,
         title: Option<String>,
@@ -54,6 +62,33 @@ pub enum BlockNode {
     /// built by the separate `group_columns` post-parse transform from `::columns`/`::column`/
     /// `::end` sentinel paragraphs. See `group_columns`'s own doc comment for the exact syntax.
     Columns(Vec<Vec<BlockNode>>),
+    /// A bibliography entry from front matter `references`. Transient: `parse_with_style` replaces
+    /// the cited ones with a numbered "References" section and drops the rest, so layout never
+    /// sees it.
+    Reference {
+        key: String,
+        content: Vec<InlineNode>,
+    },
+    /// A centered line of text (title, author, date lines from front matter).
+    Centered {
+        content: Vec<InlineNode>,
+    },
+    /// A `Figure: ` / `Table: ` caption, already numbered. Laid out like a paragraph, but kept on
+    /// one page with the image, table, equation or diagram directly after it, else directly before it.
+    /// `id` is the anchor `@label` references link to, when the caption carries a `{#label}`.
+    Caption { id: Option<String>, content: Vec<InlineNode> },
+    /// A paragraph that links point at (a numbered bibliography entry); `id` is its anchor.
+    Anchored {
+        id: String,
+        content: Vec<InlineNode>,
+    },
+    /// The text of one footnote, appended after all other blocks by the parser. `id` matches the
+    /// `LinkTarget::Footnote` of the reference run that cites it; the layout places the text at
+    /// the bottom of the page holding that reference, so this block itself draws nothing.
+    FootnoteDefinition {
+        id: String,
+        content: Vec<InlineNode>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -91,6 +126,9 @@ pub enum LinkTarget {
         file: std::path::PathBuf,
         fragment: Option<String>,
     },
+    /// A footnote reference mark; the id names the `BlockNode::FootnoteDefinition` it cites. Has
+    /// no PDF link annotation -- the layout only uses it to place the footnote text.
+    Footnote(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]

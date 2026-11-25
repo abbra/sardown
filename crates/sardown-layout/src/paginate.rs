@@ -6,6 +6,7 @@ use cosmic_text::FontSystem;
 use sardown_ast::BlockNode;
 use sardown_enrich::DiagramTable;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 const PT_PER_MM: f32 = 2.834_645_7;
@@ -29,6 +30,7 @@ const LINE_SPACING_PT: f32 = 4.0; // gap after each block
 /// of the two mechanisms actually owns the underlying `Stylesheet` field -- wiring it into the
 /// wrong one (or only `build_slide_stylesheet`, when the field is actually baked-in) silently
 /// does nothing.
+#[derive(Clone)]
 struct Cursor<'a> {
     y: f32,
     page_height_pt: f32,
@@ -42,6 +44,21 @@ struct Cursor<'a> {
     chapter_opener_pending: bool,
     page_contexts: Vec<PageContext>,
     style: &'a sardown_style::Stylesheet,
+    footnotes: Footnotes,
+    /// The page bottom boundary before any footnote space or column balancing lowers it.
+    bottom_pt: f32,
+    /// Set once the body switches to columns (see `begin_columns`).
+    body_columns: Option<BodyColumns>,
+    /// Lower page bottoms for some virtual pages (see `PageCap`).
+    caps: Vec<PageCap>,
+    /// Where each column finished since the last `end_columns` ended, so a full-width block can
+    /// start below all of a page's columns.
+    marks: Vec<PageMark>,
+    /// Top of the footnotes `take_footnote_elements` last drew, read back by `break_page`.
+    footnote_top: Option<f32>,
+    /// Top of the footnotes already drawn on the current physical page by earlier column groups
+    /// (`f32::MAX` if none): nothing placed below the full-width block may reach into them.
+    floor_pt: f32,
     /// Set when a block taller than a whole page was placed anyway: `finish` then keeps a trailing
     /// page, so callers counting pages (a slide's shrink-to-fit) can tell the content didn't fit.
     overflowed: bool,
@@ -52,10 +69,45 @@ struct Cursor<'a> {
     pending_heading: Option<PendingHeading>,
 }
 
+/// A multi-column body, laid out as one-column-wide "virtual" pages: virtual page `first_page + k`
+/// is column `k % count` of physical page `first_page + k / count`. `merge_columns` folds them
+/// together at the end, shifting each column right by `step_pt`.
+#[derive(Clone, Copy)]
+struct BodyColumns {
+    first_page: usize,
+    count: usize,
+    step_pt: f32,
+    /// Where the full-width head ends on the first physical page: every column of that page
+    /// starts here rather than at the top margin.
+    head_end_pt: f32,
+    /// The content width before the body split into columns.
+    full_width_pt: f32,
+}
+
+/// A lower bottom for the virtual pages `first..=last`: the room an earlier column group's
+/// footnotes took from the physical page, or the bottom a balanced last page is laid out at.
+#[derive(Clone, Copy)]
+struct PageCap {
+    first: usize,
+    last: usize,
+    bottom_pt: f32,
+    /// A balancing trial's cap: text stops here but footnotes still sit at the physical bottom.
+    balance: bool,
+}
+
+/// Where a finished column ended (`end_pt`) and the top of the footnotes drawn under it.
+#[derive(Clone, Copy)]
+struct PageMark {
+    page: usize,
+    end_pt: f32,
+    footnote_top_pt: f32,
+}
+
 /// Where a pending heading run's elements sit: `[start, end)` indexes into `Cursor::current`
 /// (each heading's own text runs plus its underline, if any), `top_pt` is the page-space y the
 /// run's first heading started at, and `anchors` are the heading ids whose anchor entries
 /// `break_page` must move along with the elements.
+#[derive(Clone)]
 struct PendingHeading {
     start: usize,
     end: usize,
@@ -73,6 +125,7 @@ impl<'a> Cursor<'a> {
         Self {
             y: margin_pt,
             page_height_pt: geometry.page_height_mm * PT_PER_MM - margin_pt, // bottom boundary
+            bottom_pt: geometry.page_height_mm * PT_PER_MM - margin_pt,
             content_width_pt: geometry.page_width_mm * PT_PER_MM - geometry.horizontal_margin_budget_mm() * PT_PER_MM,
             pages: Vec::new(),
             current: Vec::new(),
@@ -84,7 +137,13 @@ impl<'a> Cursor<'a> {
             page_contexts: Vec::new(),
             style,
             overflowed: false,
+            footnotes: Footnotes::default(),
             pending_heading: None,
+            body_columns: None,
+            caps: Vec::new(),
+            marks: Vec::new(),
+            footnote_top: None,
+            floor_pt: f32::MAX,
         }
     }
 
@@ -98,6 +157,7 @@ impl<'a> Cursor<'a> {
             y: 0.0,
             overflowed: false,
             page_height_pt: f32::MAX,
+            bottom_pt: f32::MAX,
             content_width_pt,
             pages: Vec::new(),
             current: Vec::new(),
@@ -109,6 +169,12 @@ impl<'a> Cursor<'a> {
             page_contexts: Vec::new(),
             style,
             pending_heading: None,
+            footnotes: Footnotes::default(),
+            body_columns: None,
+            caps: Vec::new(),
+            marks: Vec::new(),
+            footnote_top: None,
+            floor_pt: f32::MAX,
         }
     }
 
@@ -126,6 +192,82 @@ impl<'a> Cursor<'a> {
         });
     }
 
+    /// Switches to a `count`-column body starting at the current position: the current page, with
+    /// whatever head is already on it, becomes the first column's page.
+    fn begin_columns(&mut self, count: usize, gap_pt: f32) {
+        let column_width_pt = (self.content_width_pt - gap_pt * (count - 1) as f32) / count as f32;
+        let first_page = self.page_number;
+        self.body_columns =
+            Some(BodyColumns { first_page, count, step_pt: column_width_pt + gap_pt, head_end_pt: self.y, full_width_pt: self.content_width_pt });
+        self.content_width_pt = column_width_pt;
+        if self.floor_pt < f32::MAX {
+            self.caps.push(PageCap { first: first_page, last: first_page + count - 1, bottom_pt: self.floor_pt, balance: false });
+        }
+    }
+
+    /// `bottom_pt` lowered by any cap on the current page.
+    fn capped(&self, bottom_pt: f32) -> f32 {
+        self.caps.iter().filter(|c| (c.first..=c.last).contains(&self.page_number)).fold(bottom_pt, |b, c| b.min(c.bottom_pt))
+    }
+
+    /// How far a balancing cap lifts the current page's bottom above where its footnotes belong.
+    fn balance_slack(&self) -> f32 {
+        self.physical_bottom() - self.capped(self.bottom_pt)
+    }
+
+    /// The current page's bottom ignoring balancing caps: where its footnotes end.
+    fn physical_bottom(&self) -> f32 {
+        self.caps.iter().filter(|c| !c.balance && (c.first..=c.last).contains(&self.page_number)).fold(self.bottom_pt, |b, c| b.min(c.bottom_pt))
+    }
+
+    /// Height of the footnotes (rule gap included) already reserved on the current page.
+    fn footnotes_held(&self) -> f32 {
+        let on_page: f32 = self.footnotes.on_page.iter().filter_map(|id| self.footnotes.slots.get(id)).map(|s| s.height_pt + self.footnotes.spacing_pt).sum();
+        if on_page > 0.0 {
+            on_page + FOOTNOTE_RULE_GAP_PT
+        } else {
+            0.0
+        }
+    }
+
+    /// Ends the column body: folds the columns laid out since `begin_columns` into physical pages
+    /// and reopens the last of them for full-width content just below its tallest column.
+    fn end_columns(&mut self) {
+        let Some(columns) = self.body_columns.take() else { return };
+        let page_start = columns.first_page + (self.page_number - columns.first_page) / columns.count * columns.count;
+        let mut elements = std::mem::take(&mut self.current);
+        elements.extend(self.take_footnote_elements());
+        let mut end_pt = self.y;
+        let mut floor_pt = self.footnote_top.take().unwrap_or(f32::MAX);
+        for mark in self.marks.drain(..).filter(|m| m.page >= page_start) {
+            end_pt = end_pt.max(mark.end_pt);
+            floor_pt = floor_pt.min(mark.footnote_top_pt);
+        }
+        self.pages.push(PositionedPage { page_number: self.page_number, elements });
+        self.snapshot_page_context();
+        let (pages, contexts) = merge_columns(std::mem::take(&mut self.pages), std::mem::take(&mut self.page_contexts), &mut self.anchors, columns);
+        (self.pages, self.page_contexts) = (pages, contexts);
+        let last = self.pages.pop().expect("the page just pushed");
+        self.page_contexts.pop();
+        self.page_number = last.page_number;
+        self.current = last.elements;
+        self.y = end_pt + LINE_SPACING_PT;
+        self.content_width_pt = columns.full_width_pt;
+        self.caps.clear();
+        self.floor_pt = floor_pt;
+        self.page_height_pt = self.bottom_pt.min(floor_pt);
+        self.pending_heading = None;
+    }
+
+    /// Where the page `self.page_number` starts: the head's bottom for the later columns of the
+    /// first body page, `margin_pt` otherwise.
+    fn page_top(&self, margin_pt: f32) -> f32 {
+        match self.body_columns {
+            Some(c) if self.page_number > c.first_page && self.page_number < c.first_page + c.count => c.head_end_pt,
+            _ => margin_pt,
+        }
+    }
+
     fn break_page(&mut self, margin_pt: f32) {
         // Keep-with-next: a heading must never be left alone at the bottom of a page. When the
         // block that just decided it doesn't fit here directly follows a heading (or a stack of
@@ -140,16 +282,21 @@ impl<'a> Cursor<'a> {
         let carry = self.pending_heading.take().filter(|p| p.start > 0 && p.end == self.current.len());
         if let Some(pending) = carry {
             let heading = self.current.drain(pending.start..pending.end).collect::<Vec<_>>();
-            let elements = std::mem::take(&mut self.current);
+            let mut elements = std::mem::take(&mut self.current);
+            elements.extend(self.take_footnote_elements());
+            self.marks.push(PageMark { page: self.page_number, end_pt: pending.top_pt, footnote_top_pt: self.footnote_top.take().unwrap_or(f32::MAX) });
             self.pages.push(PositionedPage { page_number: self.page_number, elements });
             self.snapshot_page_context();
             self.page_number += 1;
+            self.floor_pt = f32::MAX;
+            self.page_height_pt = self.capped(self.bottom_pt);
             if pending.opens_chapter {
                 self.chapter_opener_pending = true;
             }
             // One shared dy keeps a stacked run's internal spacing intact and drops the first
             // heading's space-before exactly as a heading naturally opening a page gets none.
-            let dy = margin_pt - pending.top_pt;
+            let top_pt = self.page_top(margin_pt);
+            let dy = top_pt - pending.top_pt;
             self.current = heading;
             for element in &mut self.current {
                 crate::shift_element(element, 0.0, dy);
@@ -165,15 +312,19 @@ impl<'a> Cursor<'a> {
             // its normal spacing instead of overlapping the heading.
             self.y += dy;
             self.pending_heading =
-                Some(PendingHeading { start: 0, end: self.current.len(), top_pt: margin_pt, anchors: pending.anchors, opens_chapter: pending.opens_chapter });
+                Some(PendingHeading { start: 0, end: self.current.len(), top_pt, anchors: pending.anchors, opens_chapter: pending.opens_chapter });
             return;
         }
         self.pending_heading = None;
-        let elements = std::mem::take(&mut self.current);
+        let mut elements = std::mem::take(&mut self.current);
+        elements.extend(self.take_footnote_elements());
+        self.marks.push(PageMark { page: self.page_number, end_pt: self.y, footnote_top_pt: self.footnote_top.take().unwrap_or(f32::MAX) });
         self.pages.push(PositionedPage { page_number: self.page_number, elements });
         self.snapshot_page_context();
         self.page_number += 1;
-        self.y = margin_pt;
+        self.floor_pt = f32::MAX;
+        self.page_height_pt = self.capped(self.bottom_pt);
+        self.y = self.page_top(margin_pt);
     }
 
     /// Records a heading run's end/anchors. A heading placed directly after a pending run
@@ -190,12 +341,46 @@ impl<'a> Cursor<'a> {
 
     fn finish(mut self) -> (Vec<PositionedPage>, AnchorTable, Vec<PageContext>) {
         if !self.current.is_empty() || self.pages.is_empty() || self.overflowed {
-            let elements = std::mem::take(&mut self.current);
+            let mut elements = std::mem::take(&mut self.current);
+            elements.extend(self.take_footnote_elements());
             self.pages.push(PositionedPage { page_number: self.page_number, elements });
             self.snapshot_page_context();
         }
         (self.pages, self.anchors, self.page_contexts)
     }
+}
+
+/// Folds a column body's virtual pages into physical ones: each run of `count` virtual pages from
+/// `first_page` on becomes one page, column `k` shifted right by `k * step_pt`. Anchors follow
+/// their elements; only the first column's page context survives (the pair is one page).
+fn merge_columns(
+    pages: Vec<PositionedPage>,
+    contexts: Vec<PageContext>,
+    anchors: &mut AnchorTable,
+    columns: BodyColumns,
+) -> (Vec<PositionedPage>, Vec<PageContext>) {
+    let BodyColumns { first_page, count, step_pt, .. } = columns;
+    let mut merged: Vec<PositionedPage> = Vec::new();
+    let mut merged_contexts = Vec::new();
+    for (i, (mut page, context)) in pages.into_iter().zip(contexts).enumerate() {
+        if i < first_page || (i - first_page) % count == 0 {
+            page.page_number = merged.len();
+            merged.push(page);
+            merged_contexts.push(context);
+            continue;
+        }
+        let dx = ((i - first_page) % count) as f32 * step_pt;
+        let last = merged.last_mut().expect("column 0 of this page was pushed first");
+        for mut element in page.elements {
+            crate::shift_element(&mut element, dx, 0.0);
+            last.elements.push(element);
+        }
+    }
+    for anchor in anchors.values_mut().filter(|a| a.page >= first_page) {
+        anchor.x += ((anchor.page - first_page) % count) as f32 * step_pt;
+        anchor.page = first_page + (anchor.page - first_page) / count;
+    }
+    (merged, merged_contexts)
 }
 
 /// Estimated block height, in points, before shaping — used only to decide whether the
@@ -260,6 +445,127 @@ struct InlinePlacement<'a> {
     ligatures: bool,
 }
 
+const FOOTNOTE_RULE_GAP_PT: f32 = 15.0;
+
+/// One footnote, shaped once up front so its height is known when a reference decides whether
+/// its line still fits on the page. `shaped`/`content` are taken when the text is placed.
+#[derive(Clone)]
+struct FootnoteSlot {
+    content: Vec<sardown_ast::InlineNode>,
+    shaped: Vec<crate::ShapedRun>,
+    height_pt: f32,
+    placed: bool,
+}
+
+/// Footnote state of a `Cursor`. The default (no slots) makes references inert, which is what an
+/// isolated column cursor wants: it never paginates, so it has no page bottom to put notes on.
+#[derive(Default, Clone)]
+struct Footnotes {
+    slots: HashMap<String, FootnoteSlot>,
+    /// Footnotes reserved on the current page, in reference order.
+    on_page: Vec<String>,
+    /// The page's bottom boundary before any footnote space was reserved.
+    page_bottom_pt: f32,
+    margin_pt: f32,
+    spacing_pt: f32,
+}
+
+fn shape_footnotes(
+    ast: &[BlockNode],
+    content_width_pt: f32,
+    page_bottom_pt: f32,
+    margin_pt: f32,
+    style: &sardown_style::Stylesheet,
+    font_system: &mut FontSystem,
+) -> Footnotes {
+    let mut footnotes = Footnotes { page_bottom_pt, margin_pt, spacing_pt: style.footnote.spacing_pt, ..Default::default() };
+    for block in ast {
+        let BlockNode::FootnoteDefinition { id, content } = block else { continue };
+        let mut content = content.clone();
+        for node in &mut content {
+            node.style.size = style.footnote.size_pt;
+        }
+        let align = to_cosmic_align(style.typography.alignment);
+        let shaped = shape_rich_paragraph(font_system, &content, content_width_pt, align, ShapingOptions { ligatures: true });
+        let height_pt = measured_shaped_height_pt(&shaped, style.footnote.size_pt);
+        footnotes.slots.insert(id.clone(), FootnoteSlot { content, shaped, height_pt, placed: false });
+    }
+    footnotes
+}
+
+impl Cursor<'_> {
+    /// Page height the not-yet-placed footnotes among `ids` would take from the current page.
+    fn footnote_reserve(&self, ids: &[String]) -> f32 {
+        let mut total = 0.0;
+        let mut first = self.footnotes.on_page.is_empty();
+        for id in ids {
+            let Some(slot) = self.footnotes.slots.get(id).filter(|s| !s.placed) else { continue };
+            if std::mem::take(&mut first) {
+                total += FOOTNOTE_RULE_GAP_PT;
+            }
+            total += slot.height_pt + self.footnotes.spacing_pt;
+        }
+        total
+    }
+
+    /// How far `reserve` more footnote height lowers the page bottom. A balancing cap holds text
+    /// above the physical bottom, where the footnotes are drawn, so it absorbs the first `slack`
+    /// points of footnote height.
+    fn reserve_drop(&self, reserve: f32) -> f32 {
+        let held = self.footnotes_held();
+        let slack = self.balance_slack();
+        (held + reserve - slack).max(0.0) - (held - slack).max(0.0)
+    }
+
+    /// Moves the page bottom up to make room for the footnotes cited by a line just placed.
+    fn reserve_footnotes(&mut self, ids: &[String]) {
+        let reserve = self.footnote_reserve(ids);
+        let drop = self.reserve_drop(reserve);
+        for id in ids {
+            if let Some(slot) = self.footnotes.slots.get_mut(id).filter(|s| !s.placed) {
+                slot.placed = true;
+                self.footnotes.on_page.push(id.clone());
+            }
+        }
+        self.page_height_pt -= drop;
+    }
+
+    /// Draws the current page's footnotes (rule, then each note) in the space `reserve_footnotes`
+    /// cleared at its bottom, and gives that space back. Returns the elements for the caller to
+    /// append to the finished page.
+    fn take_footnote_elements(&mut self) -> Vec<PositionedElement> {
+        if self.footnotes.on_page.is_empty() {
+            return Vec::new();
+        }
+        // A balanced page's text stops short of the physical bottom; its footnotes stay down there.
+        let top = if self.balance_slack() > 0.0 { self.physical_bottom() - self.footnotes_held() } else { self.page_height_pt };
+        self.footnote_top = Some(self.footnote_top.map_or(top, |t| t.min(top)));
+        let margin_pt = self.footnotes.margin_pt;
+        let saved_current = std::mem::take(&mut self.current);
+        let saved_y = self.y;
+        // Unbounded so `place_shaped_runs` can never page-break while drawing the notes.
+        self.page_height_pt = f32::MAX;
+        let rule_y = top + 4.0;
+        self.current.push(PositionedElement::Path {
+            points: vec![PathCommand::MoveTo(margin_pt, rule_y), PathCommand::LineTo(margin_pt + self.content_width_pt / 3.0, rule_y)],
+            fill: None,
+            stroke: Some(StrokeStyle { color: self.style.typography.body_color.0, width: 0.5 }),
+        });
+        self.y = top + FOOTNOTE_RULE_GAP_PT;
+        let align = to_cosmic_align(self.style.typography.alignment);
+        for id in std::mem::take(&mut self.footnotes.on_page) {
+            let Some(slot) = self.footnotes.slots.get_mut(&id) else { continue };
+            let (shaped, content) = (std::mem::take(&mut slot.shaped), std::mem::take(&mut slot.content));
+            let placement = InlinePlacement { margin_pt, indent_pt: 0.0, max_width_pt: self.content_width_pt, align, hyphenator: None, ligatures: true };
+            place_shaped_runs(self, shaped, &content, placement);
+            self.y += self.footnotes.spacing_pt;
+        }
+        self.page_height_pt = self.capped(self.footnotes.page_bottom_pt);
+        self.y = saved_y;
+        std::mem::replace(&mut self.current, saved_current)
+    }
+}
+
 /// Returns `(leftmost_x, rightmost_x)` in points -- the actual rendered horizontal extent of the
 /// widest line placed. Used by the `Heading` arm to draw an underline hugging the heading's own
 /// text (both its width *and* its actual start position, which shifts under `Align::Center`/
@@ -320,12 +626,21 @@ fn place_shaped_runs(cursor: &mut Cursor, shaped: Vec<crate::ShapedRun>, content
         }
 
         let mut placed_y = content_start_y + (line_y - baseline_line_y);
-        if cursor.page_height_pt - placed_y < line_height && !cursor.current.is_empty() {
+        let notes: Vec<String> = group
+            .iter()
+            .filter_map(|r| match &content[r.source_index].link_target {
+                Some(sardown_ast::LinkTarget::Footnote(id)) => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+        let reserve = cursor.footnote_reserve(&notes);
+        if cursor.page_height_pt - cursor.reserve_drop(reserve) - placed_y < line_height && !cursor.current.is_empty() {
             cursor.break_page(margin_pt);
             content_start_y = cursor.y;
             first_line_y = Some(line_y);
             placed_y = content_start_y;
         }
+        cursor.reserve_footnotes(&notes);
 
         for shaped_run in group {
             let source_style = &content[shaped_run.source_index].style;
@@ -425,7 +740,9 @@ fn estimate_next_block_ascent_pt(next_block: Option<&BlockNode>) -> f32 {
     const DEFAULT_BODY_SIZE_PT: f32 = 12.0;
     let size = match next_block {
         Some(BlockNode::Heading { content, .. }) => content.first().map(|n| n.style.size).unwrap_or(DEFAULT_BODY_SIZE_PT),
-        Some(BlockNode::Paragraph { content }) => content.first().map(|n| n.style.size).unwrap_or(DEFAULT_BODY_SIZE_PT),
+        Some(BlockNode::Paragraph { content } | BlockNode::Centered { content } | BlockNode::Caption { content, .. } | BlockNode::Anchored { content, .. }) => {
+            content.first().map(|n| n.style.size).unwrap_or(DEFAULT_BODY_SIZE_PT)
+        }
         _ => DEFAULT_BODY_SIZE_PT,
     };
     size * 0.8
@@ -461,6 +778,7 @@ fn render_block(
     next_block: Option<&BlockNode>,
 ) {
     match block {
+        BlockNode::FootnoteDefinition { .. } | BlockNode::Reference { .. } => {}
         BlockNode::Heading { level, content, id } => {
             let heading_size = content.first().map(|c| c.style.size).unwrap_or(12.0);
             // Skipped at the very top of a page/column, where extra leading whitespace isn't
@@ -531,12 +849,36 @@ fn render_block(
                 cursor.pending_heading = None;
             }
         }
-        BlockNode::Paragraph { content } => {
+        BlockNode::Paragraph { content } | BlockNode::Caption { content, id: None } => {
             let max_width_pt = cursor.content_width_pt - indent_pt;
             place_inline_content(
                 cursor,
                 content,
                 InlinePlacement { margin_pt, indent_pt, max_width_pt, align: to_cosmic_align(cursor.style.typography.alignment), hyphenator, ligatures: true },
+                font_system,
+            );
+        }
+        BlockNode::Caption { id: Some(id), content } | BlockNode::Anchored { id, content } => {
+            // Anchor where the first line lands: move to the next page first if it would not fit here.
+            let first_line_pt = estimate_line_height(content.first().map_or(12.0, |n| n.style.size));
+            if cursor.remaining_height() < first_line_pt && !cursor.current.is_empty() {
+                cursor.break_page(margin_pt);
+            }
+            cursor.anchors.insert(id.clone(), AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: cursor.y });
+            let max_width_pt = cursor.content_width_pt - indent_pt;
+            place_inline_content(
+                cursor,
+                content,
+                InlinePlacement { margin_pt, indent_pt, max_width_pt, align: to_cosmic_align(cursor.style.typography.alignment), hyphenator, ligatures: true },
+                font_system,
+            );
+        }
+        BlockNode::Centered { content } => {
+            let max_width_pt = cursor.content_width_pt - indent_pt;
+            place_inline_content(
+                cursor,
+                content,
+                InlinePlacement { margin_pt, indent_pt, max_width_pt, align: cosmic_text::Align::Center, hyphenator, ligatures: true },
                 font_system,
             );
         }
@@ -566,7 +908,9 @@ fn render_block(
                 stroke: Some(StrokeStyle { color: border_color, width: border_width }),
             };
 
-            if end_page == start_page {
+            if border_width <= 0.0 {
+                // zero width means no border; a zero-width stroke would still draw a hairline
+            } else if end_page == start_page {
                 cursor.current.push(border_segment(start_y - pad, end_y - pad - LINE_SPACING_PT));
             } else {
                 // The blockquote's own content crossed one or more page breaks mid-render:
@@ -1085,7 +1429,7 @@ fn render_block(
             render_keyed_image(cursor, margin_pt, indent_pt, uri.clone(), images, diagrams);
         }
         BlockNode::Image { source: sardown_ast::ImageSource::External(_), .. } => {} // skipped, see decode_images
-        BlockNode::MermaidDiagram { id, .. } => {
+        BlockNode::MermaidDiagram { id, .. } | BlockNode::Math { id, .. } => {
             if let Some(diagram) = diagrams.get(id) {
                 let max_width = cursor.content_width_pt - indent_pt;
                 let max_height = cursor.page_height_pt - margin_pt;
@@ -1093,7 +1437,12 @@ fn render_block(
                 if cursor.remaining_height() < height && !cursor.current.is_empty() {
                     cursor.break_page(margin_pt);
                 }
-                cursor.current.push(PositionedElement::VectorGraphic { x: margin_pt + indent_pt, y: cursor.y, width, height, diagram_id: id.clone() });
+                if matches!(block, BlockNode::Math { .. }) {
+                    cursor.anchors.insert(id.clone(), AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: cursor.y });
+                }
+                // Equations are centered on the text column; diagrams keep the left edge.
+                let x = if matches!(block, BlockNode::Math { .. }) { margin_pt + indent_pt + (max_width - width) / 2.0 } else { margin_pt + indent_pt };
+                cursor.current.push(PositionedElement::VectorGraphic { x, y: cursor.y, width, height, diagram_id: id.clone() });
                 cursor.y += height;
                 // Same "next block's ascender pokes above a preceding block's hard bottom edge"
                 // issue CodeBlock's own background has (see estimate_next_block_ascent_pt) --
@@ -1301,6 +1650,118 @@ pub fn layout_impl(
     layout_with_assets(ast, geometry, font_system, &assets, stylesheet)
 }
 
+/// Where the unit starting at `i` ends: any headings, then an optional caption above a full-width
+/// block (image, table, equation, diagram), the block, and an optional caption below it. A
+/// heading or caption stays with its block; `None` when no full-width block follows.
+fn spanning_unit_end(ast: &[BlockNode], i: usize) -> Option<usize> {
+    let is = |j: usize, f: fn(&BlockNode) -> bool| ast.get(j).is_some_and(f);
+    let mut j = i;
+    while is(j, |b| matches!(b, BlockNode::Heading { .. })) {
+        j += 1;
+    }
+    let spans = |b: &BlockNode| matches!(b, BlockNode::Image { .. } | BlockNode::Table { .. } | BlockNode::Math { .. } | BlockNode::MermaidDiagram { .. });
+    if is(j, |b| matches!(b, BlockNode::Caption { .. })) && is(j + 1, spans) {
+        j += 1;
+    }
+    if !is(j, spans) {
+        return None;
+    }
+    j += 1;
+    Some(j + usize::from(is(j, |b| matches!(b, BlockNode::Caption { .. }))))
+}
+
+/// Renders a unit of blocks that must share a page: when it would run onto the next page and
+/// the current one already holds something, it starts on a fresh page instead.
+fn render_unit(cursor: &mut Cursor, blocks: std::ops::Range<usize>, ast: &[BlockNode], margin_pt: f32, font_system: &mut FontSystem, assets: &LayoutAssets) {
+    if blocks.len() > 1 && !cursor.current.is_empty() {
+        let mut trial = cursor.clone();
+        render_range(&mut trial, blocks.clone(), ast, margin_pt, font_system, assets);
+        if trial.page_number > cursor.page_number {
+            cursor.break_page(margin_pt);
+        }
+    }
+    render_range(cursor, blocks, ast, margin_pt, font_system, assets);
+}
+
+fn render_range(cursor: &mut Cursor, blocks: std::ops::Range<usize>, ast: &[BlockNode], margin_pt: f32, font_system: &mut FontSystem, assets: &LayoutAssets) {
+    for i in blocks {
+        render_block(&ast[i], cursor, margin_pt, 0.0, font_system, &assets.images, &assets.diagrams, assets.hyphenator.as_ref(), ast.get(i + 1));
+        cursor.y += LINE_SPACING_PT;
+    }
+}
+
+/// The cursor as it was before `block`, minus the finished pages (which never change, so
+/// `pages_len` is enough to get them back from the live cursor).
+struct Snapshot<'a> {
+    block: usize,
+    pages_len: usize,
+    cursor: Cursor<'a>,
+}
+
+/// Tracks a run of column-flowed blocks so its last physical page can be balanced when the run
+/// ends: the last page is laid out again, from the snapshot of the block that was in progress when
+/// that page began, at ever lower bottoms until the columns are as short as they can be without
+/// needing more of them.
+#[derive(Default)]
+struct ColumnGroup<'a> {
+    /// The snapshot of the previous block, and of the block the last physical page began in.
+    previous: Option<Snapshot<'a>>,
+    page_start: Option<Snapshot<'a>>,
+    /// Physical page (counted from the group's first) the latest block began on.
+    page: usize,
+}
+
+impl<'a> ColumnGroup<'a> {
+    fn note_block(&mut self, cursor: &mut Cursor<'a>, block: usize) {
+        let columns = cursor.body_columns.expect("inside a column group");
+        let page = (cursor.page_number - columns.first_page) / columns.count;
+        let pages = std::mem::take(&mut cursor.pages);
+        let snapshot = Snapshot { block, pages_len: pages.len(), cursor: cursor.clone() };
+        cursor.pages = pages;
+        if self.page_start.is_none() || page != self.page {
+            // `previous` is the block that was still being placed when this page began.
+            self.page_start = Some(self.previous.take().unwrap_or_else(|| Snapshot { cursor: snapshot.cursor.clone(), ..snapshot }));
+            self.page = page;
+        }
+        self.previous = Some(snapshot);
+    }
+
+    /// Ends the column body before `block`: balances its last page, then folds the columns into
+    /// physical pages.
+    fn end(&mut self, cursor: &mut Cursor<'a>, block: usize, ast: &[BlockNode], margin_pt: f32, font_system: &mut FontSystem, assets: &LayoutAssets) {
+        let (Some(columns), Some(start)) = (cursor.body_columns, self.page_start.take()) else { return };
+        self.previous = None;
+        let page_start = columns.first_page + (cursor.page_number - columns.first_page) / columns.count * columns.count;
+        let last_page = page_start + columns.count - 1;
+        let (mut lo, mut hi) = (if page_start == columns.first_page { columns.head_end_pt } else { margin_pt }, cursor.bottom_pt);
+        let mut best = None;
+        // Elements already on the first column's page when the trial starts (e.g. a full-width block).
+        let carried = if start.cursor.page_number == page_start { start.cursor.current.len() } else { 0 };
+        if !cursor.overflowed {
+            for _ in 0..10 {
+                let bottom_pt = (lo + hi) / 2.0;
+                let mut trial = start.cursor.clone();
+                trial.pages = cursor.pages[..start.pages_len].to_vec();
+                trial.caps.push(PageCap { first: page_start, last: last_page, bottom_pt, balance: true });
+                trial.page_height_pt = trial.capped(trial.page_height_pt);
+                render_range(&mut trial, start.block..block, ast, margin_pt, font_system, assets);
+                // A heading kept with its text must not push everything into the second column.
+                let first_column_empty =
+                    trial.page_number > page_start && trial.pages.iter().any(|p| p.page_number == page_start && p.elements.len() == carried);
+                if trial.page_number <= last_page && !trial.overflowed && !first_column_empty {
+                    (hi, best) = (bottom_pt, Some(trial));
+                } else {
+                    lo = bottom_pt;
+                }
+            }
+        }
+        if let Some(trial) = best {
+            *cursor = trial;
+        }
+        cursor.end_columns();
+    }
+}
+
 /// `layout_impl`'s layout half, factored out so a caller that re-lays-out the same content at
 /// different scales can prepare the scale-independent assets once via `prepare_layout_assets`
 /// and skip re-decoding images, re-parsing SVGs, and re-loading the hyphenation dictionary on
@@ -1315,10 +1776,34 @@ pub fn layout_with_assets(
 ) -> LayoutOutput {
     let margin_pt = geometry.margin_mm * PT_PER_MM;
     let mut cursor = Cursor::new(geometry, stylesheet);
-    for (i, block) in ast.iter().enumerate() {
-        render_block(block, &mut cursor, margin_pt, 0.0, font_system, &assets.images, &assets.diagrams, assets.hyphenator.as_ref(), ast.get(i + 1));
-        cursor.y += LINE_SPACING_PT;
+    let column_count = usize::from(stylesheet.page.body_columns).max(1);
+    let gap_pt = stylesheet.columns.gap_pt;
+    let column_width_pt = (cursor.content_width_pt - gap_pt * (column_count - 1) as f32) / column_count as f32;
+    // The title block and abstract (everything before the first `##`-or-deeper heading) stay full width.
+    let head_len = ast.iter().position(|b| matches!(b, BlockNode::Heading { level, .. } if *level >= 2)).unwrap_or(0);
+    cursor.footnotes = shape_footnotes(ast, column_width_pt, cursor.page_height_pt, margin_pt, stylesheet, font_system);
+    let mut group = ColumnGroup::default();
+    let mut i = 0;
+    while i < ast.len() {
+        let unit_end = spanning_unit_end(ast, i);
+        if column_count > 1 && i >= head_len {
+            match (cursor.body_columns.is_some(), unit_end.is_some()) {
+                (false, false) => {
+                    cursor.begin_columns(column_count, gap_pt);
+                    group = ColumnGroup::default();
+                }
+                (true, true) => group.end(&mut cursor, i, ast, margin_pt, font_system, assets),
+                _ => {}
+            }
+            if cursor.body_columns.is_some() {
+                group.note_block(&mut cursor, i);
+            }
+        }
+        let end = unit_end.unwrap_or(i + 1);
+        render_unit(&mut cursor, i..end, ast, margin_pt, font_system, assets);
+        i = end;
     }
+    group.end(&mut cursor, ast.len(), ast, margin_pt, font_system, assets);
     let (pages, anchors, page_contexts) = cursor.finish();
     LayoutOutput {
         pages,

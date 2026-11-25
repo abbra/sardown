@@ -50,7 +50,9 @@ fn rescale_blocks(
                 let size = base.heading.resolve(*level).size_pt * scale;
                 set_inline_style(content, size, primary_color, primary_color);
             }
-            BlockNode::Paragraph { content } => set_inline_style(content, body_size_pt, secondary_color, primary_color),
+            BlockNode::Paragraph { content } | BlockNode::Centered { content } | BlockNode::Caption { content, .. } | BlockNode::Anchored { content, .. } => {
+                set_inline_style(content, body_size_pt, secondary_color, primary_color)
+            }
             BlockNode::Blockquote { content } => rescale_blocks(content, base, scale, body_size_pt, table_cell_size_pt, primary_color, secondary_color),
             BlockNode::List { items, .. } => {
                 for item in items {
@@ -72,7 +74,14 @@ fn rescale_blocks(
                     }
                 }
             }
-            BlockNode::CodeBlock { .. } | BlockNode::ThematicBreak | BlockNode::PageBreak | BlockNode::MermaidDiagram { .. } | BlockNode::Image { .. } => {}
+            BlockNode::CodeBlock { .. }
+            | BlockNode::ThematicBreak
+            | BlockNode::PageBreak
+            | BlockNode::MermaidDiagram { .. }
+            | BlockNode::Math { .. }
+            | BlockNode::FootnoteDefinition { .. }
+            | BlockNode::Reference { .. }
+            | BlockNode::Image { .. } => {}
         }
     }
 }

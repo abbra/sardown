@@ -18,7 +18,7 @@ pub fn build_annotation(rect: &Rect, destination: &LinkTarget, anchors: &AnchorT
         // Should never reach rendering -- sardown-book always resolves or drops CrossFileAnchor
         // before calling layout(). Degrade the same way a dangling InternalAnchor does (no
         // annotation, not a panic) rather than assume the invariant can never be violated.
-        LinkTarget::CrossFileAnchor { .. } => return None,
+        LinkTarget::CrossFileAnchor { .. } | LinkTarget::Footnote(_) => return None,
     };
     Some(Annotation::new_link(LinkAnnotation::new(krilla_rect, target), None))
 }

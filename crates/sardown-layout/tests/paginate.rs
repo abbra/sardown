@@ -1862,3 +1862,145 @@ fn a_headings_underline_hugs_the_headings_own_text_width_not_the_full_content_wi
          ({content_width_pt}pt); got {underline_length_pt}pt"
     );
 }
+
+#[test]
+fn two_column_body_keeps_the_head_full_width_and_flows_text_through_two_columns() {
+    let md = format!("# Title\n\n## Body\n\n{}\n", "word ".repeat(1500));
+    let blocks = parse(&md);
+    let mut style = sardown_style::Stylesheet::default();
+    style.page.body_columns = 2;
+    let mut fs = test_font_system();
+    let geometry = letter_geometry();
+    let pages = layout_impl(&blocks, &geometry, &mut fs, &fixtures_dir(), &DiagramTable::new(), &style).pages;
+    let xs: Vec<f32> = pages[0].elements.iter().filter_map(|e| if let PositionedElement::TextRun { x, .. } = e { Some(*x) } else { None }).collect();
+    let margin = geometry.margin_mm * 2.834_645_7;
+    let right_start = xs.iter().cloned().fold(0.0_f32, f32::max);
+    assert!((xs.iter().cloned().fold(f32::MAX, f32::min) - margin).abs() < 0.5, "left column starts at the margin");
+    assert!(right_start > 215.9 * 2.834_645_7 / 2.0 - 20.0, "second column starts right of the page middle, got {right_start}");
+    assert!(pages.iter().enumerate().all(|(i, p)| p.page_number == i));
+}
+
+#[test]
+fn two_column_body_lets_tables_span_both_columns_and_balances_the_last_page() {
+    let md = format!("# Title\n\n## Body\n\n{}\n\n| A | B | C |\n|---|---|---|\n| 1 | 2 | 3 |\n\n{}\n", "word ".repeat(60), "tail ".repeat(60));
+    let blocks = parse(&md);
+    let mut style = sardown_style::Stylesheet::default();
+    style.page.body_columns = 2;
+    let mut fs = test_font_system();
+    let pages = layout_impl(&blocks, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style).pages;
+    assert_eq!(pages.len(), 1);
+    let runs: Vec<(&str, f32, f32)> = pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| if let PositionedElement::TextRun { text, x, y, .. } = e { Some((text.trim(), *x, *y)) } else { None })
+        .collect();
+    let middle = 215.9 * 2.834_645_7 / 2.0;
+    let table_c = runs.iter().find(|r| r.0 == "C").expect("table header C");
+    assert!(table_c.1 > middle, "table spans the full width, third column at {}", table_c.1);
+    // Both column groups are balanced: text sits in the right column above and below the table.
+    for (name, above) in [("word", true), ("tail", false)] {
+        let right = runs.iter().filter(|r| r.0.starts_with(name) && r.1 > middle && (r.2 < table_c.2) == above).count();
+        assert!(right > 0, "{name} text reaches the right column");
+    }
+}
+
+#[test]
+fn a_heading_and_a_caption_stay_on_the_page_of_the_full_width_table_they_belong_to() {
+    let mut style = sardown_style::Stylesheet::default();
+    style.page.body_columns = 2;
+    let mut fs = test_font_system();
+    let page_of = |pages: &[sardown_layout::PositionedPage], word: &str| {
+        pages
+            .iter()
+            .position(|p| p.elements.iter().any(|e| matches!(e, PositionedElement::TextRun { text, .. } if text.trim() == word || text.ends_with(word))))
+    };
+    // Sweep the filler so the heading lands at every distance from the page bottom.
+    for words in (900..1500).step_by(25) {
+        let md = format!("# Title\n\n## Body\n\n{}\n\n### Head\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nTable: Sweep caption.\n", "word ".repeat(words));
+        let blocks = sardown_ast::parse_with_style(&md, &mut sardown_ast::SlugGenerator::new(), &mut 0, &style);
+        let pages = layout_impl(&blocks, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style).pages;
+        let (head, table, caption) = (page_of(&pages, "Head"), page_of(&pages, "A"), page_of(&pages, "Sweep caption."));
+        assert!(head.is_some() && head == table && table == caption, "{words} words: heading {head:?}, table {table:?}, caption {caption:?}");
+    }
+}
+
+#[test]
+fn a_caption_above_a_display_equation_stays_on_its_page() {
+    let mut style = sardown_style::Stylesheet::default();
+    style.page.body_columns = 2;
+    let mut fs = test_font_system();
+    for words in (900..1500).step_by(25) {
+        let md = format!("# Title\n\n## Body\n\n{}\n\nFigure: Sweep caption.\n\n$$x$$\n", "word ".repeat(words));
+        let blocks = sardown_ast::parse_with_style(&md, &mut sardown_ast::SlugGenerator::new(), &mut 0, &style);
+        let mut diagrams = DiagramTable::new();
+        for b in &blocks {
+            if let BlockNode::Math { id, .. } = b {
+                diagrams.insert(id.clone(), dummy_diagram(100.0, 20.0));
+            }
+        }
+        let pages = layout_impl(&blocks, &letter_geometry(), &mut fs, &fixtures_dir(), &diagrams, &style).pages;
+        let caption =
+            pages.iter().position(|p| p.elements.iter().any(|e| matches!(e, PositionedElement::TextRun { text, .. } if text.ends_with("Sweep caption."))));
+        let math = pages.iter().position(|p| p.elements.iter().any(|e| matches!(e, PositionedElement::VectorGraphic { .. })));
+        assert!(caption.is_some() && caption == math, "{words} words: caption {caption:?}, equation {math:?}");
+    }
+}
+
+#[test]
+fn footnotes_of_a_balanced_column_group_sit_at_the_page_bottom_without_unbalancing_it() {
+    let mut style = sardown_style::Stylesheet::default();
+    style.page.body_columns = 2;
+    let para = |n: usize| format!("{} note[^{n}]\n\n", "word ".repeat(90));
+    let defs: String = (1..=3).map(|n| format!("[^{n}]: Footnote text {n}.\n\n")).collect();
+    let md = format!("# Title\n\n## Body\n\n{}| A | B |\n|---|---|\n| 1 | 2 |\n\n{}\n{defs}", (1..=3).map(para).collect::<String>(), "tail ".repeat(20));
+    let blocks = sardown_ast::parse_with_style(&md, &mut sardown_ast::SlugGenerator::new(), &mut 0, &style);
+    let mut fs = test_font_system();
+    let pages = layout_impl(&blocks, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style).pages;
+    assert_eq!(pages.len(), 1);
+    let runs: Vec<(&str, f32, f32)> = pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| if let PositionedElement::TextRun { text, x, y, .. } = e { Some((text.trim(), *x, *y)) } else { None })
+        .collect();
+    let middle = 215.9 * 2.834_645_7 / 2.0;
+    let table_y = runs.iter().find(|r| r.0 == "A").expect("table").2;
+    let column_end = |left: bool| runs.iter().filter(|r| r.0.starts_with("word") && r.2 < table_y && (r.1 < middle) == left).map(|r| r.2).fold(0.0, f32::max);
+    assert!((column_end(true) - column_end(false)).abs() < 40.0, "balanced columns end at {} and {}", column_end(true), column_end(false));
+    let note_y = runs.iter().filter(|r| r.0.contains("Footnote")).map(|r| r.2).fold(f32::MAX, f32::min);
+    let last_body_y = runs.iter().filter(|r| r.0.starts_with("tail")).map(|r| r.2).fold(0.0, f32::max);
+    assert!(note_y > last_body_y + 20.0, "footnotes at {note_y} sit below the body text ending at {last_body_y}");
+    // Page bottom is 792 - 72; three one-line notes with a rule need under 100pt.
+    assert!(runs.iter().filter(|r| r.0.contains("Footnote")).map(|r| r.2).fold(0.0, f32::max) > 720.0 - 30.0, "last footnote hugs the page bottom");
+    assert!(runs.iter().all(|r| r.2 < 792.0 - 72.0 + 20.0), "all text stays on the page");
+}
+
+#[test]
+fn citation_numbers_and_figure_table_and_equation_references_link_to_laid_out_anchors() {
+    let md = "---\nreferences:\n  a: \"Alpha.\"\n  b: \"Beta.\"\n---\n\n## Intro {#sec:i}\n\nSee [@b; @a], @fig:f, @tab:t, @eq:e and @sec:i.\n\n![x](missing.png)\n\nFigure: A figure. {#fig:f}\n\nTable: A table. {#tab:t}\n\n| A |\n|---|\n| 1 |\n\n$$ x \\label{eq:e} $$\n";
+    let mut style = sardown_style::Stylesheet::default();
+    style.heading.number_from_level = 2;
+    let blocks = sardown_ast::parse_with_style(md, &mut sardown_ast::SlugGenerator::new(), &mut 0, &style);
+    let mut diagrams = DiagramTable::new();
+    for b in &blocks {
+        if let BlockNode::Math { id, .. } = b {
+            diagrams.insert(id.clone(), dummy_diagram(100.0, 20.0));
+        }
+    }
+    let mut fs = test_font_system();
+    let out = layout_impl(&blocks, &letter_geometry(), &mut fs, &fixtures_dir(), &diagrams, &style);
+    let links: Vec<String> = out
+        .pages
+        .iter()
+        .flat_map(|p| p.elements.iter())
+        .filter_map(|e| match e {
+            PositionedElement::LinkAnnotation { destination: LinkTarget::InternalAnchor(id), .. } => Some(id.clone()),
+            _ => None,
+        })
+        .collect();
+    let mut ids: Vec<&str> = links.iter().map(String::as_str).collect();
+    ids.sort_unstable();
+    assert_eq!(ids, ["cite:a", "cite:b", "label:eq:e", "label:fig:f", "label:tab:t", "sec:i"]);
+    for id in &links {
+        assert!(out.anchors.contains_key(id), "no anchor laid out for link target {id}");
+    }
+}

@@ -34,6 +34,20 @@ traditional 12pt, and a simple running page number in the top-right
 header (no footer) — shown on every page including the first. Block
 quotes get the APA/MLA 0.5-inch indent rather than the default.
 
+### arXiv Preprint
+
+Single-column look of a computer-science arXiv preprint: Letter page,
+1-inch margins, a Times-style serif (`Nimbus Roman`) at 10pt, justified and
+hyphenated text, bold headings (title 17pt, sections 12pt, subsections
+11pt), horizontal-rule tables, and a centered page number. Put the title,
+authors and abstract in a YAML front-matter block (centered title block,
+indented abstract), and write sections as `##`: they are numbered
+automatically ("1", "1.1"), and captions, equation labels and `@` references
+work as described in [Writing Markdown](../markdown-support.md), and `[@key]`
+citations build a numbered References list from the front matter.
+`arxiv-twocolumn.toml` is the conference-proceedings variant: 0.75-inch
+margins and two columns, with the title block and abstract at full width.
+
 ### Technical Manual
 
 The style of a printed reference manual: tighter 20mm margins, a

@@ -9,6 +9,7 @@ pub struct HeadingLevelStyle {
     pub size_pt: Option<f32>,
     pub color: Option<Color>,
     pub font_family: Option<String>,
+    pub bold: Option<bool>,
     pub underline_width_pt: Option<f32>,
     pub underline_color: Option<Color>,
 }
@@ -19,6 +20,11 @@ pub struct HeadingStyle {
     pub space_before_factor: f32,
     pub color: Color,
     pub font_family: String,
+    pub bold: bool,
+    /// Auto-numbers headings from this level down: that level is "1", "2", ..., the next "1.1",
+    /// and so on. Shallower headings (a document title) are left unnumbered. `0` (the default)
+    /// turns numbering off.
+    pub number_from_level: u8,
     /// `0.0` (the default) draws no underline at all -- see `resolve()`.
     pub underline_width_pt: f32,
     pub underline_color: Color,
@@ -35,6 +41,8 @@ impl Default for HeadingStyle {
             space_before_factor: 0.8,
             color: Color([0, 0, 0]),
             font_family: "sans-serif".to_string(),
+            bold: false,
+            number_from_level: 0,
             underline_width_pt: 0.0,
             underline_color: Color([0, 0, 0]),
             levels: BTreeMap::new(),
@@ -47,6 +55,7 @@ pub struct ResolvedHeadingStyle {
     pub size_pt: f32,
     pub color: Color,
     pub font_family: String,
+    pub bold: bool,
     pub underline_width_pt: f32,
     pub underline_color: Color,
 }
@@ -60,8 +69,9 @@ impl HeadingStyle {
         let size_pt = level_override.and_then(|l| l.size_pt).unwrap_or_else(|| DEFAULT_LEVEL_SIZES_PT[(level.clamp(1, 6) - 1) as usize]);
         let color = level_override.and_then(|l| l.color).unwrap_or(self.color);
         let font_family = level_override.and_then(|l| l.font_family.clone()).unwrap_or_else(|| self.font_family.clone());
+        let bold = level_override.and_then(|l| l.bold).unwrap_or(self.bold);
         let underline_width_pt = level_override.and_then(|l| l.underline_width_pt).unwrap_or(self.underline_width_pt);
         let underline_color = level_override.and_then(|l| l.underline_color).unwrap_or(self.underline_color);
-        ResolvedHeadingStyle { size_pt, color, font_family, underline_width_pt, underline_color }
+        ResolvedHeadingStyle { size_pt, color, font_family, bold, underline_width_pt, underline_color }
     }
 }
