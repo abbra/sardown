@@ -2004,3 +2004,27 @@ fn citation_numbers_and_figure_table_and_equation_references_link_to_laid_out_an
         assert!(out.anchors.contains_key(id), "no anchor laid out for link target {id}");
     }
 }
+
+#[test]
+fn text_after_a_full_width_block_at_the_page_bottom_starts_a_new_page_instead_of_overflowing() {
+    let mut style = sardown_style::Stylesheet::default();
+    style.page.body_columns = 2;
+    let mut fs = test_font_system();
+    let bottom_pt = (279.4 - 25.4) * 2.834_645_7;
+    for (words, height) in (900..1500).step_by(5).flat_map(|w| [10.0, 20.0, 30.0, 40.0].map(|h| (w, h))) {
+        let md = format!("# Title\n\n## Body\n\n{}\n\n$$ E = mc^2 $$\n\n{}\n", "word ".repeat(words), "tail ".repeat(40));
+        let blocks = sardown_ast::parse_with_style(&md, &mut sardown_ast::SlugGenerator::new(), &mut 0, &style);
+        let mut diagrams = DiagramTable::new();
+        for b in &blocks {
+            if let BlockNode::Math { id, .. } = b {
+                diagrams.insert(id.clone(), dummy_diagram(100.0, height));
+            }
+        }
+        let pages = layout_impl(&blocks, &letter_geometry(), &mut fs, &fixtures_dir(), &diagrams, &style).pages;
+        for run in pages.iter().flat_map(|p| &p.elements) {
+            if let PositionedElement::TextRun { text, y, .. } = run {
+                assert!(*y <= bottom_pt + 1.0, "{words} words: {text:?} at y={y} is below the page bottom {bottom_pt}");
+            }
+        }
+    }
+}
