@@ -11,6 +11,8 @@ use std::sync::Arc;
 
 const PT_PER_MM: f32 = 2.834_645_7;
 const LINE_SPACING_PT: f32 = 4.0; // gap after each block
+/// Extra space below a graphic: between a figure and its caption, and under an equation.
+const GRAPHIC_GAP_PT: f32 = 6.0;
 
 /// `style` is read fresh on every call into `render_block` -- but only *some* of its fields
 /// actually feed rendered output that way. `Heading`/`Paragraph`/`Table` text size and color come
@@ -1450,6 +1452,10 @@ fn render_block(
                 // ascender extends further than the flat LINE_SPACING_PT gap visibly punches
                 // into the diagram instead of sitting cleanly below it.
                 cursor.y += next_ascent_gap_pt(next_block);
+                // An equation gets the same breathing room below as a figure above its caption.
+                if matches!(block, BlockNode::Math { .. }) && !matches!(next_block, Some(BlockNode::Caption { .. })) {
+                    cursor.y += GRAPHIC_GAP_PT;
+                }
             }
         }
         BlockNode::Columns(columns) => {
@@ -1527,11 +1533,10 @@ fn render_block(
 }
 
 /// Extra gap below a graphic with a hard bottom edge so the next block's first-line ascender
-/// (`cursor.y` is a baseline) doesn't overprint it. A caption gets `CAPTION_GAP_PT` more so it
+/// (`cursor.y` is a baseline) doesn't overprint it. A caption gets `GRAPHIC_GAP_PT` more so it
 /// doesn't crowd the figure it belongs to.
 fn next_ascent_gap_pt(next_block: Option<&BlockNode>) -> f32 {
-    const CAPTION_GAP_PT: f32 = 6.0;
-    let caption_gap = if matches!(next_block, Some(BlockNode::Caption { .. })) { CAPTION_GAP_PT } else { 0.0 };
+    let caption_gap = if matches!(next_block, Some(BlockNode::Caption { .. })) { GRAPHIC_GAP_PT } else { 0.0 };
     (estimate_next_block_ascent_pt(next_block) - LINE_SPACING_PT).max(0.0) + caption_gap
 }
 
