@@ -1789,6 +1789,19 @@ pub fn layout_with_assets(
         if column_count > 1 && i >= head_len {
             match (cursor.body_columns.is_some(), unit_end.is_some()) {
                 (false, false) => {
+                    // A column body that cannot fit one line here would leave its first column
+                    // empty and force a line into the second one past the margin: start a page.
+                    let first_size = match &ast[i] {
+                        BlockNode::Heading { content, .. }
+                        | BlockNode::Paragraph { content }
+                        | BlockNode::Caption { content, .. }
+                        | BlockNode::Anchored { content, .. } => content.first().map(|n| n.style.size),
+                        _ => None,
+                    };
+                    let lines = if matches!(ast[i], BlockNode::Heading { .. }) { 2.0 } else { 1.0 };
+                    if first_size.is_some_and(|size| cursor.remaining_height() < lines * estimate_line_height(size)) && !cursor.current.is_empty() {
+                        cursor.break_page(margin_pt);
+                    }
                     cursor.begin_columns(column_count, gap_pt);
                     group = ColumnGroup::default();
                 }
