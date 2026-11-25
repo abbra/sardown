@@ -1881,8 +1881,12 @@ fn two_column_body_keeps_the_head_full_width_and_flows_text_through_two_columns(
 }
 
 #[test]
-fn two_column_body_lets_tables_span_both_columns_and_balances_the_last_page() {
-    let md = format!("# Title\n\n## Body\n\n{}\n\n| A | B | C |\n|---|---|---|\n| 1 | 2 | 3 |\n\n{}\n", "word ".repeat(60), "tail ".repeat(60));
+fn wide_table_balances_only_the_columns_above_it() {
+    let md = format!(
+        "# Title\n\n## Body\n\n{}\n\n| A | B | C |\n|---|---|---|\n| 1 | 2 | 3 |\n\nTable: Wide. {{.wide}}\n\n{}\n",
+        "word ".repeat(60),
+        "tail ".repeat(60)
+    );
     let blocks = parse(&md);
     let mut style = sardown_style::Stylesheet::default();
     style.page.body_columns = 2;
@@ -1897,11 +1901,8 @@ fn two_column_body_lets_tables_span_both_columns_and_balances_the_last_page() {
     let middle = 215.9 * 2.834_645_7 / 2.0;
     let table_c = runs.iter().find(|r| r.0 == "C").expect("table header C");
     assert!(table_c.1 > middle, "table spans the full width, third column at {}", table_c.1);
-    // Both column groups are balanced: text sits in the right column above and below the table.
-    for (name, above) in [("word", true), ("tail", false)] {
-        let right = runs.iter().filter(|r| r.0.starts_with(name) && r.1 > middle && (r.2 < table_c.2) == above).count();
-        assert!(right > 0, "{name} text reaches the right column");
-    }
+    assert!(runs.iter().any(|r| r.0.starts_with("word") && r.1 > middle && r.2 < table_c.2));
+    assert!(runs.iter().filter(|r| r.0.starts_with("tail")).all(|r| r.1 < middle && r.2 > table_c.2));
 }
 
 #[test]
@@ -1916,7 +1917,7 @@ fn a_heading_and_a_caption_stay_on_the_page_of_the_full_width_table_they_belong_
     };
     // Sweep the filler so the heading lands at every distance from the page bottom.
     for words in (900..1500).step_by(25) {
-        let md = format!("# Title\n\n## Body\n\n{}\n\n### Head\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nTable: Sweep caption.\n", "word ".repeat(words));
+        let md = format!("# Title\n\n## Body\n\n{}\n\n### Head\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nTable: Sweep caption. {{.wide}}\n", "word ".repeat(words));
         let blocks = sardown_ast::parse_with_style(&md, &mut sardown_ast::SlugGenerator::new(), &mut 0, &style);
         let pages = layout_impl(&blocks, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style).pages;
         let (head, table, caption) = (page_of(&pages, "Head"), page_of(&pages, "A"), page_of(&pages, "Sweep caption."));
@@ -1930,7 +1931,7 @@ fn a_caption_above_a_display_equation_stays_on_its_page() {
     style.page.body_columns = 2;
     let mut fs = test_font_system();
     for words in (900..1500).step_by(25) {
-        let md = format!("# Title\n\n## Body\n\n{}\n\nFigure: Sweep caption.\n\n$$x$$\n", "word ".repeat(words));
+        let md = format!("# Title\n\n## Body\n\n{}\n\nFigure: Sweep caption. {{.wide}}\n\n$$x$$\n", "word ".repeat(words));
         let blocks = sardown_ast::parse_with_style(&md, &mut sardown_ast::SlugGenerator::new(), &mut 0, &style);
         let mut diagrams = DiagramTable::new();
         for b in &blocks {
@@ -1952,7 +1953,11 @@ fn footnotes_of_a_balanced_column_group_sit_at_the_page_bottom_without_unbalanci
     style.page.body_columns = 2;
     let para = |n: usize| format!("{} note[^{n}]\n\n", "word ".repeat(90));
     let defs: String = (1..=3).map(|n| format!("[^{n}]: Footnote text {n}.\n\n")).collect();
-    let md = format!("# Title\n\n## Body\n\n{}| A | B |\n|---|---|\n| 1 | 2 |\n\n{}\n{defs}", (1..=3).map(para).collect::<String>(), "tail ".repeat(20));
+    let md = format!(
+        "# Title\n\n## Body\n\n{}| A | B |\n|---|---|\n| 1 | 2 |\n\nTable: Wide. {{.wide}}\n\n{}\n{defs}",
+        (1..=3).map(para).collect::<String>(),
+        "tail ".repeat(20)
+    );
     let blocks = sardown_ast::parse_with_style(&md, &mut sardown_ast::SlugGenerator::new(), &mut 0, &style);
     let mut fs = test_font_system();
     let pages = layout_impl(&blocks, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style).pages;
@@ -2012,7 +2017,7 @@ fn text_after_a_full_width_block_at_the_page_bottom_starts_a_new_page_instead_of
     let mut fs = test_font_system();
     let bottom_pt = (279.4 - 25.4) * 2.834_645_7;
     for (words, height) in (940..1000).step_by(3).flat_map(|w| [10.0, 20.0, 30.0, 40.0].map(|h| (w, h))) {
-        let md = format!("# Title\n\n## Body\n\n{}\n\n$$ E = mc^2 $$\n\n{}\n", "word ".repeat(words), "tail ".repeat(40));
+        let md = format!("# Title\n\n## Body\n\n{}\n\n$$ E = mc^2 $$\n\nFigure: Wide. {{.wide}}\n\n{}\n", "word ".repeat(words), "tail ".repeat(40));
         let blocks = sardown_ast::parse_with_style(&md, &mut sardown_ast::SlugGenerator::new(), &mut 0, &style);
         let mut diagrams = DiagramTable::new();
         for b in &blocks {
@@ -2073,7 +2078,7 @@ fn a_caption_sits_further_below_its_image_than_a_paragraph_would() {
             .expect("text")
     };
     let paragraph = baseline_after(BlockNode::Paragraph { content: vec![plain_inline("Text")] });
-    let caption = baseline_after(BlockNode::Caption { id: None, content: vec![plain_inline("Text")] });
+    let caption = baseline_after(BlockNode::Caption { id: None, content: vec![plain_inline("Text")], wide: false });
     assert!(caption >= paragraph + 5.0, "caption baseline {caption} should be at least 5pt below the paragraph baseline {paragraph}");
 }
 
@@ -2110,6 +2115,52 @@ fn text_after_graphic_matches_caption_gap(diagrams: &DiagramTable, graphic: Bloc
             .expect("text")
     };
     let paragraph = baseline_after(BlockNode::Paragraph { content: vec![plain_inline("Text")] });
-    let caption = baseline_after(BlockNode::Caption { id: None, content: vec![plain_inline("Text")] });
+    let caption = baseline_after(BlockNode::Caption { id: None, content: vec![plain_inline("Text")], wide: false });
     assert!((paragraph - caption).abs() < 0.01, "paragraph gap {paragraph} should equal the caption gap {caption}");
+}
+
+#[test]
+fn equations_and_tables_stay_in_their_column_and_the_second_column_continues_the_first() {
+    let md = format!("# Title\n\n## Body\n\nIntro.\n\n$$ E = mc^2 $$\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n{}\n", "tail ".repeat(1500));
+    let blocks = sardown_ast::parse_with_style(&md, &mut sardown_ast::SlugGenerator::new(), &mut 0, &sardown_style::Stylesheet::default());
+    let mut diagrams = DiagramTable::new();
+    for b in &blocks {
+        if let BlockNode::Math { id, .. } = b {
+            diagrams.insert(id.clone(), dummy_diagram(100.0, 20.0));
+        }
+    }
+    let mut style = sardown_style::Stylesheet::default();
+    style.page.body_columns = 2;
+    let mut fs = test_font_system();
+    let pages = layout_impl(&blocks, &letter_geometry(), &mut fs, &fixtures_dir(), &diagrams, &style).pages;
+    let middle = 215.9 * 2.834_645_7 / 2.0;
+    let equation = pages[0]
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::VectorGraphic { x, width, .. } => Some(x + width),
+            _ => None,
+        })
+        .expect("equation");
+    assert!(equation < middle, "the equation ends at {equation}, inside the left column");
+    assert!(pages[0].elements.iter().any(|e| matches!(e, PositionedElement::TextRun { x, text, .. } if text.trim() == "B" && *x < middle)));
+    let text = |left: bool| {
+        pages[0]
+            .elements
+            .iter()
+            .filter_map(|e| match e {
+                PositionedElement::TextRun { x, y, text, .. } if (*x < middle) == left && text.starts_with("tail") => Some(*y),
+                _ => None,
+            })
+            .collect::<Vec<f32>>()
+    };
+    let (left, right) = (text(true), text(false));
+    assert!(!left.is_empty() && !right.is_empty(), "the paragraph continues into the right column");
+    // Cutting the paragraph short must leave the rest of the page's left column available,
+    // not redistribute the equation, table or following text into the right column.
+    let mut short = blocks;
+    *short.last_mut().unwrap() = BlockNode::Paragraph { content: vec![plain_inline("tail")] };
+    let short = layout_impl(&short, &letter_geometry(), &mut fs, &fixtures_dir(), &diagrams, &style).pages;
+    assert_eq!(short.len(), 1);
+    assert!(short[0].elements.iter().all(|e| !matches!(e, PositionedElement::TextRun { x, .. } if *x > middle)));
 }

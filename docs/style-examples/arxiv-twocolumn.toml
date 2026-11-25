@@ -1,7 +1,7 @@
 # The two-column variant of arxiv.toml, in the style of conference proceedings: Letter page,
 # 0.75-inch margins, two justified columns 0.25 inch apart. The title block and abstract (everything
 # before the first `##` heading) span the full width; the sections that follow flow through the
-# columns, with images, tables and display equations spanning both. Same front matter, numbering and citations as arxiv.toml.
+# left column first. Use {.wide} on a caption only when its block needs both columns.
 #
 # "Nimbus Roman" and "Nimbus Mono PS" are metric-compatible Times and Courier clones. If they
 # are not installed, name any other serif and monospace font (e.g. "Times New Roman",

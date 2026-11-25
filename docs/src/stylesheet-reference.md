@@ -40,12 +40,11 @@ margins (both must be set together too).
 `body_columns = 2` flows the body through that many columns separated by
 `[columns] gap_pt`; blocks before the first `##`-or-deeper heading (the title
 block and abstract) keep the full page width. Footnotes sit under the column
-that cites them. Images, tables, display equations and diagrams span the full
-page width, ending the columns above them and starting new ones below. The
-columns of the page before each such block, and of the last page, are balanced
-to equal height. Headings stay with the full-width block that follows them,
-and a caption stays with the image, table or equation beside it: the whole unit moves to
-the next page together.
+that cites them. Images, tables, equations and diagrams stay in the current
+column, with their adjacent caption. The next column starts when the next
+line or kept-together block no longer fits; the last page is not balanced.
+To span the page, mark the caption, for example `Table: Results. {#tab:results .wide}`.
+Only the columns immediately above such a block are balanced.
 
 ### `[page.numbering]`
 

@@ -76,7 +76,12 @@ pub enum BlockNode {
     /// A `Figure: ` / `Table: ` caption, already numbered. Laid out like a paragraph, but kept on
     /// one page with the image, table, equation or diagram directly after it, else directly before it.
     /// `id` is the anchor `@label` references link to, when the caption carries a `{#label}`.
-    Caption { id: Option<String>, content: Vec<InlineNode> },
+    /// `wide` (a `{.wide}` attribute) makes a two-column layout span both columns with the block.
+    Caption {
+        id: Option<String>,
+        content: Vec<InlineNode>,
+        wide: bool,
+    },
     /// A paragraph that links point at (a numbered bibliography entry); `id` is its anchor.
     Anchored {
         id: String,
