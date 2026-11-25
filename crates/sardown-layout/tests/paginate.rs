@@ -2028,3 +2028,31 @@ fn text_after_a_full_width_block_at_the_page_bottom_starts_a_new_page_instead_of
         }
     }
 }
+
+#[test]
+fn a_paragraph_after_an_image_starts_below_its_bottom_edge() {
+    let uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAIAAAD/gAIDAAAAn0lEQVR42u3QMQEAAAgDoGn/zlrBzwciUMmEm1YgS5YsWbJkKZAlS5YsWbIUyJIlS5YsWQpkyZIlS5YsBbJkyZIlS5YCWbJkyZIlS4EsWbJkyZKlQJYsWbJkyVIgS5YsWbJkKZAlS5YsWbIUyJIlS5YsWQpkyZIlS5YsBbJkyZIlS5YCWbJkyZIlS4EsWbJkyZKlQJYsWbJkyVIgS9a3BYhgAcfD6UIlAAAAAElFTkSuQmCC";
+    let ast = vec![
+        BlockNode::Image { alt: String::new(), title: None, source: sardown_ast::ImageSource::DataUri(uri.to_string()) },
+        BlockNode::Paragraph { content: vec![plain_inline("Caption text")] },
+    ];
+    let mut fs = test_font_system();
+    let elements = layout(&ast, &letter_geometry(), &mut fs, std::path::Path::new("/nonexistent"), &DiagramTable::new()).pages.remove(0).elements;
+
+    let bottom = elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::RasterImage { y, height, .. } => Some(y + height),
+            _ => None,
+        })
+        .expect("image");
+    let (baseline, size) = elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::TextRun { y, size, .. } => Some((*y, *size)),
+            _ => None,
+        })
+        .expect("text");
+    // `y` is the baseline; the glyphs reach about 0.7 em above it.
+    assert!(baseline - 0.7 * size >= bottom, "text (baseline {baseline}) overprints the image bottom edge {bottom}");
+}
