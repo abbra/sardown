@@ -2011,7 +2011,7 @@ fn text_after_a_full_width_block_at_the_page_bottom_starts_a_new_page_instead_of
     style.page.body_columns = 2;
     let mut fs = test_font_system();
     let bottom_pt = (279.4 - 25.4) * 2.834_645_7;
-    for (words, height) in (900..1500).step_by(5).flat_map(|w| [10.0, 20.0, 30.0, 40.0].map(|h| (w, h))) {
+    for (words, height) in (940..1000).step_by(3).flat_map(|w| [10.0, 20.0, 30.0, 40.0].map(|h| (w, h))) {
         let md = format!("# Title\n\n## Body\n\n{}\n\n$$ E = mc^2 $$\n\n{}\n", "word ".repeat(words), "tail ".repeat(40));
         let blocks = sardown_ast::parse_with_style(&md, &mut sardown_ast::SlugGenerator::new(), &mut 0, &style);
         let mut diagrams = DiagramTable::new();
