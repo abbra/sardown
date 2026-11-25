@@ -46,6 +46,52 @@ sardown render-book path/to/my-book -o my-book.pdf
 sardown render-slides slides.md -o slides.pdf
 ```
 
+## arXiv-style papers
+
+Two presets in [`docs/style-examples/`](./docs/style-examples/) turn Markdown into a
+preprint that looks like a LaTeX-typeset arXiv paper:
+
+| Preset | Layout |
+|---|---|
+| `arxiv.toml` | One column: Letter, 10pt Times-style justified body, numbered sections |
+| `arxiv-twocolumn.toml` | Two columns with 0.75in margins; title block and abstract stay full width |
+
+```bash
+sardown render paper.md --style docs/style-examples/arxiv-twocolumn.toml -o paper.pdf
+```
+
+The presets use Nimbus Roman (a metric-compatible Times clone); without it sardown falls
+back to a sans-serif font with a warning. `paper.md` can use:
+
+````markdown
+---
+title: A Study of Things
+author: [Jane Doe, Example University]
+abstract: |
+  We study things.
+references:
+  knuth84: "D. Knuth. *The TeXbook*. Addison-Wesley, 1984."
+---
+
+## Introduction {#sec:intro}
+
+Following [@knuth84], @eq:e holds.[^1] See @sec:intro and @fig:f.
+
+$$ E = mc^2 \label{eq:e} $$
+
+![A plot](plot.png)
+
+Figure: A plot of things. {#fig:f}
+
+[^1]: A footnote, set at the bottom of the page.
+````
+
+Numbered sections, equations, figures and tables; display math; footnotes; numbered
+citations with a References list; and linked cross-references all work in both presets. In
+the two-column preset, images, tables and display equations span both columns, and the
+last page's columns are balanced. Inline `$...$` math is not typeset. Details are in
+[Markdown support](./docs/src/markdown-support.md).
+
 ## Documentation
 
 The full guide (installation, Markdown/diagram support, book and slide
