@@ -2076,3 +2076,19 @@ fn a_caption_sits_further_below_its_image_than_a_paragraph_would() {
     let caption = baseline_after(BlockNode::Caption { id: None, content: vec![plain_inline("Text")] });
     assert!(caption >= paragraph + 5.0, "caption baseline {caption} should be at least 5pt below the paragraph baseline {paragraph}");
 }
+
+#[test]
+fn text_after_a_display_equation_keeps_the_same_gap_a_caption_gets_below_a_figure() {
+    let mut diagrams = DiagramTable::new();
+    diagrams.insert("m".to_string(), dummy_diagram(100.0, 40.0));
+    let baseline_after = |next: BlockNode| {
+        let ast = vec![BlockNode::Math { id: "m".to_string(), source: String::new() }, next];
+        let mut fs = test_font_system();
+        let elements = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &diagrams).pages.remove(0).elements;
+        let bottom = elements.iter().find_map(|e| match e { PositionedElement::VectorGraphic { y, height, .. } => Some(y + height), _ => None }).expect("equation");
+        elements.iter().find_map(|e| match e { PositionedElement::TextRun { y, .. } => Some(*y - bottom), _ => None }).expect("text")
+    };
+    let paragraph = baseline_after(BlockNode::Paragraph { content: vec![plain_inline("Text")] });
+    let caption = baseline_after(BlockNode::Caption { id: None, content: vec![plain_inline("Text")] });
+    assert!((paragraph - caption).abs() < 0.01, "paragraph gap {paragraph} should equal the caption gap {caption}");
+}
