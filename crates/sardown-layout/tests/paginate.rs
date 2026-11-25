@@ -2083,6 +2083,30 @@ fn a_caption_sits_further_below_its_image_than_a_paragraph_would() {
 }
 
 #[test]
+fn prose_has_matching_clearance_on_both_sides_of_display_math() {
+    let mut diagrams = DiagramTable::new();
+    diagrams.insert("m".into(), dummy_diagram(100.0, 40.0));
+    let prose = BlockNode::Paragraph { content: vec![sized_inline("Type", 12.0)] };
+    let ast = [prose.clone(), BlockNode::Math { id: "m".into(), source: String::new() }, prose];
+    let page = layout(&ast, &letter_geometry(), &mut test_font_system(), &fixtures_dir(), &diagrams).pages.remove(0);
+    let mut baselines = page.elements.iter().filter_map(|e| match e {
+        PositionedElement::TextRun { y, .. } => Some(*y),
+        _ => None,
+    });
+    let (top, bottom) = page
+        .elements
+        .iter()
+        .find_map(|e| match e {
+            PositionedElement::VectorGraphic { y, height, .. } => Some((*y, y + height)),
+            _ => None,
+        })
+        .unwrap();
+    let above = top - (baselines.next().unwrap() + 0.2 * 12.0);
+    let below = baselines.next().unwrap() - 0.8 * 12.0 - bottom;
+    assert!(above > 0.0 && (above - below).abs() < 2.0, "{above} above, {below} below");
+}
+
+#[test]
 fn text_after_a_display_equation_or_diagram_keeps_the_same_gap_a_caption_gets_below_a_figure() {
     let mut diagrams = DiagramTable::new();
     diagrams.insert("m".to_string(), dummy_diagram(100.0, 40.0));
