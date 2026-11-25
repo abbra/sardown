@@ -2056,3 +2056,23 @@ fn a_paragraph_after_an_image_starts_below_its_bottom_edge() {
     // `y` is the baseline; the glyphs reach about 0.7 em above it.
     assert!(baseline - 0.7 * size >= bottom, "text (baseline {baseline}) overprints the image bottom edge {bottom}");
 }
+
+#[test]
+fn a_caption_sits_further_below_its_image_than_a_paragraph_would() {
+    let uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAIAAAD/gAIDAAAAn0lEQVR42u3QMQEAAAgDoGn/zlrBzwciUMmEm1YgS5YsWbJkKZAlS5YsWbIUyJIlS5YsWQpkyZIlS5YsBbJkyZIlS5YCWbJkyZIlS4EsWbJkyZKlQJYsWbJkyVIgS5YsWbJkKZAlS5YsWbIUyJIlS5YsWQpkyZIlS5YsBbJkyZIlS5YCWbJkyZIlS4EsWbJkyZKlQJYsWbJkyVIgS9a3BYhgAcfD6UIlAAAAAElFTkSuQmCC";
+    let baseline_after = |next: BlockNode| {
+        let ast = vec![BlockNode::Image { alt: String::new(), title: None, source: sardown_ast::ImageSource::DataUri(uri.to_string()) }, next];
+        let mut fs = test_font_system();
+        let elements = layout(&ast, &letter_geometry(), &mut fs, std::path::Path::new("/nonexistent"), &DiagramTable::new()).pages.remove(0).elements;
+        elements
+            .iter()
+            .find_map(|e| match e {
+                PositionedElement::TextRun { y, .. } => Some(*y),
+                _ => None,
+            })
+            .expect("text")
+    };
+    let paragraph = baseline_after(BlockNode::Paragraph { content: vec![plain_inline("Text")] });
+    let caption = baseline_after(BlockNode::Caption { id: None, content: vec![plain_inline("Text")] });
+    assert!(caption >= paragraph + 5.0, "caption baseline {caption} should be at least 5pt below the paragraph baseline {paragraph}");
+}

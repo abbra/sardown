@@ -1527,9 +1527,12 @@ fn render_block(
 }
 
 /// Extra gap below a graphic with a hard bottom edge so the next block's first-line ascender
-/// (`cursor.y` is a baseline) doesn't overprint it.
+/// (`cursor.y` is a baseline) doesn't overprint it. A caption gets `CAPTION_GAP_PT` more so it
+/// doesn't crowd the figure it belongs to.
 fn next_ascent_gap_pt(next_block: Option<&BlockNode>) -> f32 {
-    (estimate_next_block_ascent_pt(next_block) - LINE_SPACING_PT).max(0.0)
+    const CAPTION_GAP_PT: f32 = 6.0;
+    let caption_gap = if matches!(next_block, Some(BlockNode::Caption { .. })) { CAPTION_GAP_PT } else { 0.0 };
+    (estimate_next_block_ascent_pt(next_block) - LINE_SPACING_PT).max(0.0) + caption_gap
 }
 
 /// Renders whichever of `images`/`diagrams` actually has an entry for `key` -- shared by
