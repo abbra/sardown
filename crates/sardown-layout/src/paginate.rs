@@ -851,7 +851,7 @@ fn render_block(
                 cursor.pending_heading = None;
             }
         }
-        BlockNode::Paragraph { content } | BlockNode::Caption { content, id: None } => {
+        BlockNode::Paragraph { content } | BlockNode::Caption { content, id: None, .. } => {
             let max_width_pt = cursor.content_width_pt - indent_pt;
             place_inline_content(
                 cursor,
@@ -860,7 +860,7 @@ fn render_block(
                 font_system,
             );
         }
-        BlockNode::Caption { id: Some(id), content } | BlockNode::Anchored { id, content } => {
+        BlockNode::Caption { id: Some(id), content, .. } | BlockNode::Anchored { id, content } => {
             // Anchor where the first line lands: move to the next page first if it would not fit here.
             let first_line_pt = estimate_line_height(content.first().map_or(12.0, |n| n.style.size));
             if cursor.remaining_height() < first_line_pt && !cursor.current.is_empty() {
@@ -1673,22 +1673,30 @@ pub fn layout_impl(
 
 /// Where the unit starting at `i` ends: any headings, then an optional caption above a full-width
 /// block (image, table, equation, diagram), the block, and an optional caption below it. A
-/// heading or caption stays with its block; `None` when no full-width block follows.
-fn spanning_unit_end(ast: &[BlockNode], i: usize) -> Option<usize> {
+/// heading or caption stays with its block; `None` when no such block follows. The flag says the
+/// unit is `{.wide}`: in a column layout it spans both columns instead of sitting in one.
+fn spanning_unit_end(ast: &[BlockNode], i: usize) -> Option<(usize, bool)> {
     let is = |j: usize, f: fn(&BlockNode) -> bool| ast.get(j).is_some_and(f);
     let mut j = i;
     while is(j, |b| matches!(b, BlockNode::Heading { .. })) {
         j += 1;
     }
     let spans = |b: &BlockNode| matches!(b, BlockNode::Image { .. } | BlockNode::Table { .. } | BlockNode::Math { .. } | BlockNode::MermaidDiagram { .. });
+    let wide = |j: usize| matches!(ast.get(j), Some(BlockNode::Caption { wide: true, .. }));
+    let mut is_wide = false;
     if is(j, |b| matches!(b, BlockNode::Caption { .. })) && is(j + 1, spans) {
+        is_wide |= wide(j);
         j += 1;
     }
     if !is(j, spans) {
         return None;
     }
     j += 1;
-    Some(j + usize::from(is(j, |b| matches!(b, BlockNode::Caption { .. }))))
+    if is(j, |b| matches!(b, BlockNode::Caption { .. })) {
+        is_wide |= wide(j);
+        j += 1;
+    }
+    Some((j, is_wide))
 }
 
 /// Renders a unit of blocks that must share a page: when it would run onto the next page and
@@ -1804,11 +1812,13 @@ pub fn layout_with_assets(
     let head_len = ast.iter().position(|b| matches!(b, BlockNode::Heading { level, .. } if *level >= 2)).unwrap_or(0);
     cursor.footnotes = shape_footnotes(ast, column_width_pt, cursor.page_height_pt, margin_pt, stylesheet, font_system);
     let mut group = ColumnGroup::default();
+    let last_wide = (column_count > 1).then(|| ast.iter().rposition(|b| matches!(b, BlockNode::Caption { wide: true, .. }))).flatten();
     let mut i = 0;
     while i < ast.len() {
-        let unit_end = spanning_unit_end(ast, i);
+        let unit = spanning_unit_end(ast, i);
+        let unit_end = unit.map(|(end, _)| end);
         if column_count > 1 && i >= head_len {
-            match (cursor.body_columns.is_some(), unit_end.is_some()) {
+            match (cursor.body_columns.is_some(), unit.is_some_and(|(_, wide)| wide)) {
                 (false, false) => {
                     // A column body that cannot fit one line here would leave its first column
                     // empty and force a line into the second one past the margin: start a page.
@@ -1829,7 +1839,7 @@ pub fn layout_with_assets(
                 (true, true) => group.end(&mut cursor, i, ast, margin_pt, font_system, assets),
                 _ => {}
             }
-            if cursor.body_columns.is_some() {
+            if cursor.body_columns.is_some() && last_wide.is_some_and(|last| i < last) {
                 group.note_block(&mut cursor, i);
             }
         }
@@ -1837,7 +1847,7 @@ pub fn layout_with_assets(
         render_unit(&mut cursor, i..end, ast, margin_pt, font_system, assets);
         i = end;
     }
-    group.end(&mut cursor, ast.len(), ast, margin_pt, font_system, assets);
+    cursor.end_columns();
     let (pages, anchors, page_contexts) = cursor.finish();
     LayoutOutput {
         pages,

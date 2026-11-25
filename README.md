@@ -88,8 +88,9 @@ Figure: A plot of things. {#fig:f}
 
 Numbered sections, equations, figures and tables; display math; footnotes; numbered
 citations with a References list; and linked cross-references all work in both presets. In
-the two-column preset, images, tables and display equations span both columns, and the
-last page's columns are balanced. Inline `$...$` math is not typeset. Details are in
+the two-column preset, text fills the left column before continuing in the right. Images,
+tables, diagrams and equations stay in their column unless their caption ends in `{.wide}`.
+Inline `$...$` math is not typeset. Details are in
 [Markdown support](./docs/src/markdown-support.md).
 
 ## Documentation

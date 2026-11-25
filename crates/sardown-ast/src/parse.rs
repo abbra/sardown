@@ -609,19 +609,26 @@ fn number_document(blocks: &mut [BlockNode], style: &sardown_style::Stylesheet) 
                 let mut label = InlineNode { text: format!("{kind} {count}. "), ..first.clone() };
                 label.style.bold = true;
                 let mut id = None;
+                let mut wide = false;
                 if let Some(last) = content.last_mut() {
                     let trimmed = last.text.trim_end();
-                    if let Some(start) = trimmed.rfind("{#").filter(|_| trimmed.ends_with('}')) {
-                        let name = &trimmed[start + 2..trimmed.len() - 1];
-                        let anchor = format!("label:{name}");
-                        labels.insert(name.to_string(), (format!("{kind} {count}"), Some(anchor.clone())));
-                        id = Some(anchor);
-                        last.text.truncate(trimmed[..start].trim_end().len());
+                    // A trailing `{#label .wide}`: any order, at least one of the two.
+                    let attributes = trimmed.strip_suffix('}').and_then(|s| s.rsplit_once('{'));
+                    if let Some((prefix, attrs)) = attributes
+                        .filter(|(_, attrs)| !attrs.trim().is_empty() && attrs.split_whitespace().all(|w| w == ".wide" || (w.starts_with('#') && w.len() > 1)))
+                    {
+                        wide = attrs.split_whitespace().any(|w| w == ".wide");
+                        if let Some(name) = attrs.split_whitespace().find_map(|w| w.strip_prefix('#')) {
+                            let anchor = format!("label:{name}");
+                            labels.insert(name.to_string(), (format!("{kind} {count}"), Some(anchor.clone())));
+                            id = Some(anchor);
+                        }
+                        last.text.truncate(prefix.trim_end().len());
                     }
                 }
                 content.insert(0, label);
                 let content = std::mem::take(content);
-                *block = BlockNode::Caption { id, content };
+                *block = BlockNode::Caption { id, content, wide };
             }
             BlockNode::Math { id, source } => {
                 let Some(start) = source.find("\\label{") else { continue };
