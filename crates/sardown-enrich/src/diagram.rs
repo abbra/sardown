@@ -195,7 +195,6 @@ pub fn compile_diagrams_styled(ast: &[BlockNode], svg_options: &usvg::Options, s
 struct Renderers<'a> {
     merman: Renderer,
     ondine: bool,
-    #[cfg_attr(not(feature = "ondine"), allow(dead_code))]
     style: &'a Stylesheet,
 }
 
@@ -289,6 +288,22 @@ fn collect(ast: &[BlockNode], renderer: &Renderers, table: &mut DiagramTable, sv
                         };
                         eprintln!("warning: failed to render the Mermaid diagram at {location}: {e}");
                     }
+                }
+            }
+            BlockNode::Math { id, source } => {
+                let svg = match crate::math::render_math_svg(source, renderer.style.typography.body_size_pt) {
+                    Ok(svg) => svg,
+                    Err(e) => {
+                        eprintln!("warning: failed to typeset the equation `{}`: {e}", source.lines().next().unwrap_or_default());
+                        continue;
+                    }
+                };
+                match usvg::Tree::from_str(&svg, svg_options) {
+                    Ok(tree) => {
+                        let size = tree.size();
+                        table.insert(id.clone(), CompiledDiagram { width: size.width(), height: size.height(), tree });
+                    }
+                    Err(e) => eprintln!("warning: typeset equation is unparseable SVG: {e}"),
                 }
             }
             BlockNode::Blockquote { content } => collect(content, renderer, table, svg_options),

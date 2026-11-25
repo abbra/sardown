@@ -1,6 +1,7 @@
 use crate::{BlockNode, ColumnAlignment, HighlightedToken, ImageSource, InlineNode, LinkTarget, SlugGenerator, TextStyle};
-use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, MetadataBlockKind, Options, Parser, Tag, TagEnd};
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 const HEADING_SIZES: [f32; 6] = [28.0, 22.0, 18.0, 16.0, 14.0, 12.0];
@@ -105,6 +106,22 @@ fn apply_inline_event(builder: &mut InlineBuilder, event: Event) {
             builder.link_target = Some(link_target_from_url(&dest_url));
         }
         Event::End(TagEnd::Link) => builder.link_target = None,
+        // Math inside running text stays text (italic LaTeX source): only whole-paragraph
+        // `$$...$$` equations are typeset, because a line of text cannot carry an inline graphic.
+        Event::InlineMath(text) | Event::DisplayMath(text) => {
+            builder.italic_depth += 1;
+            builder.push_text(text.into_string());
+            builder.italic_depth -= 1;
+        }
+        // Placeholder: `resolve_footnotes` rewrites the label to a number once the whole document
+        // has been parsed (numbers follow reference order, not definition order).
+        Event::FootnoteReference(label) => {
+            let label = label.into_string();
+            builder.push_text(label.clone());
+            if let Some(run) = builder.runs.last_mut() {
+                run.link_target = Some(LinkTarget::Footnote(label));
+            }
+        }
         Event::SoftBreak | Event::HardBreak => builder.push_text(" ".to_string()),
         // pulldown-cmark consumes the literal "[ ]"/"[x]" and reports it as this event instead --
         // without handling it, the checkbox disappears from the rendered text entirely rather
@@ -166,6 +183,9 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
             // that starts a real nested block, so those still get handled normally afterward.
             Event::Text(_)
             | Event::Code(_)
+            | Event::InlineMath(_)
+            | Event::DisplayMath(_)
+            | Event::FootnoteReference(_)
             | Event::SoftBreak
             | Event::HardBreak
             | Event::TaskListMarker(_)
@@ -188,10 +208,17 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                 }
                 blocks.push(BlockNode::Paragraph { content: builder.runs });
             }
-            Event::Start(Tag::Heading { level, .. }) => {
+            Event::Start(Tag::MetadataBlock(_)) => {
+                let yaml = collect_plain_text_until(parser, TagEnd::MetadataBlock(MetadataBlockKind::YamlStyle));
+                match serde_saphyr::from_str::<FrontMatter>(&yaml) {
+                    Ok(front) => lower_front_matter(front, &mut blocks, slugs, next_diagram_id, typo),
+                    Err(e) => eprintln!("warning: ignoring front matter: {e}"),
+                }
+            }
+            Event::Start(Tag::Heading { level, id: explicit_id, .. }) => {
                 let level_u8 = heading_level_u8(level);
                 let resolved = typo.heading.resolve(level_u8);
-                let content = lower_inline_events(
+                let mut content = lower_inline_events(
                     parser,
                     TagEnd::Heading(level),
                     resolved.size_pt,
@@ -200,8 +227,12 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                     resolved.font_family.as_str().into(),
                     typo.code_font_family.clone(),
                 );
+                if resolved.bold {
+                    content.iter_mut().for_each(|n| n.style.bold = true);
+                }
                 let text: String = content.iter().map(|n| n.text.as_str()).collect::<Vec<_>>().join("");
-                let id = slugs.generate(&text);
+                // An explicit `{#id}` is the cross-reference label; the author keeps it unique.
+                let id = explicit_id.map(|id| id.into_string()).unwrap_or_else(|| slugs.generate(&text));
                 blocks.push(BlockNode::Heading { level: level_u8, id, content });
             }
             Event::Start(Tag::Paragraph) => {
@@ -209,6 +240,12 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                 // but this AST treats a paragraph containing *only* an image as a block-level
                 // Image node. Peek the first inline event to tell the two cases apart.
                 match parser.next() {
+                    Some(Event::DisplayMath(source)) if matches!(parser.peek(), Some(Event::End(TagEnd::Paragraph))) => {
+                        parser.next();
+                        let id = format!("math:{next_diagram_id}");
+                        *next_diagram_id += 1;
+                        blocks.push(BlockNode::Math { id, source: source.trim().to_string() });
+                    }
                     Some(Event::Start(Tag::Image { dest_url, title, .. })) => {
                         let alt = collect_plain_text_until(parser, TagEnd::Image);
                         for event in parser.by_ref() {
@@ -236,6 +273,22 @@ fn lower_block_events<'a, I: Iterator<Item = Event<'a>>>(
                     }
                     None => blocks.push(BlockNode::Paragraph { content: Vec::new() }),
                 }
+            }
+            Event::Start(Tag::FootnoteDefinition(label)) => {
+                let body = lower_block_events(parser, TagEnd::FootnoteDefinition, slugs, next_diagram_id, diagram_positions, typo);
+                let mut content: Vec<InlineNode> = Vec::new();
+                for block in body {
+                    if let BlockNode::Paragraph { content: paragraph } = block {
+                        if let (Some(_), Some(first)) = (content.last(), paragraph.first()) {
+                            let mut space = first.clone();
+                            space.text = " ".to_string();
+                            space.link_target = None;
+                            content.push(space);
+                        }
+                        content.extend(paragraph);
+                    }
+                }
+                blocks.push(BlockNode::FootnoteDefinition { id: label.into_string(), content });
             }
             Event::Start(Tag::CodeBlock(kind)) => {
                 let language = match kind {
@@ -408,6 +461,10 @@ pub fn parse_with_style(markdown: &str, slugs: &mut SlugGenerator, next_diagram_
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TASKLISTS);
+    options.insert(Options::ENABLE_MATH);
+    options.insert(Options::ENABLE_FOOTNOTES);
+    options.insert(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS);
+    options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
     // A ```mermaid fence implies the substring "mermaid", so this cheap scan gates the second
     // full pulldown-cmark pass below: documents without a single diagram (the overwhelming
     // majority) skip the extra tokenization entirely -- the same "gate expensive setup when the
@@ -425,7 +482,347 @@ pub fn parse_with_style(markdown: &str, slugs: &mut SlugGenerator, next_diagram_
     // TagEnd::Item is never opened at the top level, so it never matches; used only as a
     let mut parser = Parser::new_ext(markdown, options).peekable();
     // sentinel that can't legitimately occur, meaning we consume until the iterator is exhausted.
-    lower_block_events(&mut parser, TagEnd::Item, slugs, next_diagram_id, &mut diagram_positions, &typo)
+    let mut blocks = lower_block_events(&mut parser, TagEnd::Item, slugs, next_diagram_id, &mut diagram_positions, &typo);
+    resolve_footnotes(&mut blocks, next_diagram_id);
+    number_document(&mut blocks, style);
+    // After numbering, so the generated References heading stays unnumbered.
+    resolve_citations(&mut blocks, slugs, &typo, style.code_block.default.font_family.as_str());
+    blocks
+}
+
+/// YAML front matter. `author` and `authors` both take a string or a list; each entry is one
+/// centered line, so an affiliation can follow the name after a comma.
+#[derive(serde::Deserialize, Default)]
+struct FrontMatter {
+    title: Option<String>,
+    #[serde(default, alias = "author")]
+    authors: OneOrMany,
+    date: Option<String>,
+    r#abstract: Option<String>,
+    /// Bibliography entries keyed by citation key; each value is one Markdown paragraph.
+    #[serde(default)]
+    references: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum OneOrMany {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl Default for OneOrMany {
+    fn default() -> Self {
+        OneOrMany::Many(Vec::new())
+    }
+}
+
+/// Title in the level-1 heading style, then the author and date lines, then an "Abstract" label
+/// over the abstract (lowered as Markdown) in a blockquote, so the stylesheet's `[blockquote]`
+/// indent gives the narrower abstract measure.
+fn lower_front_matter(front: FrontMatter, blocks: &mut Vec<BlockNode>, slugs: &mut SlugGenerator, next_diagram_id: &mut usize, typo: &Typography) {
+    let line = |text: String, size: f32, color: [u8; 3], font: Arc<str>, bold: bool| BlockNode::Centered {
+        content: vec![InlineNode { text, style: TextStyle { bold, italic: false, strikethrough: false, size, color, font_family: font }, link_target: None }],
+    };
+    if let Some(title) = front.title {
+        let h = typo.heading.resolve(1);
+        blocks.push(line(title, h.size_pt, h.color.0, h.font_family.as_str().into(), h.bold));
+    }
+    let authors = match front.authors {
+        OneOrMany::One(a) => vec![a],
+        OneOrMany::Many(a) => a,
+    };
+    let body = |text: String, bold: bool| line(text, typo.body_size, typo.body_color, typo.body_font_family.clone(), bold);
+    blocks.extend(authors.into_iter().chain(front.date).map(|text| body(text, false)));
+    if let Some(text) = front.r#abstract {
+        blocks.push(body("Abstract".to_string(), true));
+        let mut options = Options::empty();
+        options.insert(Options::ENABLE_MATH);
+        let mut parser = Parser::new_ext(&text, options).peekable();
+        let content = lower_block_events(&mut parser, TagEnd::Item, slugs, next_diagram_id, &mut Vec::new().into_iter(), typo);
+        blocks.push(BlockNode::Blockquote { content });
+    }
+    for (key, text) in front.references {
+        let mut parser = Parser::new_ext(&text, Options::empty()).peekable();
+        let entry = lower_block_events(&mut parser, TagEnd::Item, slugs, next_diagram_id, &mut Vec::new().into_iter(), typo);
+        if let Some(BlockNode::Paragraph { content }) = entry.into_iter().next() {
+            blocks.push(BlockNode::Reference { key, content });
+        }
+    }
+}
+
+fn for_each_inlines(blocks: &mut [BlockNode], f: &mut impl FnMut(&mut Vec<InlineNode>)) {
+    for block in blocks {
+        match block {
+            BlockNode::Heading { content, .. }
+            | BlockNode::Paragraph { content }
+            | BlockNode::Centered { content }
+            | BlockNode::Caption { content, .. }
+            | BlockNode::Anchored { content, .. }
+            | BlockNode::FootnoteDefinition { content, .. } => f(content),
+            BlockNode::Blockquote { content } => for_each_inlines(content, f),
+            BlockNode::List { items, .. } => items.iter_mut().for_each(|item| for_each_inlines(item, f)),
+            BlockNode::Columns(columns) => columns.iter_mut().for_each(|column| for_each_inlines(column, f)),
+            BlockNode::Table { headers, rows, .. } => {
+                headers.iter_mut().for_each(&mut *f);
+                rows.iter_mut().flatten().for_each(&mut *f);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Auto-numbers sections (per `heading.number_from_level`), `Figure:`/`Table:` captions, and
+/// equations carrying `\label{..}`, then resolves `@label` mentions in the text to
+/// "Section 2.1", "Figure 3", "Table 1" or "Eq. (4)". Labels come from heading ids (`{#sec:x}`),
+/// a trailing `{#fig:x}` on a caption, and `\label{eq:x}` in a `$$` block. A mention naming no
+/// label stays as written, so e-mail addresses and handles survive.
+fn number_document(blocks: &mut [BlockNode], style: &sardown_style::Stylesheet) {
+    let from = style.heading.number_from_level;
+    let mut section = [0u32; 7];
+    let (mut figures, mut tables, mut equations) = (0u32, 0u32, 0u32);
+    // label -> (text it expands to, heading anchor to link to)
+    let mut labels: HashMap<String, (String, Option<String>)> = HashMap::new();
+    for block in blocks.iter_mut() {
+        match block {
+            BlockNode::Heading { level, id, content } if from > 0 && *level >= from => {
+                let depth = (*level - from) as usize;
+                section[depth] += 1;
+                section[depth + 1..].fill(0);
+                let number = section[..=depth].iter().map(u32::to_string).collect::<Vec<_>>().join(".");
+                labels.insert(id.clone(), (format!("Section {number}"), Some(id.clone())));
+                if let Some(first) = content.first().cloned() {
+                    content.insert(0, InlineNode { text: format!("{number} "), link_target: None, ..first });
+                }
+            }
+            BlockNode::Paragraph { content } => {
+                let Some(first) = content.first_mut() else { continue };
+                let (kind, count) = if first.text.starts_with("Figure: ") {
+                    ("Figure", &mut figures)
+                } else if first.text.starts_with("Table: ") {
+                    ("Table", &mut tables)
+                } else {
+                    continue;
+                };
+                *count += 1;
+                first.text.drain(..kind.len() + 2);
+                let mut label = InlineNode { text: format!("{kind} {count}. "), ..first.clone() };
+                label.style.bold = true;
+                let mut id = None;
+                if let Some(last) = content.last_mut() {
+                    let trimmed = last.text.trim_end();
+                    if let Some(start) = trimmed.rfind("{#").filter(|_| trimmed.ends_with('}')) {
+                        let name = &trimmed[start + 2..trimmed.len() - 1];
+                        let anchor = format!("label:{name}");
+                        labels.insert(name.to_string(), (format!("{kind} {count}"), Some(anchor.clone())));
+                        id = Some(anchor);
+                        last.text.truncate(trimmed[..start].trim_end().len());
+                    }
+                }
+                content.insert(0, label);
+                let content = std::mem::take(content);
+                *block = BlockNode::Caption { id, content };
+            }
+            BlockNode::Math { id, source } => {
+                let Some(start) = source.find("\\label{") else { continue };
+                let Some(len) = source[start..].find('}') else { continue };
+                equations += 1;
+                let name = &source[start + 7..start + len];
+                *id = format!("label:{name}");
+                labels.insert(name.to_string(), (format!("Eq. ({equations})"), Some(id.clone())));
+                source.replace_range(start..start + len + 1, "");
+                source.push_str(&format!(" \\qquad\\tag{{{equations}}}"));
+            }
+            _ => {}
+        }
+    }
+    if labels.is_empty() {
+        return;
+    }
+    let code_font = style.code_block.default.font_family.as_str();
+    for_each_inlines(blocks, &mut |inlines| {
+        splice_matches(inlines, code_font, '@', &mut |text, from| {
+            let mut search = from;
+            while let Some(at) = text[search..].find('@').map(|i| i + search) {
+                search = at + 1;
+                let word_end = text[at + 1..].find(|c: char| !(c.is_alphanumeric() || ":_-.".contains(c))).map_or(text.len(), |i| at + 1 + i);
+                let name = text[at + 1..word_end].trim_end_matches(['.', ':', '-', '_']);
+                let preceded_by_word = text[..at].chars().next_back().is_some_and(char::is_alphanumeric);
+                if let Some((display, anchor)) = labels.get(name).filter(|_| !preceded_by_word) {
+                    return Some((at, at + 1 + name.len(), vec![(display.clone(), anchor.clone().map(LinkTarget::InternalAnchor))]));
+                }
+            }
+            None
+        });
+    });
+}
+
+/// Replaces matches inside plain (not linked, not code) text runs. `find(text, from)` returns the
+/// next `(start, end, replacement pieces, each with its link)` at or after `from`; runs without `marker` are skipped
+/// without calling it. Each match splits its run into before / replacement / after, all keeping
+/// the run's style.
+fn splice_matches(
+    inlines: &mut Vec<InlineNode>,
+    code_font: &str,
+    marker: char,
+    find: &mut impl FnMut(&str, usize) -> Option<(usize, usize, Vec<(String, Option<LinkTarget>)>)>,
+) {
+    let mut out = Vec::with_capacity(inlines.len());
+    for node in inlines.drain(..) {
+        if node.link_target.is_some() || node.style.font_family.as_ref() == code_font || !node.text.contains(marker) {
+            out.push(node);
+            continue;
+        }
+        let text = node.text.as_str();
+        let mut rest = 0;
+        while let Some((start, end, pieces)) = find(text, rest) {
+            for (piece, target) in std::iter::once((text[rest..start].to_string(), None)).chain(pieces) {
+                if !piece.is_empty() {
+                    out.push(InlineNode { text: piece, link_target: target, ..node.clone() });
+                }
+            }
+            rest = end;
+        }
+        if rest == 0 {
+            out.push(node);
+        } else if rest < text.len() {
+            out.push(InlineNode { text: text[rest..].to_string(), ..node.clone() });
+        }
+    }
+    *inlines = out;
+}
+
+/// Resolves `[@key]` / `[@a; @b]` citations against front matter `references`: numbers entries in
+/// order of first citation, rewrites each citation to "[1]" / "[1, 2]", and appends a
+/// "References" heading with one "[n] entry" paragraph per cited entry. Entries nothing cites are
+/// dropped; a citation of an unknown key is left as written, with a warning.
+fn resolve_citations(blocks: &mut Vec<BlockNode>, slugs: &mut SlugGenerator, typo: &Typography, code_font: &str) {
+    let mut entries: HashMap<String, Vec<InlineNode>> = HashMap::new();
+    blocks.retain_mut(|block| match block {
+        BlockNode::Reference { key, content } => {
+            entries.insert(std::mem::take(key), std::mem::take(content));
+            false
+        }
+        _ => true,
+    });
+    if entries.is_empty() {
+        return;
+    }
+    let mut cited: Vec<String> = Vec::new();
+    for_each_inlines(blocks, &mut |inlines| {
+        // pulldown-cmark emits the "[" of an unresolved link as its own text event; rejoin
+        // same-styled neighbours so "[@key]" is one run.
+        inlines.dedup_by(|b, a| {
+            let same = a.link_target.is_none() && b.link_target.is_none() && a.style == b.style;
+            if same {
+                a.text.push_str(&b.text);
+            }
+            same
+        });
+        splice_matches(inlines, code_font, '[', &mut |text, from| {
+            let mut search = from;
+            while let Some(start) = text[search..].find("[@").map(|i| i + search) {
+                let Some(end) = text[start..].find(']').map(|i| i + start + 1) else { break };
+                search = end;
+                let keys: Vec<&str> = text[start + 1..end - 1].split(';').map(|k| k.trim().trim_start_matches('@')).collect();
+                if let Some(unknown) = keys.iter().find(|k| !entries.contains_key(**k)) {
+                    eprintln!("warning: citation of unknown reference `{unknown}`");
+                    continue;
+                }
+                let mut numbers: Vec<usize> = keys
+                    .iter()
+                    .map(|k| match cited.iter().position(|c| c == k) {
+                        Some(i) => i + 1,
+                        None => {
+                            cited.push(k.to_string());
+                            cited.len()
+                        }
+                    })
+                    .collect();
+                numbers.sort_unstable();
+                numbers.dedup();
+                // Each number links to its bibliography entry.
+                let mut pieces = vec![("[".to_string(), None)];
+                for (i, n) in numbers.iter().enumerate() {
+                    if i > 0 {
+                        pieces.push((", ".to_string(), None));
+                    }
+                    pieces.push((n.to_string(), Some(LinkTarget::InternalAnchor(format!("cite:{}", cited[n - 1])))));
+                }
+                pieces.push(("]".to_string(), None));
+                return Some((start, end, pieces));
+            }
+            None
+        });
+    });
+    if cited.is_empty() {
+        return;
+    }
+    let h = typo.heading.resolve(2);
+    let heading_style =
+        TextStyle { bold: h.bold, italic: false, strikethrough: false, size: h.size_pt, color: h.color.0, font_family: h.font_family.as_str().into() };
+    blocks.push(BlockNode::Heading {
+        level: 2,
+        id: slugs.generate("References"),
+        content: vec![InlineNode { text: "References".to_string(), style: heading_style, link_target: None }],
+    });
+    for (i, key) in cited.iter().enumerate() {
+        let mut content = entries.remove(key).expect("cited keys were checked against entries");
+        if let Some(first) = content.first().cloned() {
+            content.insert(0, InlineNode { text: format!("[{}] ", i + 1), link_target: None, ..first });
+        }
+        blocks.push(BlockNode::Anchored { id: format!("cite:{key}"), content });
+    }
+}
+
+/// Numbers footnotes in reference order and moves their definitions to the end of the document.
+/// Each reference run becomes its superscript number carrying a document-unique
+/// `LinkTarget::Footnote` id (unique so a book's chapters, each restarting at 1, never collide).
+/// A definition nothing cites is dropped.
+fn resolve_footnotes(blocks: &mut Vec<BlockNode>, next_diagram_id: &mut usize) {
+    let mut definitions: Vec<(String, Vec<InlineNode>)> = Vec::new();
+    blocks.retain_mut(|block| match block {
+        BlockNode::FootnoteDefinition { id, content } => {
+            definitions.push((std::mem::take(id), std::mem::take(content)));
+            false
+        }
+        _ => true,
+    });
+    if definitions.is_empty() {
+        return;
+    }
+    let document = *next_diagram_id;
+    *next_diagram_id += 1;
+    let mut cited: Vec<String> = Vec::new();
+    for_each_inlines(blocks, &mut |inlines| {
+        for node in inlines {
+            let Some(LinkTarget::Footnote(label)) = &node.link_target else { continue };
+            let number = match cited.iter().position(|l| l == label) {
+                Some(i) => i + 1,
+                None => {
+                    cited.push(label.clone());
+                    cited.len()
+                }
+            };
+            node.text = superscript(number);
+            node.link_target = Some(LinkTarget::Footnote(format!("footnote-{document}-{number}")));
+        }
+    });
+    for (i, label) in cited.iter().enumerate() {
+        if let Some((_, content)) = definitions.iter_mut().find(|(l, _)| l == label) {
+            let mut content = std::mem::take(content);
+            if let Some(mut mark) = content.first().cloned() {
+                mark.text = format!("{} ", superscript(i + 1));
+                mark.link_target = None;
+                content.insert(0, mark);
+            }
+            blocks.push(BlockNode::FootnoteDefinition { id: format!("footnote-{document}-{}", i + 1), content });
+        }
+    }
+}
+
+fn superscript(number: usize) -> String {
+    number.to_string().chars().map(|d| ['⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'][d.to_digit(10).unwrap() as usize]).collect()
 }
 
 /// 1-indexed (line, column) for a byte offset into `markdown`. Column counts characters (not

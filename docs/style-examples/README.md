@@ -26,6 +26,8 @@ Presets modeled on well-known document-type conventions, independent of region.
 | File | Style | Notable choices |
 |---|---|---|
 | `university-paper.toml` | Academic paper (APA/MLA-inspired) | Serif body, top-right running page number, 0.5in block-quote indent |
+| `arxiv.toml` | arXiv preprint (CS) | Letter, 10pt Times-style justified + hyphenated body, bold headings (17/12/11pt), horizontal-rule tables, auto-numbered sections, centered page number |
+| `arxiv-twocolumn.toml` | arXiv / conference preprint, two columns | `arxiv.toml` with 0.75in margins and `body_columns = 2`; title block and abstract stay full width |
 | `technical-manual.toml` | Printed reference manual | Tighter margins, dark-blue headings, `header_bar` code labels on a light theme, chapter-name + page-number footer |
 | `technical-guide.toml` | Docs-site/tutorial guide | Teal accent, generous spacing, `inline` code labels on a dark theme (with a matching dark code-block background -- see the file's own comment on why that pairing matters) |
 | `fiction.toml` | Novel manuscript | A5 paperback trim, serif body, large chapter-opening space-before, page number suppressed on chapter-opening pages |

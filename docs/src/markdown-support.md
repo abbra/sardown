@@ -88,6 +88,70 @@ the same way as a referenced file (an embedded SVG still renders as vector
 content). Only the base64-encoded form of a data URI is supported; a
 percent-encoded one is skipped with a warning.
 
+## Math
+
+A paragraph consisting only of `$$ ... $$` is typeset as a display equation
+(LaTeX syntax, rendered as vector outlines at the body text size and centered
+on the text column). A LaTeX error is reported on stderr and the equation is
+skipped. Inline `$...$` math is **not** typeset: it renders as italic source
+text, because a text line can't carry an inline graphic.
+
+## Footnotes
+
+`text[^name]` with a `[^name]: note text` definition anywhere in the file.
+Notes are numbered in order of citation, the marker is a superscript digit,
+and the note is set in smaller type at the bottom of the page holding the
+reference, under a short rule (see `[footnote]` in the
+[stylesheet reference](./stylesheet-reference.md)). A definition nobody
+cites is dropped. A reference inside a `::columns` block is not numbered
+or placed.
+
+## Front matter
+
+A `---` YAML block at the very top of the file sets a title block:
+
+```yaml
+---
+title: A Study of Things
+author: [Jane Doe, Example University]   # one centered line per entry
+date: November 2026
+abstract: |
+  Markdown text, set as an indented block under an "Abstract" label.
+---
+```
+
+All keys are optional (`references` is described under Citations below). The title uses the level-1 heading style; `author`
+may be a single string or a list. Invalid YAML is ignored with a warning.
+
+## Citations
+
+List entries under `references:` in the front matter (key → one Markdown
+paragraph), then cite with `[@key]` or `[@a; @b]`:
+
+```yaml
+references:
+  knuth84: "D. Knuth. *The TeXbook*. Addison-Wesley, 1984."
+```
+
+Citations are numbered in order of first use and shown as `[1]` / `[1, 2]`.
+A "References" section (unnumbered) with the cited entries is appended at the
+end; entries nobody cites are dropped. An unknown key is left as written, with
+a warning on stderr. Each citation number links to its entry in the References.
+
+## Captions, numbering and cross-references
+
+- A paragraph starting `Figure: ` or `Table: ` becomes a caption with a bold,
+  auto-numbered "Figure 1." / "Table 1." label (each counted separately).
+  A caption stays on the same page as the image, table or equation directly
+  after it, or else directly before it.
+- Headings are numbered when `[heading] number_from_level` is set (the arXiv
+  preset sets it to `2`: `##` is "1", `###` is "1.1").
+- A `$$` equation containing `\label{eq:x}` is numbered "(1)" at its right.
+- Give a heading `{#sec:intro}`, or end a caption with `{#fig:one}`, to name
+  it. Writing `@sec:intro`, `@fig:one` or `@eq:x` in text expands to
+  "Section 1", "Figure 1" or "Eq. (1)", linked to the target. An
+  `@name` that matches no label (an e-mail address, a handle) is left alone.
+
 ## What's out of scope
 
 sardown is not an HTML renderer: raw embedded HTML blocks/inline HTML,

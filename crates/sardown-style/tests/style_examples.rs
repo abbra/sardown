@@ -116,3 +116,29 @@ fn fiction_preset_uses_a_paperback_trim_size_and_suppresses_the_footer_on_chapte
     assert_eq!(sheet.footer.uniform.center, "{page}");
     assert!(sheet.footer.suppress_on_chapter_start, "printed novels conventionally leave the page number off a chapter's own opening page");
 }
+
+#[test]
+fn arxiv_preset_is_a_justified_ten_point_serif_page_with_bold_headings() {
+    let sheet = Stylesheet::load(&example_path("arxiv.toml")).unwrap();
+    assert_eq!(sheet.page.dimensions_mm(), (215.9, 279.4));
+    assert_eq!(sheet.typography.body_size_pt, 10.0);
+    assert!(sheet.typography.hyphenation);
+    assert!(sheet.heading.resolve(2).bold);
+    assert_eq!(sheet.heading.resolve(1).size_pt, 17.0);
+    assert_eq!(sheet.footer.uniform.center, "{page}");
+}
+
+#[test]
+fn arxiv_twocolumn_preset_is_the_arxiv_preset_with_two_columns() {
+    let sheet = Stylesheet::load(&example_path("arxiv-twocolumn.toml")).unwrap();
+    assert_eq!(sheet.page.body_columns, 2);
+    assert_eq!(Stylesheet::load(&example_path("arxiv.toml")).unwrap().page.body_columns, 1);
+    assert_eq!(sheet.typography.body_size_pt, 10.0);
+}
+
+#[test]
+fn arxiv_preset_numbers_sections_from_level_two() {
+    let style = Stylesheet::load(&example_path("arxiv.toml")).unwrap();
+    assert_eq!(style.heading.number_from_level, 2);
+    assert_eq!(style.footnote.size_pt, 9.0);
+}

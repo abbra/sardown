@@ -27,6 +27,7 @@ fn explicit_width_and_height_override_the_format_preset() {
         inner_margin_mm: None,
         outer_margin_mm: None,
         numbering: PageNumbering::default(),
+        body_columns: 1,
     };
     assert_eq!(page.dimensions_mm(), (100.0, 50.0));
 }

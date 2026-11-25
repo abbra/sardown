@@ -37,6 +37,10 @@ pub struct PageStyle {
     pub inner_margin_mm: Option<f32>,
     pub outer_margin_mm: Option<f32>,
     pub numbering: crate::PageNumbering,
+    /// Columns the body flows through (at least 1; `Stylesheet::validate` enforces it), separated
+    /// by `[columns] gap_pt`. The leading blocks before the first level-2-or-deeper heading (the
+    /// title block and abstract) keep the full page width.
+    pub body_columns: u8,
 }
 
 impl Default for PageStyle {
@@ -49,6 +53,7 @@ impl Default for PageStyle {
             inner_margin_mm: None,
             outer_margin_mm: None,
             numbering: crate::PageNumbering::default(),
+            body_columns: 1,
         }
     }
 }

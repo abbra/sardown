@@ -7,4 +7,6 @@ repository.workspace = true
 
 [dependencies]
 sardown-style = { version = "0.1.0", path = "../sardown-style" }
+serde-saphyr = "1.0.0"
+serde = { version = "1.0.229", features = ["derive"] }
 pulldown-cmark = "0.13.4"

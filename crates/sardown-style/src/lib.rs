@@ -3,6 +3,7 @@ use anyhow::Context;
 mod code_block;
 mod color;
 mod document;
+mod footnote;
 mod header_footer;
 mod heading;
 mod mermaid;
@@ -17,6 +18,7 @@ mod typography;
 pub use code_block::{CodeBlockDefaultStyle, CodeBlockStyle, CodeLanguageStyle, LabelStyle, ResolvedCodeBlockStyle};
 pub use color::Color;
 pub use document::DocumentStyle;
+pub use footnote::FootnoteStyle;
 pub use header_footer::{HeaderFooterMode, HeaderFooterStyle, HeaderZones};
 pub use heading::{HeadingLevelStyle, HeadingStyle, ResolvedHeadingStyle};
 pub use mermaid::{MermaidRenderer, MermaidStyle};
@@ -40,6 +42,7 @@ pub struct Stylesheet {
     pub list: ListStyle,
     pub columns: ColumnsStyle,
     pub table: TableStyle,
+    pub footnote: FootnoteStyle,
     pub code_block: CodeBlockStyle,
     pub mermaid: MermaidStyle,
     pub header: HeaderFooterStyle,
@@ -79,6 +82,9 @@ impl Stylesheet {
             (Some(_), None) => anyhow::bail!("[page] sets inner_margin_mm but not outer_margin_mm -- set both or neither"),
             (None, Some(_)) => anyhow::bail!("[page] sets outer_margin_mm but not inner_margin_mm -- set both or neither"),
             _ => {}
+        }
+        if self.page.body_columns == 0 {
+            anyhow::bail!("[page] body_columns must be at least 1");
         }
         self.header.validate("header")?;
         self.footer.validate("footer")?;

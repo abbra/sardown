@@ -43,7 +43,10 @@ fn split_fragment(url: &str) -> (&str, Option<&str>) {
 pub(crate) fn classify_links(blocks: &mut [BlockNode], chapter_dir: &Path, known_chapter_files: &HashSet<PathBuf>) {
     for block in blocks {
         match block {
-            BlockNode::Heading { content, .. } | BlockNode::Paragraph { content } => {
+            BlockNode::Heading { content, .. }
+            | BlockNode::Paragraph { content }
+            | BlockNode::Caption { content, .. }
+            | BlockNode::Anchored { content, .. } => {
                 classify_inline(content, chapter_dir, known_chapter_files);
             }
             BlockNode::Blockquote { content } => classify_links(content, chapter_dir, known_chapter_files),
@@ -126,7 +129,10 @@ pub(crate) fn record_heading_slugs(blocks: &[BlockNode], chapter_path: &Path, sl
 pub(crate) fn resolve_links(blocks: &mut [BlockNode], slug_map: &HashMap<(PathBuf, String), String>, chapter_start_map: &HashMap<PathBuf, String>) {
     for block in blocks {
         match block {
-            BlockNode::Heading { content, .. } | BlockNode::Paragraph { content } => {
+            BlockNode::Heading { content, .. }
+            | BlockNode::Paragraph { content }
+            | BlockNode::Caption { content, .. }
+            | BlockNode::Anchored { content, .. } => {
                 resolve_inline(content, slug_map, chapter_start_map);
             }
             BlockNode::Blockquote { content } => resolve_links(content, slug_map, chapter_start_map),
