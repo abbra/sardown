@@ -1423,10 +1423,10 @@ fn render_block(
             cursor.y += cursor.style.table.space_after_pt;
         }
         BlockNode::Image { source: sardown_ast::ImageSource::Embedded(path), .. } => {
-            render_keyed_image(cursor, margin_pt, indent_pt, path.to_string_lossy().to_string(), images, diagrams);
+            render_keyed_image(cursor, margin_pt, indent_pt, path.to_string_lossy().to_string(), images, diagrams, next_block);
         }
         BlockNode::Image { source: sardown_ast::ImageSource::DataUri(uri), .. } => {
-            render_keyed_image(cursor, margin_pt, indent_pt, uri.clone(), images, diagrams);
+            render_keyed_image(cursor, margin_pt, indent_pt, uri.clone(), images, diagrams, next_block);
         }
         BlockNode::Image { source: sardown_ast::ImageSource::External(_), .. } => {} // skipped, see decode_images
         BlockNode::MermaidDiagram { id, .. } | BlockNode::Math { id, .. } => {
@@ -1449,8 +1449,7 @@ fn render_block(
                 // a diagram has a crisp bottom border, so any following block whose first line's
                 // ascender extends further than the flat LINE_SPACING_PT gap visibly punches
                 // into the diagram instead of sitting cleanly below it.
-                let next_ascent_pt = estimate_next_block_ascent_pt(next_block);
-                cursor.y += (next_ascent_pt - LINE_SPACING_PT).max(0.0);
+                cursor.y += next_ascent_gap_pt(next_block);
             }
         }
         BlockNode::Columns(columns) => {
@@ -1527,11 +1526,25 @@ fn render_block(
     }
 }
 
+/// Extra gap below a graphic with a hard bottom edge so the next block's first-line ascender
+/// (`cursor.y` is a baseline) doesn't overprint it.
+fn next_ascent_gap_pt(next_block: Option<&BlockNode>) -> f32 {
+    (estimate_next_block_ascent_pt(next_block) - LINE_SPACING_PT).max(0.0)
+}
+
 /// Renders whichever of `images`/`diagrams` actually has an entry for `key` -- shared by
 /// `ImageSource::Embedded` and `ImageSource::DataUri`, which differ only in how `key` is derived
 /// (a file path vs. the raw `data:` URI string) but are otherwise decoded into the exact same two
 /// tables by `decode_images`/`collect_svg_diagrams`.
-fn render_keyed_image(cursor: &mut Cursor, margin_pt: f32, indent_pt: f32, key: String, images: &ImageTable, diagrams: &DiagramTable) {
+fn render_keyed_image(
+    cursor: &mut Cursor,
+    margin_pt: f32,
+    indent_pt: f32,
+    key: String,
+    images: &ImageTable,
+    diagrams: &DiagramTable,
+    next_block: Option<&BlockNode>,
+) {
     if let Some(decoded) = images.get(&key) {
         let max_width = cursor.content_width_pt - indent_pt;
         let max_height = cursor.page_height_pt - margin_pt;
@@ -1540,7 +1553,7 @@ fn render_keyed_image(cursor: &mut Cursor, margin_pt: f32, indent_pt: f32, key: 
             cursor.break_page(margin_pt);
         }
         cursor.current.push(PositionedElement::RasterImage { x: margin_pt + indent_pt, y: cursor.y, width, height, image_id: key });
-        cursor.y += height;
+        cursor.y += height + next_ascent_gap_pt(next_block);
     } else if let Some(diagram) = diagrams.get(&key) {
         // An embedded .svg file/data URI (collect_svg_diagrams) rather than a raster image --
         // rendered through the exact same VectorGraphic path Mermaid diagrams use.
@@ -1551,7 +1564,7 @@ fn render_keyed_image(cursor: &mut Cursor, margin_pt: f32, indent_pt: f32, key: 
             cursor.break_page(margin_pt);
         }
         cursor.current.push(PositionedElement::VectorGraphic { x: margin_pt + indent_pt, y: cursor.y, width, height, diagram_id: key });
-        cursor.y += height;
+        cursor.y += height + next_ascent_gap_pt(next_block);
     }
 }
 
