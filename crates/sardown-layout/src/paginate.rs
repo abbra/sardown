@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 const PT_PER_MM: f32 = 2.834_645_7;
 const LINE_SPACING_PT: f32 = 4.0; // gap after each block
-/// Extra space below a graphic: between a figure and its caption, and under an equation.
+/// Extra space below a diagram or between a figure and its caption.
 const GRAPHIC_GAP_PT: f32 = 6.0;
 
 /// `style` is read fresh on every call into `render_block` -- but only *some* of its fields
@@ -859,6 +859,10 @@ fn render_block(
                 InlinePlacement { margin_pt, indent_pt, max_width_pt, align: to_cosmic_align(cursor.style.typography.alignment), hyphenator, ligatures: true },
                 font_system,
             );
+            if matches!(next_block, Some(BlockNode::Math { .. })) {
+                // The line advance already includes block spacing; don't count it twice before math.
+                cursor.y -= LINE_SPACING_PT;
+            }
         }
         BlockNode::Caption { id: Some(id), content, .. } | BlockNode::Anchored { id, content } => {
             // Anchor where the first line lands: move to the next page first if it would not fit here.
@@ -1451,10 +1455,14 @@ fn render_block(
                 // a diagram has a crisp bottom border, so any following block whose first line's
                 // ascender extends further than the flat LINE_SPACING_PT gap visibly punches
                 // into the diagram instead of sitting cleanly below it.
-                cursor.y += next_ascent_gap_pt(next_block);
-                // Equations and diagrams get the same breathing room below as a figure above its caption.
-                if !matches!(next_block, Some(BlockNode::Caption { .. })) {
-                    cursor.y += GRAPHIC_GAP_PT;
+                if matches!(block, BlockNode::Math { .. }) {
+                    // Match the prose line's leading above math, accounting for the next baseline.
+                    cursor.y += (estimate_next_block_ascent_pt(next_block) - LINE_SPACING_PT).max(0.0) + 1.4 * cursor.style.typography.body_size_pt;
+                } else {
+                    cursor.y += next_ascent_gap_pt(next_block);
+                    if !matches!(next_block, Some(BlockNode::Caption { .. })) {
+                        cursor.y += GRAPHIC_GAP_PT;
+                    }
                 }
             }
         }
