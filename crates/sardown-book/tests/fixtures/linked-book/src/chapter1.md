@@ -9,3 +9,7 @@ Also see [an unrelated file](not-a-chapter.md) and a
 [broken fragment](chapter2.md#does-not-exist).
 
 External: [example](https://example.com).
+
+Links live in footnotes too[^fn].
+
+[^fn]: See [Chapter Two's Overview](chapter2.md#overview) as well.

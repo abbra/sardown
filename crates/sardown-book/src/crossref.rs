@@ -46,7 +46,8 @@ pub(crate) fn classify_links(blocks: &mut [BlockNode], chapter_dir: &Path, known
             BlockNode::Heading { content, .. }
             | BlockNode::Paragraph { content }
             | BlockNode::Caption { content, .. }
-            | BlockNode::Anchored { content, .. } => {
+            | BlockNode::Anchored { content, .. }
+            | BlockNode::FootnoteDefinition { content, .. } => {
                 classify_inline(content, chapter_dir, known_chapter_files);
             }
             BlockNode::Blockquote { content } => classify_links(content, chapter_dir, known_chapter_files),
@@ -132,7 +133,8 @@ pub(crate) fn resolve_links(blocks: &mut [BlockNode], slug_map: &HashMap<(PathBu
             BlockNode::Heading { content, .. }
             | BlockNode::Paragraph { content }
             | BlockNode::Caption { content, .. }
-            | BlockNode::Anchored { content, .. } => {
+            | BlockNode::Anchored { content, .. }
+            | BlockNode::FootnoteDefinition { content, .. } => {
                 resolve_inline(content, slug_map, chapter_start_map);
             }
             BlockNode::Blockquote { content } => resolve_links(content, slug_map, chapter_start_map),

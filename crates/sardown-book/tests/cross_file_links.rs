@@ -8,7 +8,7 @@ fn fixture(name: &str) -> std::path::PathBuf {
 fn flatten_inline<'a>(blocks: &'a [BlockNode], out: &mut Vec<&'a InlineNode>) {
     for block in blocks {
         match block {
-            BlockNode::Heading { content, .. } | BlockNode::Paragraph { content } => out.extend(content.iter()),
+            BlockNode::Heading { content, .. } | BlockNode::Paragraph { content } | BlockNode::FootnoteDefinition { content, .. } => out.extend(content.iter()),
             BlockNode::Blockquote { content } => flatten_inline(content, out),
             BlockNode::List { items, .. } => {
                 for item in items {
@@ -55,6 +55,19 @@ fn cross_file_link_without_fragment_resolves_to_chapter_start() {
 
     let node = find_linked(&nodes, "Chapter Two");
     assert_eq!(node.link_target, Some(LinkTarget::InternalAnchor("chapter-two".to_string())));
+}
+
+#[test]
+fn links_inside_footnote_definitions_are_classified_and_resolved() {
+    let blocks = sardown_book::load_book(&fixture("linked-book"), &Stylesheet::default()).expect("load_book failed");
+    let mut nodes = Vec::new();
+    flatten_inline(&blocks, &mut nodes);
+
+    // The link lives inside a FootnoteDefinition block, which the classify/resolve walkers
+    // must reach the same way they reach paragraphs -- a footnote at the bottom of a chapter
+    // is exactly where a long cross-reference belongs.
+    let node = find_linked(&nodes, "Chapter Two's Overview");
+    assert_eq!(node.link_target, Some(LinkTarget::InternalAnchor("overview-1".to_string())));
 }
 
 #[test]
