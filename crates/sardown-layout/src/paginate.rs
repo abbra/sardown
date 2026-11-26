@@ -705,6 +705,25 @@ fn place_shaped_runs(cursor: &mut Cursor, shaped: Vec<crate::ShapedRun>, content
     }
 }
 
+/// Footnote ids cited in table cells (the header row or one data row), in first-citation order
+/// and deduped across cells, so one id cited twice in the same row reserves its height once.
+/// The row-level break decision needs this before any cell line is placed: rows never split
+/// mid-cell, so a citing line's own per-line reservation can only fire a break *inside* the
+/// row, corrupting every cell after it.
+fn cell_footnote_ids(cells: &[Vec<sardown_ast::InlineNode>]) -> Vec<String> {
+    let mut ids = Vec::new();
+    for cell in cells {
+        for node in cell {
+            if let Some(sardown_ast::LinkTarget::Footnote(id)) = &node.link_target {
+                if !ids.contains(id) {
+                    ids.push(id.clone());
+                }
+            }
+        }
+    }
+    ids
+}
+
 /// Shapes every cell in `row` and reports both how tall the row will actually render (so a
 /// page-break decision can be made *before* any of its cells are drawn -- deciding per-cell
 /// instead risks a page break landing between two cells of the same row: every cell rendered
@@ -1329,9 +1348,15 @@ fn render_block(
             // belonging to the page the row started on.
             let (header_height, shaped_headers) =
                 shape_row_cells(&header_cells, &widths, &aligns, cell_padding_pt, MIN_CELL_WRAP_WIDTH_PT, min_row_height, font_system);
-            if cursor.remaining_height() < header_height + 2.0 * row_pad_pt && !cursor.current.is_empty() {
+            // Footnotes cited by header cells render at this page's bottom, so their height is
+            // part of what must fit before the row starts (same reasoning as data rows below).
+            let header_notes = cell_footnote_ids(&header_cells);
+            if cursor.remaining_height() < header_height + 2.0 * row_pad_pt + cursor.reserve_drop(cursor.footnote_reserve(&header_notes))
+                && !cursor.current.is_empty()
+            {
                 cursor.break_page(margin_pt);
             }
+            cursor.reserve_footnotes(&header_notes);
 
             let table_top_y = cursor.y;
             let first_elem_start = cursor.current.len();
@@ -1392,7 +1417,15 @@ fn render_block(
 
             for (row_index, row) in rows.iter().enumerate() {
                 let (row_height, shaped_cells) = shape_row_cells(row, &widths, &aligns, cell_padding_pt, MIN_CELL_WRAP_WIDTH_PT, min_row_height, font_system);
-                if cursor.remaining_height() < row_height + 2.0 * row_pad_pt && !cursor.current.is_empty() {
+                // A row is never split mid-cell, so a citing cell line's own per-line footnote
+                // reservation cannot fix an ill-fitting row -- it can only fire a break *inside*
+                // the row and corrupt every cell after it. The row's footnotes' height is
+                // therefore part of the row-level break decision, and reserved (slots marked
+                // placed, page bottom lowered) as soon as the row commits to a page.
+                let row_notes = cell_footnote_ids(row);
+                if cursor.remaining_height() < row_height + 2.0 * row_pad_pt + cursor.reserve_drop(cursor.footnote_reserve(&row_notes))
+                    && !cursor.current.is_empty()
+                {
                     cursor.break_page(margin_pt);
                     let top_y = cursor.y - table_top_pad_pt;
                     segments.push(Segment {
@@ -1401,6 +1434,7 @@ fn render_block(
                         decor: crate::table::SegmentDecor { top_y, bottom_y: top_y, header_bottom_y: None, rule_ys: vec![top_y], fills: Vec::new() },
                     });
                 }
+                cursor.reserve_footnotes(&row_notes);
 
                 let row_top_y = cursor.y + row_pad_pt;
                 let mut col_x = margin_pt + indent_pt;
