@@ -104,9 +104,18 @@ pub(crate) fn record_heading_slugs(blocks: &[BlockNode], chapter_path: &Path, sl
     for block in blocks {
         match block {
             BlockNode::Heading { id, content, .. } => {
+                // `id` is the slug the chapter's own generator assigned, and what a same-book
+                // author writes in a fragment link; it is always a valid key. `text` carries
+                // the auto-number ("1.1 Setup"), so `generate_heading_id(&text)` yields a
+                // number-bearing slug no author would have written -- keep it too, since it
+                // still identifies this heading when another chapter deduplicated the plain
+                // one, but never instead of the identity mapping.
+                slug_map.insert((chapter_path.to_path_buf(), id.clone()), id.clone());
                 let text: String = content.iter().map(|n| n.text.as_str()).collect();
                 let original = generate_heading_id(&text);
-                slug_map.insert((chapter_path.to_path_buf(), original), id.clone());
+                if original != *id {
+                    slug_map.insert((chapter_path.to_path_buf(), original), id.clone());
+                }
             }
             BlockNode::Blockquote { content } => record_heading_slugs(content, chapter_path, slug_map),
             BlockNode::List { items, .. } => {

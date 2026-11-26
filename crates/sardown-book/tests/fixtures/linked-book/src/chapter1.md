@@ -12,4 +12,6 @@ External: [example](https://example.com).
 
 Links live in footnotes too[^fn].
 
+[Setup](chapter2.md#setup) comes after the overview.
+
 [^fn]: See [Chapter Two's Overview](chapter2.md#overview) as well.
