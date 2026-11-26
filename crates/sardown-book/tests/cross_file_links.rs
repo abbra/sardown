@@ -58,6 +58,22 @@ fn cross_file_link_without_fragment_resolves_to_chapter_start() {
 }
 
 #[test]
+fn cross_file_fragment_link_to_a_numbered_heading_uses_the_author_written_slug() {
+    // With `number_from_level = 1` the "Setup" heading renders as "2 Setup", but the author
+    // still writes `chapter2.md#setup` -- the slug assigned at parse time, before the number
+    // was prepended to the heading text. The recorded map must key on that id, not on a slug
+    // regenerated from the numbered text.
+    let mut style = Stylesheet::default();
+    style.heading.number_from_level = 1;
+    let blocks = sardown_book::load_book(&fixture("linked-book"), &style).expect("load_book failed");
+    let mut nodes = Vec::new();
+    flatten_inline(&blocks, &mut nodes);
+
+    let node = find_linked(&nodes, "Setup");
+    assert_eq!(node.link_target, Some(LinkTarget::InternalAnchor("setup".to_string())));
+}
+
+#[test]
 fn links_inside_footnote_definitions_are_classified_and_resolved() {
     let blocks = sardown_book::load_book(&fixture("linked-book"), &Stylesheet::default()).expect("load_book failed");
     let mut nodes = Vec::new();
