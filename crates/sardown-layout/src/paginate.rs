@@ -1821,9 +1821,18 @@ pub fn layout_with_assets(
 ) -> LayoutOutput {
     let margin_pt = geometry.margin_mm * PT_PER_MM;
     let mut cursor = Cursor::new(geometry, stylesheet);
-    let column_count = usize::from(stylesheet.page.body_columns).max(1);
-    let gap_pt = stylesheet.columns.gap_pt;
-    let column_width_pt = (cursor.content_width_pt - gap_pt * (column_count - 1) as f32) / column_count as f32;
+    let mut column_count = usize::from(stylesheet.page.body_columns).max(1);
+    let mut gap_pt = stylesheet.columns.gap_pt;
+    let mut column_width_pt = (cursor.content_width_pt - gap_pt * (column_count - 1) as f32) / column_count as f32;
+    // A column under ~24pt fits only a few characters per line -- more columns than the page
+    // width supports is almost always a misconfiguration, so warn and fall back to one
+    // full-width column instead of laying out unreadable slivers.
+    if column_count > 1 && column_width_pt < 24.0 {
+        eprintln!("warning: [page] body_columns = {column_count} leaves each column {column_width_pt:.1}pt wide (< 24pt) on this page size; falling back to a single column");
+        column_count = 1;
+        gap_pt = 0.0;
+        column_width_pt = cursor.content_width_pt;
+    }
     // The title block and abstract (everything before the first `##`-or-deeper heading) stay full width.
     // No such heading: there is no column body at all, so the entire document is the head.
     let head_len = ast.iter().position(|b| matches!(b, BlockNode::Heading { level, .. } if *level >= 2)).unwrap_or(ast.len());

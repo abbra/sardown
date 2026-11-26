@@ -1899,6 +1899,26 @@ fn a_document_without_a_body_heading_stays_full_width_instead_of_flow_columns() 
 }
 
 #[test]
+fn more_columns_than_the_page_width_supports_fall_back_to_one_full_width_column() {
+    // 12 columns on a letter page leave ~60pt per column (a few characters per line); that is
+    // a misconfiguration, so layout warns and renders a single full-width column instead of
+    // unreadable slivers.
+    let md = format!("# Title\n\n## Body\n\n{}\n", "word ".repeat(200));
+    let blocks = parse(&md);
+    let mut style = sardown_style::Stylesheet::default();
+    style.page.body_columns = 12;
+    let mut fs = test_font_system();
+    let pages = layout_impl(&blocks, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style).pages;
+    let middle = 215.9 * 2.834_645_7 / 2.0;
+    let max_x = pages
+        .iter()
+        .flat_map(|p| p.elements.iter())
+        .filter_map(|e| if let PositionedElement::TextRun { x, .. } = e { Some(*x) } else { None })
+        .fold(0.0_f32, f32::max);
+    assert!(max_x < middle, "with the fallback every run starts in the single full-width column; got max x {max_x}");
+}
+
+#[test]
 fn wide_table_balances_only_the_columns_above_it() {
     let md = format!(
         "# Title\n\n## Body\n\n{}\n\n| A | B | C |\n|---|---|---|\n| 1 | 2 | 3 |\n\nTable: Wide. {{.wide}}\n\n{}\n",
