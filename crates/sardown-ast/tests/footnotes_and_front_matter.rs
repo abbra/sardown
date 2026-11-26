@@ -24,6 +24,19 @@ fn footnotes_are_numbered_by_citation_order_and_moved_to_the_end() {
 }
 
 #[test]
+fn a_footnote_reference_with_no_definition_stays_literal_and_unlinked() {
+    let blocks = parse("Real[^ok]. Ghost[^ghost] tail.\n\n[^ok]: Defined.\n");
+    let BlockNode::Paragraph { content } = &blocks[0] else { panic!("{:?}", blocks[0]) };
+    assert_eq!(text(content), "Real¹. Ghost[^ghost] tail.");
+    let ghost = content.iter().find(|n| n.text.contains("ghost")).unwrap();
+    assert!(ghost.link_target.is_none(), "{ghost:?}");
+    assert_eq!(blocks.len(), 2);
+    let BlockNode::FootnoteDefinition { id, content } = &blocks[1] else { panic!("{:?}", blocks[1]) };
+    assert!(id.starts_with("footnote-"));
+    assert_eq!(text(content), "¹ Defined.");
+}
+
+#[test]
 fn front_matter_becomes_centered_lines_and_an_abstract_quote() {
     let blocks = parse("---\ntitle: T\nauthor: Jane\nabstract: |\n  Some *words*.\n---\n\nBody\n");
     let kinds: Vec<_> = blocks.iter().map(std::mem::discriminant).collect();
