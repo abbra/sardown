@@ -1899,6 +1899,28 @@ fn a_document_without_a_body_heading_stays_full_width_instead_of_flow_columns() 
 }
 
 #[test]
+fn a_duplicate_anchor_id_keeps_its_first_placement_and_warns() {
+    // Two headings sharing one {#id}: the anchor table must keep the first placement (links
+    // resolve there) instead of silently moving to whichever definition rendered last.
+    let filler = format!("{}\n\n", "word ".repeat(60));
+    let md = format!("# Title\n\n## Dup {{#dup}}\n\n{filler}{filler}{filler}## Dup {{#dup}}\n\nTail paragraph.\n");
+    let blocks = parse(&md);
+    let mut fs = test_font_system();
+    let out = layout_impl(&blocks, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &sardown_style::Stylesheet::default());
+    let ys: Vec<f32> = out
+        .pages
+        .iter()
+        .flat_map(|p| p.elements.iter())
+        .filter_map(|e| if let PositionedElement::TextRun { text, y, .. } = e { (text.trim() == "Dup").then_some(*y) } else { None })
+        .collect();
+    assert_eq!(ys.len(), 2, "both headings must render, got runs at {ys:?}");
+    let anchor = out.anchors.get("dup").expect("duplicate id still anchors");
+    let first_gap = (anchor.y - ys[0]).abs();
+    let second_gap = (anchor.y - ys[1]).abs();
+    assert!(first_gap < second_gap, "anchor must keep the FIRST placement: anchor y {}, heading ys {ys:?}", anchor.y);
+}
+
+#[test]
 fn more_columns_than_the_page_width_supports_fall_back_to_one_full_width_column() {
     // 12 columns on a letter page leave ~60pt per column (a few characters per line); that is
     // a misconfiguration, so layout warns and renders a single full-width column instead of

@@ -70,7 +70,7 @@ pub struct PositionedGlyph {
     pub cluster: std::ops::Range<usize>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AnchorPosition {
     pub page: usize,
     pub x: f32,
