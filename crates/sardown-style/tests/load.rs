@@ -118,3 +118,28 @@ fn accepts_a_valid_header_and_footer_configuration() {
     assert!(sheet.footer.enabled);
     std::fs::remove_file(&path).unwrap();
 }
+
+#[test]
+fn rejects_a_footnote_size_pt_of_zero_or_less() {
+    let path = write_temp_toml("[footnote]\nsize_pt = 0.0\n");
+    let err = Stylesheet::load(&path).unwrap_err();
+    assert!(format!("{err:?}").contains("[footnote]") && format!("{err:?}").contains("size_pt"), "expected the footnote section and field named, got: {err:?}");
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn rejects_a_negative_footnote_spacing_pt() {
+    let path = write_temp_toml("[footnote]\nspacing_pt = -1.0\n");
+    let err = Stylesheet::load(&path).unwrap_err();
+    assert!(format!("{err:?}").contains("spacing_pt"), "expected spacing_pt named in the error, got: {err:?}");
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn accepts_a_footnote_style_with_valid_sizes() {
+    let path = write_temp_toml("[footnote]\nsize_pt = 8.0\nspacing_pt = 1.5\n");
+    let sheet = Stylesheet::load(&path).unwrap();
+    assert_eq!(sheet.footnote.size_pt, 8.0);
+    assert_eq!(sheet.footnote.spacing_pt, 1.5);
+    std::fs::remove_file(&path).unwrap();
+}
