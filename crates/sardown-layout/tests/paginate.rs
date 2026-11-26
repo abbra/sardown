@@ -1899,6 +1899,42 @@ fn a_document_without_a_body_heading_stays_full_width_instead_of_flow_columns() 
 }
 
 #[test]
+fn footnotes_cited_in_a_table_row_render_at_that_page_s_bottom() {
+    // The row's break decision must include its footnote's height: rows never split mid-cell,
+    // so the citing line's own per-line reservation could only fire a break inside the row,
+    // scattering the row's remaining cells onto the old page while the row moved on.
+    let mut fs = test_font_system();
+    for words in (600..1000).step_by(10) {
+        let md = format!(
+            "# Title\n\n## Body\n\n{}\n\n| Head | More |\n|---|---|\n| cites[^n] | second cell |\n\n[^n]: Footnote note text.\n",
+            "word ".repeat(words)
+        );
+        let blocks = parse(&md);
+        let pages = layout_impl(&blocks, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &sardown_style::Stylesheet::default()).pages;
+        let find = |needle: &str| {
+            pages.iter().enumerate().find_map(|(pi, p)| {
+                p.elements.iter().find_map(|e| {
+                    if let PositionedElement::TextRun { text, y, .. } = e {
+                        text.trim().contains(needle).then_some((pi, *y))
+                    } else {
+                        None
+                    }
+                })
+            })
+        };
+        let Some((cite_page, cite_y)) = find("cites") else { panic!("{words} words: citing cell not rendered; pages {}", pages.len()) };
+        let Some((other_page, other_y)) = find("second") else { panic!("{words} words: second cell not rendered; pages {}", pages.len()) };
+        let Some((note_page, note_y)) = find("Footnote note text") else { panic!("{words} words: footnote definition never rendered; pages {}", pages.len()) };
+        // One row: the whole row lands together, on one line of one page.
+        assert_eq!(cite_page, other_page, "{words} words: cells of one row must share a page");
+        assert!((cite_y - other_y).abs() < 1.0, "{words} words: cells of one row must share a line, cite y {cite_y}, other y {other_y}");
+        assert_eq!(cite_page, note_page, "{words} words: note must render on the citing row's page");
+        assert!(note_y > cite_y, "{words} words: note must sit below the citing row, note y {note_y}, cell y {cite_y}");
+        assert!(note_y < 740.0, "{words} words: note must stay inside the page body, got {note_y}");
+    }
+}
+
+#[test]
 fn a_duplicate_anchor_id_keeps_its_first_placement_and_warns() {
     // Two headings sharing one {#id}: the anchor table must keep the first placement (links
     // resolve there) instead of silently moving to whichever definition rendered last.
