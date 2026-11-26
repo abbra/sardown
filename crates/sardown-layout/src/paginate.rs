@@ -329,6 +329,22 @@ impl<'a> Cursor<'a> {
         self.y = self.page_top(margin_pt);
     }
 
+    /// Anchors are keyed by the author-written id, so a second definition of the same id (two
+    /// `#(id)` headers, a caption and an equation sharing one) would silently move every link's
+    /// target to the last one rendered. Keep the first placement and warn only when it differs --
+    /// re-inserting the identical position is idempotent and must not spam warnings.
+    fn insert_anchor(&mut self, id: &str, pos: AnchorPosition) {
+        match self.anchors.get(id) {
+            Some(existing) if *existing != pos => {
+                eprintln!("warning: duplicate anchor id {id:?}: first defined on page {}, redefinition on page {} ignored", existing.page, pos.page);
+            }
+            None => {
+                self.anchors.insert(id.to_string(), pos);
+            }
+            _ => {}
+        }
+    }
+
     /// Records a heading run's end/anchors. A heading placed directly after a pending run
     /// extends it (nothing was placed between them), so a whole heading stack travels together.
     fn note_heading(&mut self, anchor_id: String, start: usize, top_pt: f32, opens_chapter: bool) {
@@ -841,7 +857,7 @@ fn render_block(
                     stroke: Some(StrokeStyle { color: resolved_heading.underline_color.0, width: resolved_heading.underline_width_pt }),
                 });
             }
-            cursor.anchors.insert(id.clone(), AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: anchor_y });
+            cursor.insert_anchor(id, AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: anchor_y });
             // A heading that itself wrapped onto a new page mid-placement is not orphaned (it has
             // content on both pages) and its pre-break element indices are meaningless now, so
             // only a heading placed wholly on one page is recorded as a carry candidate.
@@ -870,7 +886,7 @@ fn render_block(
             if cursor.remaining_height() < first_line_pt && !cursor.current.is_empty() {
                 cursor.break_page(margin_pt);
             }
-            cursor.anchors.insert(id.clone(), AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: cursor.y });
+            cursor.insert_anchor(id, AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: cursor.y });
             let max_width_pt = cursor.content_width_pt - indent_pt;
             place_inline_content(
                 cursor,
@@ -1444,7 +1460,7 @@ fn render_block(
                     cursor.break_page(margin_pt);
                 }
                 if matches!(block, BlockNode::Math { .. }) {
-                    cursor.anchors.insert(id.clone(), AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: cursor.y });
+                    cursor.insert_anchor(id, AnchorPosition { page: cursor.page_number, x: margin_pt + indent_pt, y: cursor.y });
                 }
                 // Equations are centered on the text column; diagrams keep the left edge.
                 let x = if matches!(block, BlockNode::Math { .. }) { margin_pt + indent_pt + (max_width - width) / 2.0 } else { margin_pt + indent_pt };
@@ -1537,7 +1553,7 @@ fn render_block(
                     }
                 }
                 for (id, anchor) in sub_anchors {
-                    cursor.anchors.insert(id, AnchorPosition { page: cursor.page_number, x: anchor.x + column_x_offset_pt, y: anchor.y + outer_y });
+                    cursor.insert_anchor(&id, AnchorPosition { page: cursor.page_number, x: anchor.x + column_x_offset_pt, y: anchor.y + outer_y });
                 }
             }
             cursor.y = outer_y + max_height_pt;
