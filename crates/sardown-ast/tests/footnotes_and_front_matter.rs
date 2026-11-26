@@ -26,7 +26,7 @@ fn footnotes_are_numbered_by_citation_order_and_moved_to_the_end() {
 #[test]
 fn front_matter_becomes_centered_lines_and_an_abstract_quote() {
     let blocks = parse("---\ntitle: T\nauthor: Jane\nabstract: |\n  Some *words*.\n---\n\nBody\n");
-    let kinds: Vec<_> = blocks.iter().map(|b| std::mem::discriminant(b)).collect();
+    let kinds: Vec<_> = blocks.iter().map(std::mem::discriminant).collect();
     assert_eq!(kinds.len(), 5, "{blocks:?}");
     let lines: Vec<String> = blocks[..3]
         .iter()
