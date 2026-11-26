@@ -9,6 +9,7 @@ ignore = [
     { id = "RUSTSEC-2026-0206", reason = "rustybuzz 0.20.1 is unmaintained; no safe upgrade exists (transitive via krilla/usvg)" },
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser 0.25.1 is unmaintained; no safe upgrade exists (transitive via fontdb/cosmic-text)" },
     { id = "RUSTSEC-2024-0320", reason = "yaml-rust 0.4.5 is unmaintained; no safe upgrade exists (transitive via syntect)" },
+    { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained; no safe upgrade exists (transitive dev-dep via lopdf/pdfium-render)" },
 ]
 
 [licenses]
