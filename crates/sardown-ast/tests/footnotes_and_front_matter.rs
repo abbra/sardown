@@ -37,6 +37,13 @@ fn a_footnote_reference_with_no_definition_stays_literal_and_unlinked() {
 }
 
 #[test]
+fn headings_that_skip_a_level_number_the_skipped_parent_as_one() {
+    // `#` is below `number_from_level = 2`, so it stays unnumbered and takes no part in numbering;
+    // the first `###` would previously have numbered against a never-incremented parent ("0.1").
+    assert_eq!(numbered("# A\n\n### B\n\n## C\n\n### D\n"), ["A", "1.1 B", "2 C", "2.1 D"]);
+}
+
+#[test]
 fn front_matter_becomes_centered_lines_and_an_abstract_quote() {
     let blocks = parse("---\ntitle: T\nauthor: Jane\nabstract: |\n  Some *words*.\n---\n\nBody\n");
     let kinds: Vec<_> = blocks.iter().map(std::mem::discriminant).collect();

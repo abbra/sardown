@@ -589,6 +589,14 @@ fn number_document(blocks: &mut [BlockNode], style: &sardown_style::Stylesheet) 
                 let depth = (*level - from) as usize;
                 section[depth] += 1;
                 section[depth + 1..].fill(0);
+                // A heading that skips a level (`##` straight after `#`, or a document starting
+                // at `##`) would otherwise number against a parent counter that never
+                // incremented ("1.0.1"); each unincremented parent counts as 1.
+                for parent in &mut section[..depth] {
+                    if *parent == 0 {
+                        *parent = 1;
+                    }
+                }
                 let number = section[..=depth].iter().map(u32::to_string).collect::<Vec<_>>().join(".");
                 labels.insert(id.clone(), (format!("Section {number}"), Some(id.clone())));
                 if let Some(first) = content.first().cloned() {
