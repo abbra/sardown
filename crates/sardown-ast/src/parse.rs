@@ -785,7 +785,8 @@ fn resolve_citations(blocks: &mut Vec<BlockNode>, slugs: &mut SlugGenerator, typ
 /// Numbers footnotes in reference order and moves their definitions to the end of the document.
 /// Each reference run becomes its superscript number carrying a document-unique
 /// `LinkTarget::Footnote` id (unique so a book's chapters, each restarting at 1, never collide).
-/// A definition nothing cites is dropped.
+/// A definition nothing cites is dropped. A reference with no definition is restored to its
+/// literal `[^label]` text, unlinked, with a warning instead of numbering into nothing.
 fn resolve_footnotes(blocks: &mut Vec<BlockNode>, next_diagram_id: &mut usize) {
     let mut definitions: Vec<(String, Vec<InlineNode>)> = Vec::new();
     blocks.retain_mut(|block| match block {
@@ -804,6 +805,12 @@ fn resolve_footnotes(blocks: &mut Vec<BlockNode>, next_diagram_id: &mut usize) {
     for_each_inlines(blocks, &mut |inlines| {
         for node in inlines {
             let Some(LinkTarget::Footnote(label)) = &node.link_target else { continue };
+            if !definitions.iter().any(|(l, _)| l == label) {
+                eprintln!("warning: footnote reference `[^{label}]` has no definition");
+                node.text = format!("[^{label}]");
+                node.link_target = None;
+                continue;
+            }
             let number = match cited.iter().position(|l| l == label) {
                 Some(i) => i + 1,
                 None => {
