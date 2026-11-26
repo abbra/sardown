@@ -1881,6 +1881,24 @@ fn two_column_body_keeps_the_head_full_width_and_flows_text_through_two_columns(
 }
 
 #[test]
+fn a_document_without_a_body_heading_stays_full_width_instead_of_flow_columns() {
+    // head_len defaulted to 0 when no `##`-or-deeper heading exists, so an abstract-only
+    // document was laid out as if its whole body were column flow.
+    // Enough words that active columns would be forced to spill into the right one (more than
+    // a single column's height) while full-width flow still fits one page.
+    let md = format!("# Title\n\nAbstract only. {}\n", "word ".repeat(500));
+    let blocks = parse(&md);
+    let mut style = sardown_style::Stylesheet::default();
+    style.page.body_columns = 2;
+    let mut fs = test_font_system();
+    let pages = layout_impl(&blocks, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new(), &style).pages;
+    assert_eq!(pages.len(), 1);
+    let middle = 215.9 * 2.834_645_7 / 2.0;
+    let max_x = pages[0].elements.iter().filter_map(|e| if let PositionedElement::TextRun { x, .. } = e { Some(*x) } else { None }).fold(0.0_f32, f32::max);
+    assert!(max_x < middle, "every run must start in the left half of the page (full width), got max x {max_x}");
+}
+
+#[test]
 fn wide_table_balances_only_the_columns_above_it() {
     let md = format!(
         "# Title\n\n## Body\n\n{}\n\n| A | B | C |\n|---|---|---|\n| 1 | 2 | 3 |\n\nTable: Wide. {{.wide}}\n\n{}\n",
