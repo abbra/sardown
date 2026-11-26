@@ -40,6 +40,11 @@ pub fn build_slide_stylesheet(base: &Stylesheet, layout: &SlideLayoutStyle, scal
 
     sheet.typography.body_size_pt *= scale;
     sheet.table.text_size_pt *= scale;
+    // Footnotes rendered at a slide's bottom shrink with the body: a note in full-size type
+    // under scaled-down body text would dwarf the slide it annotates (and keep oversized
+    // slides from fitting when only a footnote is at fault).
+    sheet.footnote.size_pt *= scale;
+    sheet.footnote.spacing_pt *= scale;
     scale_table_spacing(&mut sheet.table, scale);
     sheet.code_block.default.font_size_pt *= scale;
     for lang_style in sheet.code_block.languages.values_mut() {
@@ -65,6 +70,8 @@ pub fn build_slide_stylesheet(base: &Stylesheet, layout: &SlideLayoutStyle, scal
 pub fn apply_slide_scale(sheet: &mut Stylesheet, base: &Stylesheet, layout: &SlideLayoutStyle, scale: f32) {
     sheet.typography.body_size_pt = layout.body_size_pt.unwrap_or(base.typography.body_size_pt) * scale;
     sheet.table.text_size_pt = base.table.text_size_pt * scale;
+    sheet.footnote.size_pt = base.footnote.size_pt * scale;
+    sheet.footnote.spacing_pt = base.footnote.spacing_pt * scale;
     sheet.table.cell_padding_pt = base.table.cell_padding_pt * scale;
     sheet.table.min_row_height_pt = base.table.min_row_height_pt * scale;
     sheet.table.row_padding_pt = base.table.row_padding_pt * scale;
