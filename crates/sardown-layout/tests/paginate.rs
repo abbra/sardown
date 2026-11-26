@@ -1876,7 +1876,15 @@ fn two_column_body_keeps_the_head_full_width_and_flows_text_through_two_columns(
     let margin = geometry.margin_mm * 2.834_645_7;
     let right_start = xs.iter().cloned().fold(0.0_f32, f32::max);
     assert!((xs.iter().cloned().fold(f32::MAX, f32::min) - margin).abs() < 0.5, "left column starts at the margin");
-    assert!(right_start > 215.9 * 2.834_645_7 / 2.0 - 20.0, "second column starts right of the page middle, got {right_start}");
+    // Exactly `margin + column_width + gap`, not merely right of the middle: a buggy column
+    // width (off-by-gap, off-by-padding) passes a loose middle-of-page check.
+    let gap_pt = style.columns.gap_pt;
+    let content_width_pt = (215.9 - 2.0 * geometry.margin_mm) * 2.834_645_7;
+    let expected_right_start = margin + (content_width_pt - gap_pt) / 2.0 + gap_pt;
+    assert!(
+        (right_start - expected_right_start).abs() < 1.0,
+        "second column starts at margin + column width + gap, got {right_start}, expected {expected_right_start}"
+    );
     assert!(pages.iter().enumerate().all(|(i, p)| p.page_number == i));
 }
 
@@ -1998,7 +2006,11 @@ fn wide_table_balances_only_the_columns_above_it() {
     let table_c = runs.iter().find(|r| r.0 == "C").expect("table header C");
     assert!(table_c.1 > middle, "table spans the full width, third column at {}", table_c.1);
     assert!(runs.iter().any(|r| r.0.starts_with("word") && r.1 > middle && r.2 < table_c.2));
-    assert!(runs.iter().filter(|r| r.0.starts_with("tail")).all(|r| r.1 < middle && r.2 > table_c.2));
+    // Non-vacuous: an empty filter makes `.all()` trivially true, silently dropping the
+    // "tail text resumes full width below the table" guarantee.
+    let tail_runs: Vec<_> = runs.iter().filter(|r| r.0.starts_with("tail")).collect();
+    assert!(!tail_runs.is_empty(), "tail text must exist on the balanced page");
+    assert!(tail_runs.iter().all(|r| r.1 < middle && r.2 > table_c.2), "tail text resumes full width below the table");
 }
 
 #[test]
