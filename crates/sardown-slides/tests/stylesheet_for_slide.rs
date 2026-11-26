@@ -19,6 +19,10 @@ fn scale_0_5_halves_every_content_font_size_but_not_header_footer() {
     assert_eq!(sheet.typography.body_size_pt, base.typography.body_size_pt * 0.5);
     assert_eq!(sheet.table.text_size_pt, base.table.text_size_pt * 0.5);
     assert_eq!(sheet.code_block.default.font_size_pt, base.code_block.default.font_size_pt * 0.5);
+    // Footnotes are slide content, not chrome: they must shrink with the body (and grow back
+    // when apply_slide_scale resets a shrink loop's earlier attempt).
+    assert_eq!(sheet.footnote.size_pt, base.footnote.size_pt * 0.5);
+    assert_eq!(sheet.footnote.spacing_pt, base.footnote.spacing_pt * 0.5);
     assert_eq!(sheet.header.font_size_pt, base.header.font_size_pt, "header chrome must never be scaled");
     assert_eq!(sheet.footer.font_size_pt, base.footer.font_size_pt, "footer chrome must never be scaled");
 }
@@ -102,6 +106,7 @@ fn in_place_scaling_matches_a_fresh_build_at_every_scale() {
     assert_eq!(incremental.typography.body_size_pt, fresh.typography.body_size_pt, "24.0 (override) * 0.7");
     assert_eq!(incremental.table.text_size_pt, fresh.table.text_size_pt);
     assert_eq!(incremental.code_block.default.font_size_pt, fresh.code_block.default.font_size_pt);
+    assert_eq!(incremental.footnote.size_pt, fresh.footnote.size_pt, "footnote must be identical in both scaling paths");
     assert_eq!(
         incremental.code_block.languages.get("rust").unwrap().font_size_pt,
         fresh.code_block.languages.get("rust").unwrap().font_size_pt,
