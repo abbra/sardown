@@ -486,7 +486,7 @@ pub fn parse_with_style(markdown: &str, slugs: &mut SlugGenerator, next_diagram_
     resolve_footnotes(&mut blocks, next_diagram_id);
     number_document(&mut blocks, style);
     // After numbering, so the generated References heading stays unnumbered.
-    resolve_citations(&mut blocks, slugs, &typo, style.code_block.default.font_family.as_str());
+    resolve_citations(&mut blocks, slugs, &typo, style.code_block.default.font_family.as_str(), next_diagram_id);
     blocks
 }
 
@@ -710,8 +710,10 @@ fn splice_matches(
 /// Resolves `[@key]` / `[@a; @b]` citations against front matter `references`: numbers entries in
 /// order of first citation, rewrites each citation to "[1]" / "[1, 2]", and appends a
 /// "References" heading with one "[n] entry" paragraph per cited entry. Entries nothing cites are
-/// dropped; a citation of an unknown key is left as written, with a warning.
-fn resolve_citations(blocks: &mut Vec<BlockNode>, slugs: &mut SlugGenerator, typo: &Typography, code_font: &str) {
+/// dropped; a citation of an unknown key is left as written, with a warning. Anchor ids are
+/// namespaced per document (`cite:<document>:<key>`) so the same key in two chapters of a combined
+/// book never collides; the shared counter also numbers footnote documents.
+fn resolve_citations(blocks: &mut Vec<BlockNode>, slugs: &mut SlugGenerator, typo: &Typography, code_font: &str, next_diagram_id: &mut usize) {
     let mut entries: HashMap<String, Vec<InlineNode>> = HashMap::new();
     blocks.retain_mut(|block| match block {
         BlockNode::Reference { key, content } => {
@@ -723,6 +725,10 @@ fn resolve_citations(blocks: &mut Vec<BlockNode>, slugs: &mut SlugGenerator, typ
     if entries.is_empty() {
         return;
     }
+    // Claim a slot in the document-wide id counter only once entries actually survive, so a
+    // citations-less chapter doesn't shift numbering for the next one.
+    let document = *next_diagram_id;
+    *next_diagram_id += 1;
     let mut cited: Vec<String> = Vec::new();
     for_each_inlines(blocks, &mut |inlines| {
         // pulldown-cmark emits the "[" of an unresolved link as its own text event; rejoin
@@ -762,7 +768,7 @@ fn resolve_citations(blocks: &mut Vec<BlockNode>, slugs: &mut SlugGenerator, typ
                     if i > 0 {
                         pieces.push((", ".to_string(), None));
                     }
-                    pieces.push((n.to_string(), Some(LinkTarget::InternalAnchor(format!("cite:{}", cited[n - 1])))));
+                    pieces.push((n.to_string(), Some(LinkTarget::InternalAnchor(format!("cite:{document}:{}", cited[n - 1])))));
                 }
                 pieces.push(("]".to_string(), None));
                 return Some((start, end, pieces));
@@ -786,7 +792,7 @@ fn resolve_citations(blocks: &mut Vec<BlockNode>, slugs: &mut SlugGenerator, typ
         if let Some(first) = content.first().cloned() {
             content.insert(0, InlineNode { text: format!("[{}] ", i + 1), link_target: None, ..first });
         }
-        blocks.push(BlockNode::Anchored { id: format!("cite:{key}"), content });
+        blocks.push(BlockNode::Anchored { id: format!("cite:{document}:{key}"), content });
     }
 }
 

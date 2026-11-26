@@ -2004,7 +2004,9 @@ fn citation_numbers_and_figure_table_and_equation_references_link_to_laid_out_an
         .collect();
     let mut ids: Vec<&str> = links.iter().map(String::as_str).collect();
     ids.sort_unstable();
-    assert_eq!(ids, ["cite:a", "cite:b", "label:eq:e", "label:fig:f", "label:tab:t", "sec:i"]);
+    // Citations are namespaced per document (`cite:<document>:<key>`); this doc's footnotes
+    // claim counter slot 0, so the citations land in slot 1.
+    assert_eq!(ids, ["cite:1:a", "cite:1:b", "label:eq:e", "label:fig:f", "label:tab:t", "sec:i"]);
     for id in &links {
         assert!(out.anchors.contains_key(id), "no anchor laid out for link target {id}");
     }
