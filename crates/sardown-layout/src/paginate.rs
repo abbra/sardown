@@ -1181,8 +1181,8 @@ fn render_block(
                 // the same baseline-vs-top-pad correction as the block's very first line -- except
                 // a corner badge's enlarged pad, which only decorates the block's true start.
                 cursor.pages[start_page].elements.insert(background_insert_at, background_rect(start_y - start_top_pad_pt, page_height_pt));
-                for page in (start_page + 1)..end_page {
-                    cursor.pages[page].elements.insert(0, background_rect(margin_pt - normal_top_pad_pt, page_height_pt));
+                for page in &mut cursor.pages[(start_page + 1)..end_page] {
+                    page.elements.insert(0, background_rect(margin_pt - normal_top_pad_pt, page_height_pt));
                 }
                 cursor.current.insert(0, background_rect(margin_pt - normal_top_pad_pt, last_line_baseline + BOTTOM_PAD_PT));
             }
