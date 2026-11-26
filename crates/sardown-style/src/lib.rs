@@ -88,6 +88,7 @@ impl Stylesheet {
         }
         self.header.validate("header")?;
         self.footer.validate("footer")?;
+        self.footnote.validate("footnote")?;
         if !(1..=6).contains(&self.toc.depth) {
             anyhow::bail!("[toc] depth must be between 1 and 6, got {}", self.toc.depth);
         }
