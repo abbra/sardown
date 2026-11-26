@@ -373,3 +373,24 @@ fn code_blocks_are_syntax_highlighted() {
         .collect();
     assert!(colors.len() > 1, "expected multiple distinct token colors from real syntax highlighting, got {colors:?}");
 }
+
+#[test]
+fn a_footnote_definition_lands_on_the_slide_that_cites_it() {
+    // A definition is written at the end of its slide's source, which after `---` splitting is
+    // the *next* slide; each slide lays out independently, so the definition must move onto the
+    // slide whose superscript marker cites it, not render at the bottom of an unrelated page.
+    let markdown = "# Citing slide\n\nA claim[^n].\n\n---\n\n# Next slide\n\n[^n]: A note that belongs with the citing slide.\n";
+    let mut fs = test_font_system();
+    let output = render_slide_deck(markdown, std::path::Path::new("slides.md"), std::path::Path::new("."), &mut fs, &small_page_stylesheet()).unwrap();
+    assert_eq!(output.pages.len(), 2);
+    let page_text = |i: usize| -> String {
+        output.pages[i]
+            .elements
+            .iter()
+            .filter_map(|e| if let sardown_layout::PositionedElement::TextRun { text, .. } = e { Some(text.trim().to_string()) } else { None })
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    assert!(page_text(0).contains("A note that belongs with the citing slide"), "definition must render on the citing slide 0, got: {}", page_text(0));
+    assert!(!page_text(1).contains("A note that belongs with the citing slide"), "definition must not stay on the following slide, got: {}", page_text(1));
+}

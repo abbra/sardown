@@ -27,6 +27,28 @@ pub fn split_into_slides(ast: Vec<BlockNode>) -> Vec<Slide> {
     slides
 }
 
+/// Moves every `FootnoteDefinition` onto the earliest slide that cites it (or the last slide
+/// when none does). Slides lay out independently -- each slide's footnote block is shaped over
+/// its own blocks only -- so a definition left on the slide it was written on renders at the
+/// bottom of a page that may not even cite it, while the citing slide shows a superscript
+/// marker pointing at nothing.
+pub fn keep_footnotes_with_citing_slides(slides: &mut [Slide]) {
+    let mut defs: Vec<BlockNode> = Vec::new();
+    for slide in slides.iter_mut() {
+        let (mine, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut slide.blocks).into_iter().partition(|b| matches!(b, BlockNode::FootnoteDefinition { .. }));
+        slide.blocks = rest;
+        defs.extend(mine);
+    }
+    if defs.is_empty() {
+        return;
+    }
+    for block in defs {
+        let BlockNode::FootnoteDefinition { id, .. } = &block else { unreachable!("only definitions were partitioned") };
+        let target = slides.iter().position(|s| sardown_ast::cited_footnote_ids(&s.blocks).contains(id)).unwrap_or(slides.len() - 1);
+        slides[target].blocks.push(block);
+    }
+}
+
 fn finish_slide(mut blocks: Vec<BlockNode>) -> Slide {
     let layout_name = extract_layout_directive(&mut blocks);
     Slide { layout_name, blocks }

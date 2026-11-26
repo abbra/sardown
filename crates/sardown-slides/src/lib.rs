@@ -58,8 +58,11 @@ pub fn render_slide_deck(
     // splitting would let a deck author's forgotten `::end` silently swallow every remaining
     // block in the *entire rest of the deck*, including slides after the next `---`, instead of
     // just the rest of the one slide it appears on.
-    let slides: Vec<Slide> =
+    let mut slides: Vec<Slide> =
         split_into_slides(ast).into_iter().map(|slide| Slide { layout_name: slide.layout_name, blocks: sardown_ast::group_columns(slide.blocks) }).collect();
+    // After group_columns, so a definition that trails an unterminated `::columns` block is
+    // already back at the slide's top level when the partition looks for it.
+    split::keep_footnotes_with_citing_slides(&mut slides);
 
     let (width_mm, height_mm) = stylesheet.page.dimensions_mm();
     let geometry = sardown_layout::PageGeometry {
