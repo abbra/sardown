@@ -1825,7 +1825,8 @@ pub fn layout_with_assets(
     let gap_pt = stylesheet.columns.gap_pt;
     let column_width_pt = (cursor.content_width_pt - gap_pt * (column_count - 1) as f32) / column_count as f32;
     // The title block and abstract (everything before the first `##`-or-deeper heading) stay full width.
-    let head_len = ast.iter().position(|b| matches!(b, BlockNode::Heading { level, .. } if *level >= 2)).unwrap_or(0);
+    // No such heading: there is no column body at all, so the entire document is the head.
+    let head_len = ast.iter().position(|b| matches!(b, BlockNode::Heading { level, .. } if *level >= 2)).unwrap_or(ast.len());
     cursor.footnotes = shape_footnotes(ast, column_width_pt, cursor.page_height_pt, margin_pt, stylesheet, font_system);
     let mut group = ColumnGroup::default();
     let last_wide = (column_count > 1).then(|| ast.iter().rposition(|b| matches!(b, BlockNode::Caption { wide: true, .. }))).flatten();
