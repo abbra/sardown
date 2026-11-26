@@ -1980,6 +1980,41 @@ fn footnotes_of_a_balanced_column_group_sit_at_the_page_bottom_without_unbalanci
 }
 
 #[test]
+fn footnotes_cited_inside_a_columns_block_render_at_that_page_s_bottom() {
+    // The columns render against isolated cursors that never touch the outer cursor's footnote
+    // table, so unless the Columns arm reserves the notes cited inside the block, their
+    // definitions are never drawn at all -- the superscript marker points at nothing.
+    let note = "A footnote long enough to wrap across several lines at the bottom of the page, so its reserved block is tall. ".repeat(3);
+    let ast = vec![
+        BlockNode::Paragraph { content: vec![plain_inline(&"word ".repeat(400))] },
+        BlockNode::Columns(vec![
+            vec![BlockNode::Paragraph {
+                content: vec![InlineNode {
+                    text: "left".to_string(),
+                    style: plain_inline("").style,
+                    link_target: Some(sardown_ast::LinkTarget::Footnote("n".to_string())),
+                }],
+            }],
+            vec![BlockNode::Paragraph { content: vec![plain_inline("right")] }],
+        ]),
+        BlockNode::FootnoteDefinition { id: "n".to_string(), content: vec![plain_inline(&note)] },
+    ];
+    let mut fs = test_font_system();
+    let pages = layout(&ast, &letter_geometry(), &mut fs, &fixtures_dir(), &DiagramTable::new()).pages;
+    assert_eq!(pages.len(), 1, "a 400-word page with a small columns block and one note fits one page");
+    let runs: Vec<(String, f32, f32)> = pages[0]
+        .elements
+        .iter()
+        .filter_map(|e| if let PositionedElement::TextRun { text, x, y, .. } = e { Some((text.trim().to_string(), *x, *y)) } else { None })
+        .collect();
+    let col_y = runs.iter().filter(|r| r.0.starts_with("left") || r.0 == "right").map(|r| r.2).fold(0.0, f32::max);
+    let note_y = runs.iter().find(|r| r.0.contains("reserved block is tall")).map(|r| r.2);
+    let Some(note_y) = note_y else { panic!("footnote definition never rendered; runs: {runs:?}") };
+    assert!(note_y > col_y, "note at {note_y} must sit below the columns ending at {col_y}");
+    assert!(note_y < 720.0 + 20.0, "note at {note_y} must stay inside the text area");
+}
+
+#[test]
 fn citation_numbers_and_figure_table_and_equation_references_link_to_laid_out_anchors() {
     let md = "---\nreferences:\n  a: \"Alpha.\"\n  b: \"Beta.\"\n---\n\n## Intro {#sec:i}\n\nSee [@b; @a], @fig:f, @tab:t, @eq:e and @sec:i.\n\n![x](missing.png)\n\nFigure: A figure. {#fig:f}\n\nTable: A table. {#tab:t}\n\n| A |\n|---|\n| 1 |\n\n$$ x \\label{eq:e} $$\n";
     let mut style = sardown_style::Stylesheet::default();

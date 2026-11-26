@@ -572,6 +572,43 @@ fn for_each_inlines(blocks: &mut [BlockNode], f: &mut impl FnMut(&mut Vec<Inline
     }
 }
 
+/// Footnote ids cited anywhere in `blocks` (recursing into nested block content), in
+/// first-citation order, without duplicates. Read-only counterpart of `for_each_inlines`; lets
+/// layouters reserve footnote space before committing a block to a page.
+pub fn cited_footnote_ids<'a>(blocks: impl IntoIterator<Item = &'a BlockNode>) -> Vec<String> {
+    let mut ids = Vec::new();
+    for block in blocks {
+        match block {
+            BlockNode::Heading { content, .. }
+            | BlockNode::Paragraph { content }
+            | BlockNode::Centered { content }
+            | BlockNode::Caption { content, .. }
+            | BlockNode::Anchored { content, .. }
+            | BlockNode::FootnoteDefinition { content, .. } => collect_footnote_ids(content, &mut ids),
+            BlockNode::Blockquote { content } => ids.extend(cited_footnote_ids(content)),
+            BlockNode::List { items, .. } => items.iter().for_each(|item| ids.extend(cited_footnote_ids(item))),
+            BlockNode::Columns(columns) => {
+                columns.iter().for_each(|column| ids.extend(cited_footnote_ids(column)));
+            }
+            BlockNode::Table { headers, rows, .. } => {
+                headers.iter().chain(rows.iter().flatten()).for_each(|cell| collect_footnote_ids(cell, &mut ids));
+            }
+            _ => {}
+        }
+    }
+    ids
+}
+
+fn collect_footnote_ids(content: &[InlineNode], ids: &mut Vec<String>) {
+    for node in content {
+        if let Some(LinkTarget::Footnote(id)) = &node.link_target {
+            if !ids.contains(id) {
+                ids.push(id.clone());
+            }
+        }
+    }
+}
+
 /// Auto-numbers sections (per `heading.number_from_level`), `Figure:`/`Table:` captions, and
 /// equations carrying `\label{..}`, then resolves `@label` mentions in the text to
 /// "Section 2.1", "Figure 3", "Table 1" or "Eq. (4)". Labels come from heading ids (`{#sec:x}`),

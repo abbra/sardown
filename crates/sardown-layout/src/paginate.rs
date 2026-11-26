@@ -1498,9 +1498,17 @@ fn render_block(
 
             // A block that doesn't fit what's left of the page moves to the next one; one taller
             // than a whole page is placed anyway (never dropped) and flagged as overflowing, so a
-            // slide deck's shrink pass sees that the slide doesn't fit.
-            if cursor.remaining_height() < max_height_pt && !cursor.current.is_empty() {
+            // slide deck's shrink pass sees that the slide doesn't fit. Notes cited inside the
+            // columns render at the page bottom, so their space is part of what must fit -- and
+            // must be reserved against the outer cursor, whose slot table the isolated column
+            // cursors can't see.
+            let notes = sardown_ast::cited_footnote_ids(columns.iter().flatten());
+            let needed = max_height_pt + cursor.reserve_drop(cursor.footnote_reserve(&notes));
+            if cursor.remaining_height() < needed && !cursor.current.is_empty() {
                 cursor.break_page(margin_pt);
+            }
+            if !notes.is_empty() {
+                cursor.reserve_footnotes(&notes);
             }
             let outer_y = cursor.y;
 
